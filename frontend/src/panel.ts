@@ -7,6 +7,7 @@ import { loadEditor } from "./load-editor.ts";
 import "./components/room-panel.ts";
 import "./components/view3d.ts";
 import { translate, type I18nKey } from "./i18n.ts";
+import { hasProxmox } from "./proxmox.ts";
 import type { Building } from "./model.ts";
 import { controls, tokens } from "./styles.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -73,6 +74,7 @@ export class Floorplan3dPanel extends LitElement {
     _keepView: { state: true },
     _trail: { state: true },
     _cameraWall: { state: true },
+    _proxmox: { state: true },
     _clean: { state: true },
     _navWrap: { state: true },
     _optsOpen: { state: true },
@@ -112,6 +114,8 @@ export class Floorplan3dPanel extends LitElement {
   /** Motion trail of the last half hour in 3D. */
   private declare _trail: boolean;
   private declare _cameraWall: boolean;
+  /** The Proxmox panel (VMs and containers of the Proxmox VE integration). */
+  private declare _proxmox: boolean;
   /** Clean view (the eye): only the stage, remembered on this device. */
   private declare _clean: boolean;
   /** The floor and room bar wraps onto several lines instead of scrolling sideways (remembered on this device). */
@@ -163,6 +167,7 @@ export class Floorplan3dPanel extends LitElement {
     this._keepView = prefs.get("keep_view") === "1";
     this._trail = prefs.get("trail") === "1";
     this._cameraWall = false;
+    this._proxmox = false;
     this._clean = prefs.get("clean") === "1";
     this._navWrap = prefs.get("nav_wrap") === "1";
     this._optsOpen = false;
@@ -432,6 +437,7 @@ export class Floorplan3dPanel extends LitElement {
     }
     this._furnish = false;
     this._cameraWall = false;
+    this._proxmox = false;
     this.tt.start({ live: this.hass, building: b, spec: view.historyEntities(), quality: this._quality, at, t: (k, vars) => translate(this.hass, k as I18nKey, vars) });
   }
 
@@ -781,6 +787,8 @@ export class Floorplan3dPanel extends LitElement {
           .cameraWall=${this._cameraWall && !tt}
           @camera-wall-close=${() => (this._cameraWall = false)}
           @camera-wall-open=${() => (this._cameraWall = true)}
+          .proxmoxWall=${this._proxmox && !tt}
+          @proxmox-close=${() => (this._proxmox = false)}
           .clean=${this._clean}
           .cleanButton=${true}
           @clean-toggle=${() => {
@@ -898,10 +906,26 @@ export class Floorplan3dPanel extends LitElement {
             class="fp3d-chip"
             aria-pressed=${this._cameraWall}
             title=${this.t("camera_wall_hint")}
-            @click=${() => (this._cameraWall = !this._cameraWall)}
+            @click=${() => {
+              this._cameraWall = !this._cameraWall;
+              if (this._cameraWall) this._proxmox = false;
+            }}
           >
             ${hasFeature("camera_cockpit") ? "" : "🔒 "}${this.t("cameras_short")}
           </button>
+          ${hasProxmox(this.hass)
+            ? html`<button
+                class="fp3d-chip"
+                aria-pressed=${this._proxmox}
+                title=${this.t("pve_hint")}
+                @click=${() => {
+                  this._proxmox = !this._proxmox;
+                  if (this._proxmox) this._cameraWall = false;
+                }}
+              >
+                ${this.t("pve_title")}
+              </button>`
+            : nothing}
           <button
             class="fp3d-chip"
             aria-pressed=${this._weather}

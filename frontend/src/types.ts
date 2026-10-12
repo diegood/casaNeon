@@ -25,6 +25,8 @@ export interface HassEntityEntry {
   translation_key?: string | null;
   /** Decimals set for a sensor in Home Assistant (null = default). */
   display_precision?: number | null;
+  /** The integration that provides the entity (e.g. "proxmoxve"). */
+  platform?: string;
 }
 
 export interface HassDevice {
@@ -32,6 +34,7 @@ export interface HassDevice {
   area_id?: string | null;
   name?: string | null;
   name_by_user?: string | null;
+  model?: string | null;
 }
 
 export interface HassEntity {

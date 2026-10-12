@@ -127,7 +127,7 @@
         const entities = Object.fromEntries(
           display.entities.map((e) => [
             e.ei,
-            { entity_id: e.ei, name: e.en ?? null, device_id: e.di ?? null, area_id: e.ai ?? null, hidden: !!e.hb, entity_category: e.ec !== undefined ? categories[e.ec] ?? null : null, translation_key: e.tk ?? null, display_precision: e.dp ?? null },
+            { entity_id: e.ei, name: e.en ?? null, device_id: e.di ?? null, area_id: e.ai ?? null, hidden: !!e.hb, entity_category: e.ec !== undefined ? categories[e.ec] ?? null : null, translation_key: e.tk ?? null, display_precision: e.dp ?? null, platform: e.pl },
           ]),
         );
         return {
@@ -136,7 +136,7 @@
           areas: byKey(areas, "area_id"),
           floors: byKey(floors, "floor_id"),
           entities,
-          devices: byKey(devices.map(({ id, area_id, name, name_by_user }) => ({ id, area_id, name, name_by_user })), "id"),
+          devices: byKey(devices.map(({ id, area_id, name, name_by_user, model }) => ({ id, area_id, name, name_by_user, model })), "id"),
           states: byKey(states, "entity_id"),
         };
       }

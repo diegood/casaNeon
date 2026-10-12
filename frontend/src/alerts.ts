@@ -1,6 +1,7 @@
 // Warnings shown in 3D: smoke, gas, carbon monoxide and water sensors of a room, a triggered alarm,
-// a window open while it rains, a power outage and (Pool Pro) a pool's pH or chlorine far off or frost in the
-// water. The rooms concerned pulse in the warning's colour.
+// a window open while it rains, a power outage, (Pool Pro) a pool's pH or chlorine far off or frost in the
+// water, and Proxmox VE: a node down, a disk turned unhealthy, a VM or container stopped. The rooms concerned
+// pulse in the warning's colour.
 
 import { areaEntities, entityName, openingState, type OpeningEntities } from "./devices.ts";
 import { translate } from "./i18n.ts";
@@ -10,10 +11,26 @@ import { stationRain, weatherEntity } from "./weather.ts";
 import { hasFeature } from "./features.ts";
 import { poolAreas, poolEntities, poolState } from "./pool.ts";
 import { isOutage } from "./outage.ts";
+import { pointInPolygon } from "./model.ts";
+import { instanceLabel, newDiskProblems, proxmoxModel, proxmoxWatched, stoppedInstances } from "./proxmox.ts";
 
 export { isOutage };
 
-export type AlertKind = "smoke" | "gas" | "co" | "water" | "alarm" | "alarm_pending" | "window_rain" | "power_outage" | "pool_ph" | "pool_chlorine" | "pool_frost";
+export type AlertKind =
+  | "smoke"
+  | "gas"
+  | "co"
+  | "water"
+  | "alarm"
+  | "alarm_pending"
+  | "window_rain"
+  | "power_outage"
+  | "pool_ph"
+  | "pool_chlorine"
+  | "pool_frost"
+  | "pve_node_down"
+  | "pve_disk"
+  | "pve_stopped";
 
 export interface Alert {
   kind: AlertKind;
@@ -34,6 +51,8 @@ export interface AlertSources {
   rain?: string | null;
   /** Pool Pro: the pools whose water values are watched. */
   pools: { floorId: string; areaId: string; ids: string[] }[];
+  /** Proxmox VE: the entities watched, and the room of the server rack in the plan (if there is one). */
+  proxmox?: { ids: string[]; roomId: string | null; floorId: string | null } | null;
 }
 
 export const RAIN_STATES = new Set(["rainy", "pouring", "lightning-rainy", "hail", "snowy-rainy"]);
@@ -57,12 +76,24 @@ export function alertSources(hass: HomeAssistant, building: Building, weatherId?
     : [];
   const rainId = building.settings.rain_warning === false ? null : building.settings.rain_entity;
   const rain = rainId && hass.states[rainId] ? rainId : null;
-  return { rooms, alarms: ids.filter((id) => id.startsWith("alarm_control_panel.")), weather, outage, pools, rain };
+  const pve = proxmoxWatched(proxmoxModel(hass));
+  const proxmox = pve.length ? { ids: pve, ...rackRoom(building) } : null;
+  return { rooms, alarms: ids.filter((id) => id.startsWith("alarm_control_panel.")), weather, outage, pools, rain, proxmox };
+}
+
+/** The room a server rack stands in (a pack item with the id "server_rack"): Proxmox warnings point there. */
+function rackRoom(building: Building): { roomId: string | null; floorId: string | null } {
+  for (const floor of building.floors) {
+    const rack = floor.furniture.find((f) => f.type.endsWith(":server_rack"));
+    const room = rack ? floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([rack.x, rack.z], r.points)) : undefined;
+    if (rack) return { roomId: room?.id ?? null, floorId: floor.id };
+  }
+  return { roomId: null, floorId: null };
 }
 
 /** Entities whose state changes may raise or clear a warning. */
 export function alertEntities(sources: AlertSources): string[] {
-  return [...sources.rooms.flatMap((r) => r.sensors), ...sources.alarms, ...(sources.weather ? [sources.weather] : []), ...(sources.outage ? [sources.outage] : []), ...(sources.rain ? [sources.rain] : []), ...(sources.pools ?? []).flatMap((p) => p.ids)];
+  return [...sources.rooms.flatMap((r) => r.sensors), ...sources.alarms, ...(sources.weather ? [sources.weather] : []), ...(sources.outage ? [sources.outage] : []), ...(sources.rain ? [sources.rain] : []), ...(sources.pools ?? []).flatMap((p) => p.ids), ...(sources.proxmox?.ids ?? [])];
 }
 
 /** The active warnings, rooms first, then the house-wide alarm. */
@@ -101,6 +132,13 @@ export function findAlerts(hass: HomeAssistant, building: Building, sources: Ale
     const celsius = s.temp === null ? null : s.unit.includes("F") ? ((s.temp - 32) * 5) / 9 : s.temp;
     if (celsius !== null && celsius <= 3 && !s.pump?.on) out.push({ kind: "pool_frost", entity: s.entities.temperature ?? s.entities.heater ?? p.areaId, roomId: null, floorId: p.floorId });
   }
+  if (sources.proxmox) {
+    const { roomId, floorId } = sources.proxmox;
+    const model = proxmoxModel(hass);
+    for (const n of model.nodes) if (!n.online) out.push({ kind: "pve_node_down", entity: n.entity, roomId, floorId });
+    for (const d of newDiskProblems(hass, model)) out.push({ kind: "pve_disk", entity: d.entity, roomId, floorId });
+    for (const i of stoppedInstances(model)) out.push({ kind: "pve_stopped", entity: i.entity, roomId, floorId });
+  }
   for (const id of sources.alarms) {
     const state = hass.states[id]?.state;
     if (state === "triggered") out.push({ kind: "alarm", entity: id, roomId: null, floorId: null });
@@ -125,6 +163,8 @@ export function alertColor(kind: AlertKind): [number, number, number] {
       return [1, 0.62, 0.2];
     case "pool_frost":
       return [0.55, 0.8, 1];
+    case "pve_stopped":
+      return [1, 0.62, 0.2];
     default:
       return [1, 0.2, 0.25];
   }
@@ -134,11 +174,24 @@ export function alertColor(kind: AlertKind): [number, number, number] {
 export function alertText(hass: HomeAssistant | undefined, building: Building, a: Alert): string {
   const room = a.roomId ? building.floors.flatMap((f) => f.rooms).find((r) => r.id === a.roomId) : null;
   const st = hass?.states[a.entity];
-  // a pool warning names the value ("pH 8.1"), the others the device
-  const name = a.kind.startsWith("pool_") && st ? `${st.state}${st.attributes.unit_of_measurement ? ` ${st.attributes.unit_of_measurement}` : ""}` : hass ? entityName(hass, a.entity) : a.entity;
+  // a pool warning names the value ("pH 8.1"), a Proxmox one its node, disk or VM, the others the device
+  const name = a.kind.startsWith("pool_") && st ? `${st.state}${st.attributes.unit_of_measurement ? ` ${st.attributes.unit_of_measurement}` : ""}` : a.kind.startsWith("pve_") && hass ? proxmoxName(hass, a) : hass ? entityName(hass, a.entity) : a.entity;
   const text = translate(hass, `alert_${a.kind}` as Parameters<typeof translate>[1], { name });
   if (!room) return text;
   // without the device name: "Gäste-WC · Fenster offen bei Regen" (the room already says where, #374)
   if (building.settings.alert_names === false) return `${room.name} · ${translate(hass, `alert_short_${a.kind}` as Parameters<typeof translate>[1])}`;
   return `${room.name} · ${text}`;
+}
+
+/** "smartkingdom (100)", "server" or the disk's name: the device behind a Proxmox warning. */
+function proxmoxName(hass: HomeAssistant, a: Alert): string {
+  const device = hass.entities?.[a.entity]?.device_id;
+  const d = device ? hass.devices?.[device] : undefined;
+  const name = d?.name_by_user || d?.name || entityName(hass, a.entity);
+  if (a.kind === "pve_node_down") return name.replace(/^node\s+/i, "");
+  if (a.kind === "pve_stopped") {
+    const l = instanceLabel(name);
+    return l.vmid === null ? l.name : `${l.name} (${l.vmid})`;
+  }
+  return name;
 }

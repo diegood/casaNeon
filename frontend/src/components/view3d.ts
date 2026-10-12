@@ -83,6 +83,7 @@ import { HEAT_SCALES, heatColor, heatGradient, roomValues, type HeatMode } from 
 import { furnitureName } from "../furniture-names.ts";
 import { fetchImage } from "../api.ts";
 import { formatNumber, translate, type I18nKey } from "../i18n.ts";
+import { proxmoxModel, sinceText } from "../proxmox.ts";
 import { getPacks, mountBase, packItem, packsVersion } from "../packs.ts";
 import { parkedVehicle, PRESENT_STATES, parkedVehicles, vehicleFurniture } from "../parking.ts";
 import { TRAIL_ICON, TRAIL_WINDOW_MS, trailEvents, trailPoints, trailSources, trailTime, type HistoryRow } from "../trail.ts";
@@ -152,6 +153,8 @@ export class Fp3dView3d extends LitElement {
     furnishTypes: { attribute: false },
     trail: { type: Boolean },
     cameraWall: { attribute: false },
+    proxmoxWall: { attribute: false },
+    _pveFilter: { state: true },
     weather: { type: Boolean },
     weatherEntityId: { attribute: false },
     _flash: { state: true },
@@ -260,6 +263,9 @@ export class Fp3dView3d extends LitElement {
   declare trail: boolean;
   /** The camera wall: every placed camera's live picture at once (Pro). */
   declare cameraWall: boolean;
+  /** The Proxmox panel: the node and every VM and container of the Proxmox VE integration. */
+  declare proxmoxWall: boolean;
+  private declare _pveFilter: "all" | "on" | "off";
   /** Weather outside: rain, snow, fog and clouds from a weather entity, sun and moon from sun.sun. */
   declare weather: boolean;
   /** The weather entity to use (null: the first one). */
@@ -495,6 +501,8 @@ export class Fp3dView3d extends LitElement {
     this.autoOrbit = false;
     this.startView = null;
     this.cameraWall = false;
+    this.proxmoxWall = false;
+    this._pveFilter = "all";
     this.holograms = null;
     try {
       this._flows = localStorage.getItem("neonplan3d.flows") === "1";
@@ -3118,6 +3126,57 @@ export class Fp3dView3d extends LitElement {
     </div>`;
   }
 
+  /** The Proxmox panel: the node's load and a tile per VM and container; a tap opens its details in Home Assistant. */
+  private renderProxmox() {
+    if (!this.proxmoxWall || !this.hass || this.ro) return nothing;
+    const hass = this.hass;
+    const t = (key: I18nKey, vars?: Record<string, string | number>) => translate(hass, key, vars);
+    const close = () => this.dispatchEvent(new CustomEvent("proxmox-close", { bubbles: true, composed: true }));
+    const model = proxmoxModel(hass);
+    const pct = (v: number | null) => (v === null ? "–" : `${formatNumber(hass, v, v < 10 ? 1 : 0)} %`);
+    const bar = (label: string, v: number | null) =>
+      html`<span class="fp3d-pve-bar" title=${`${label} ${pct(v)}`}
+        ><span class="fp3d-pve-bar-label">${label}</span><span class="fp3d-pve-bar-track"><span class="fp3d-pve-bar-fill ${(v ?? 0) >= 85 ? "fp3d-pve-hot" : ""}" style="width: ${Math.min(100, Math.max(0, v ?? 0))}%"></span></span><span class="fp3d-pve-bar-value">${pct(v)}</span></span
+      >`;
+    const on = model.instances.filter((i) => i.running).length;
+    const shown = model.instances.filter((i) => this._pveFilter === "all" || (this._pveFilter === "on") === i.running);
+    const filter = (key: "all" | "on" | "off", label: string, n: number) =>
+      html`<button class="fp3d-chip" aria-pressed=${this._pveFilter === key} @click=${() => (this._pveFilter = key)}>${label} · ${n}</button>`;
+    return html`<div class="fp3d-wall fp3d-pve">
+      <div class="fp3d-wall-head">
+        <span>${t("pve_title")}</span>
+        <span class="fp3d-wall-tools">${filter("all", t("pve_all"), model.instances.length)} ${filter("on", t("pve_on"), on)} ${filter("off", t("pve_off"), model.instances.length - on)}</span>
+        <button class="fp3d-chip" aria-label="✕" @click=${close}>✕</button>
+      </div>
+      ${model.nodes.map(
+        (n) => html`<button class="fp3d-pve-node ${n.online ? "" : "fp3d-pve-down"}" @click=${() => openMoreInfo(this, n.entity)}>
+          <span class="fp3d-pve-name"><span class="fp3d-pve-dot ${n.online ? "fp3d-pve-dot-on" : "fp3d-pve-dot-bad"}"></span>${n.name} · ${t(n.online ? "pve_online" : "pve_offline")}</span>
+          ${bar(t("pve_cpu"), n.cpu)} ${bar(t("pve_ram"), n.memory)} ${bar(t("pve_disk"), n.disk)}
+          <span class="fp3d-pve-facts">
+            ${n.vmsOn !== null || n.lxcOn !== null ? html`<span>${t("pve_running_counts", { vms: n.vmsOn ?? 0, lxc: n.lxcOn ?? 0 })}</span>` : nothing}
+            ${n.load !== null ? html`<span>${t("pve_load")} ${formatNumber(hass, n.load, 2)}</span>` : nothing}
+            ${n.updates ? html`<span>${t("pve_updates", { n: n.updates })}</span>` : nothing}
+            ${n.failedTasks ? html`<span class="fp3d-pve-warn">${t("pve_failed", { n: n.failedTasks })}</span>` : nothing}
+          </span>
+        </button>`,
+      )}
+      <div class="fp3d-pve-grid">
+        ${shown.length
+          ? shown.map(
+              (i) => html`<button class="fp3d-pve-tile ${i.running ? "" : "fp3d-pve-off"} ${i.problem ? "fp3d-pve-down" : ""}" @click=${() => openMoreInfo(this, i.entity)}>
+                <span class="fp3d-pve-name"><span class="fp3d-pve-dot ${i.problem ? "fp3d-pve-dot-bad" : i.running ? "fp3d-pve-dot-on" : ""}"></span>${i.name}</span>
+                <span class="fp3d-pve-sub">${i.vmid !== null ? `#${i.vmid} · ` : ""}${t(i.kind === "vm" ? "pve_vm" : "pve_lxc")}${i.ip ? ` · ${i.ip}` : ""}</span>
+                ${i.running
+                  ? html`${bar(t("pve_cpu"), i.cpu)} ${bar(t("pve_ram"), i.memory)}
+                      <span class="fp3d-pve-sub">${t("pve_disk")} ${pct(i.disk)}${i.memoryUsed ? ` · ${i.memoryUsed}` : ""}${i.since ? ` · ${t("pve_since", { d: sinceText(i.since) })}` : ""}</span>`
+                  : html`<span class="fp3d-pve-sub">${t(i.problem ? "pve_problem" : "pve_stopped")}</span>`}
+              </button>`,
+            )
+          : html`<p class="fp3d-pve-sub">${t("pve_none")}</p>`}
+      </div>
+    </div>`;
+  }
+
   /**
    * The live stream of a camera through Home Assistant's own player (HLS or WebRTC, whatever the camera
    * offers): a picture-entity card in live view, created once per camera. Null while it loads or when the
@@ -3355,7 +3414,7 @@ export class Fp3dView3d extends LitElement {
       style=${style}
     >
       ${this._error ? html`<p class="fp3d-error">${this._error}</p>` : nothing} ${this.clean ? nothing : this.renderEnergy()} ${this.renderHologram()} ${this.clean ? nothing : this.renderLegend()}
-      ${this.renderAlerts()} ${this.clean || this._walk ? nothing : html`${this.renderThumbs()} ${this.renderScenes()} ${this.renderFind()} ${this.renderCentral()}`} ${this.clean ? nothing : this.renderWalk()} ${this.renderSwipe()} ${this.renderInfo()} ${this.renderThrough()} ${this.renderCameraWall()}
+      ${this.renderAlerts()} ${this.clean || this._walk ? nothing : html`${this.renderThumbs()} ${this.renderScenes()} ${this.renderFind()} ${this.renderCentral()}`} ${this.clean ? nothing : this.renderWalk()} ${this.renderSwipe()} ${this.renderInfo()} ${this.renderThrough()} ${this.renderCameraWall()} ${this.renderProxmox()}
       ${this.clean ? nothing : this.renderProHint()} ${this.renderMenu()} ${this.renderEye()}
       ${this.showStats && this._stats
         ? html`<span class="fp3d-stats"
@@ -4228,6 +4287,111 @@ export class Fp3dView3d extends LitElement {
       .fp3d-wall-name b {
         color: #ff6b6b;
         font-weight: 600;
+      }
+      /* the Proxmox panel: the node on top, a tile per VM and container below */
+      .fp3d-pve-node,
+      .fp3d-pve-tile {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(160, 240, 255, 0.3);
+        background: rgba(10, 20, 38, 0.8);
+        color: #e6fbff;
+        font: inherit;
+        font-size: 12px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .fp3d-pve-node {
+        display: grid;
+        grid-template-columns: minmax(140px, 1.2fr) repeat(3, minmax(110px, 1fr));
+        align-items: center;
+        gap: 6px 14px;
+      }
+      .fp3d-pve-node .fp3d-pve-facts {
+        grid-column: 1 / -1;
+      }
+      .fp3d-pve-grid {
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        align-content: start;
+        gap: 10px;
+        min-height: 0;
+        overflow-y: auto;
+      }
+      .fp3d-pve-name {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fp3d-pve-sub,
+      .fp3d-pve-facts {
+        color: #9fb6c8;
+        font-size: 11px;
+      }
+      .fp3d-pve-facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 14px;
+      }
+      .fp3d-pve-warn {
+        color: #ffb547;
+      }
+      .fp3d-pve-dot {
+        flex: none;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4a5a70;
+      }
+      .fp3d-pve-dot-on {
+        background: #3ddc84;
+        box-shadow: 0 0 6px rgba(61, 220, 132, 0.8);
+      }
+      .fp3d-pve-dot-bad {
+        background: #ff5f6d;
+        box-shadow: 0 0 6px rgba(255, 95, 109, 0.8);
+      }
+      .fp3d-pve-off {
+        opacity: 0.55;
+      }
+      .fp3d-pve-down {
+        border-color: rgba(255, 95, 109, 0.8);
+      }
+      .fp3d-pve-bar {
+        display: grid;
+        grid-template-columns: 34px 1fr 44px;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: #9fb6c8;
+      }
+      .fp3d-pve-bar-track {
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(160, 240, 255, 0.12);
+        overflow: hidden;
+      }
+      .fp3d-pve-bar-fill {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+        background: var(--fp3d-accent, #37e0ff);
+      }
+      .fp3d-pve-bar-fill.fp3d-pve-hot {
+        background: #ffb547;
+      }
+      .fp3d-pve-bar-value {
+        text-align: right;
+        color: #e6fbff;
       }
       .fp3d-pro {
         position: absolute;
