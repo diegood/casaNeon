@@ -173,6 +173,8 @@ interface Guides {
 const EDIT_DRAGS = new Set(["vertex", "room", "device", "opening", "furniture", "rotate", "resize", "outdoor", "roofmove", "roofcorner", "roofvertex", "outvertex", "outbox", "pipept", "poolport", "pooldev", "pooljoint", "solarmove", "solarturn", "cablept", "holopt", "bgmove", "bgscale", "bgrotate"]);
 
 const HISTORY = 100;
+/** Entities a garage door can follow as its open/closed state and switch with a tap. */
+const GATE_SWITCH = /^(switch|input_boolean)\./;
 const SNAP_PX = 10;
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -8442,6 +8444,9 @@ export class Fp3dEditor extends LitElement {
       return numberish(id) && (windowPosition(st) !== null || /griff|handle|fenster|window|drehgriff/i.test(`${id} ${entityName(this.hass, id)}`));
     });
     const plainContacts = this.entityOptions((id) => id.startsWith("binary_sensor.") && ["door", "window", "opening", "garage_door"].includes(dc(id) ?? ""));
+    // a garage door may also follow a switch (on = open): a tap in 3D then switches it
+    const garageContacts = garage ? this.entityOptions((id) => (id.startsWith("binary_sensor.") && ["door", "window", "opening", "garage_door"].includes(dc(id) ?? "")) || GATE_SWITCH.test(id)) : contacts;
+    const gateSwitch = garage && GATE_SWITCH.test(o.contact ?? "") && !(o.cover && o.cover !== "none") && !autoPick("cover");
     type Kind = NonNullable<Opening["sensor"]>;
     const leafSensors = (leaf: 1 | 2) => {
       const main = leaf === 1;
@@ -8548,7 +8553,13 @@ export class Fp3dEditor extends LitElement {
         ${window
           ? html`${o.leaves === 2 ? html`<h4 class="fp3d-lib-head fp3d-wide">${this.t("leaf_main")}</h4>` : nothing}
               ${leafSensors(1)} ${o.leaves === 2 ? html`<h4 class="fp3d-lib-head fp3d-wide">${this.t("leaf_second")}</h4>${leafSensors(2)}` : nothing}`
-          : html`${this.entitySelect(this.t(o.leaves === 2 ? "contact_main" : "contact_entity"), o.contact, autoPick("contact"), contacts, (v) => this.updateOpening({ contact: v }))}
+          : html`${this.entitySelect(this.t(garage ? "garage_contact" : o.leaves === 2 ? "contact_main" : "contact_entity"), o.contact, autoPick("contact"), garageContacts, (v) => this.updateOpening({ contact: v }))}
+              ${gateSwitch
+                ? html`<label class="fp3d-check fp3d-wide" title=${this.t("cover_confirm_hint")}
+                    ><input type="checkbox" ?disabled=${!admin} .checked=${!!o.confirm} @change=${(ev: Event) => this.updateOpening({ confirm: (ev.target as HTMLInputElement).checked })} />
+                    ${this.t("device_confirm")}</label
+                  >`
+                : nothing}
               ${o.leaves === 2 && !garage
                 ? this.entitySelect(this.t("contact_second"), o.contact2, undefined, contacts, (v) => this.updateOpening({ contact2: v === "none" ? null : v }))
                 : nothing}

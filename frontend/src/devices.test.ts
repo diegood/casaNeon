@@ -407,6 +407,20 @@ test("a garage door reads its contact like a door, and an inverted contact flips
   assert.equal(openingState(hass, { ...none, contact: "binary_sensor.tuer", contactInvert: true }, "window").open, 1);
 });
 
+test("a garage door may follow a switch: on = open, and 'ask first' asks before switching it", () => {
+  const st = (entity_id: string, state: string) => ({ entity_id, state, attributes: {} });
+  const hass = { states: { "switch.porton_garage": st("switch.porton_garage", "on") } } as unknown as HomeAssistant;
+  const none = { cover: null, contact: null, tilt: null, contact2: null, tilt2: null };
+  const gate = { ...none, contact: "switch.porton_garage" };
+  assert.deepEqual(openingState(hass, gate, "garage"), { open: 0, open2: 0, tilt: 0, tilt2: 0, cover: 0, sensed: true });
+  hass.states["switch.porton_garage"] = st("switch.porton_garage", "off");
+  assert.equal(openingState(hass, gate, "garage").cover, 1);
+  const opening: Opening = { id: "g", room_id: "r", edge: 0, offset: 1, width: 2.5, sill: 0, height: 2.1, type: "garage", leaves: 1, hinge: "left", contact: "switch.porton_garage", confirm: true } as Opening;
+  const floor: Floor = { ...newFloor("f", "F", 0), openings: [opening] };
+  assert.ok(confirmEntities(hass, [floor]).has("switch.porton_garage"));
+  assert.ok(!confirmEntities(hass, [{ ...floor, openings: [{ ...opening, confirm: false }] }]).has("switch.porton_garage"));
+});
+
 test("room climate skips device temperatures, honours a chosen sensor and placed sensors", () => {
   const st = (entity_id: string, state: string, attributes: Record<string, unknown> = {}) => ({ entity_id, state, attributes });
   const temp = (id: string, v: string, name: string) => st(id, v, { device_class: "temperature", unit_of_measurement: "°C", friendly_name: name });

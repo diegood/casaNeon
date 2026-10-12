@@ -769,10 +769,11 @@ export function confirmEntities(hass: HomeAssistant, floors: readonly Floor[]): 
   const openings = floors.some((f) => f.openings.some((o) => o.confirm)) ? openingEntities(hass, floors) : null;
   for (const floor of floors) {
     for (const p of floor.placements) if (p.confirm) out.add(p.entity_id);
-    // blinds and garage doors of openings marked "ask first"
+    // blinds and garage doors of openings marked "ask first" (a garage door may follow a switch instead of a cover)
     for (const o of floor.openings) {
-      const cover = o.confirm ? openings?.get(o.id)?.cover : null;
-      if (cover && cover !== "none") out.add(cover);
+      const linked = o.confirm ? openings?.get(o.id) : null;
+      if (linked?.cover && linked.cover !== "none") out.add(linked.cover);
+      else if (o.type === "garage" && linked?.contact && kindOf(linked.contact) === "switch") out.add(linked.contact);
     }
     for (const f of floor.furniture) {
       const e = f.confirm ? links.get(f.id)?.entity : null;
