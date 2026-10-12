@@ -1,163 +1,163 @@
-# Projekt-Prompt: 3D-Wohnungsplan für Home Assistant (Arbeitstitel „NeonPlan 3D“)
+# Prompt del proyecto: plano 3D de la vivienda para Home Assistant (título provisional «NeonPlan 3D»)
 
-> So startest du: In diesem Ordner eine neue Claude-Code-Sitzung öffnen und schreiben
-> „Lies PROMPT.md und leg mit Phase 1 los.“ Der Name ist ein Arbeitstitel und kann jederzeit geändert werden.
+> Cómo empezar: abre una nueva sesión de Claude Code en esta carpeta y escribe
+> «Lee PROMPT.md y empieza con la fase 1.» El nombre es un título provisional y se puede cambiar en cualquier momento.
 
-## 1. Ziel
+## 1. Objetivo
 
-Baue eine **eigenständige Home-Assistant-Integration** (HACS, Open Source, MIT), mit der man seine Wohnung bzw. sein Haus **direkt in Home Assistant zeichnet** und als **richtig schöne 3D-Ansicht** anzeigt und bedient. Keine externen Tools (kein Sweet Home 3D, kein Blender), keine Cloud.
+Construir una **integración independiente de Home Assistant** (HACS, código abierto, MIT) con la que uno **dibuja su piso o su casa directamente en Home Assistant** y la muestra y controla como una **vista 3D realmente bonita**. Sin herramientas externas (ni Sweet Home 3D ni Blender), sin nube.
 
-Anspruch in drei Sätzen:
-- Es muss **unglaublich gut aussehen**: ein stilisierter, hochwertiger **Neon-Look** (dunkel, leuchtende Kanten, glühende Räume, animierte Energieflüsse) – keine Strichzeichnung, kein Kitsch.
-- Es muss **unglaublich gut bedienbar** sein: drehen, zoomen, per Antippen in Räume fliegen, schnell zwischen Räumen und Etagen wechseln, Geräte direkt schalten – mit Maus und Touch.
-- Es muss **leicht** sein: flüssig auf einem **Amazon Fire HD 10** (Fully Kiosk / Silk) als Wandtablet, im Ruhezustand praktisch 0 % Last.
+La ambición en tres frases:
+- Tiene que **verse increíblemente bien**: un **look neón** estilizado y de calidad (oscuro, bordes luminosos, habitaciones que brillan, flujos de energía animados), nada de dibujo de líneas, nada de kitsch.
+- Tiene que ser **increíblemente fácil de usar**: girar, hacer zoom, volar a las habitaciones con un toque, cambiar rápido entre habitaciones y plantas, accionar dispositivos directamente, con ratón y con pantalla táctil.
+- Tiene que ser **ligero**: fluido en una **Amazon Fire HD 10** (Fully Kiosk / Silk) como tableta de pared, con prácticamente 0 % de carga en reposo.
 
-Sprachen: Oberfläche Deutsch und Englisch (Deutsch zuerst). Code, Bezeichner und Kommentare auf Englisch.
+Idiomas: interfaz en castellano e inglés (castellano primero). Código, identificadores y comentarios en inglés.
 
-## 2. Look: Neon (verbindlich)
+## 2. Look: neón (vinculante)
 
-Referenz: die Stil-Demo „Stilprobe 3D-Wohnung“ (Look „Neon“, Version 2 mit hohen Wänden, Rollläden, Fenstersensoren und Energiefluss) unter https://claude.ai/artifact/X23mncajZKLwMZRoWco2KE – mit dem Artifact-Tool (`action: "read"`) lesbar. Deren Techniken (Wegklappen der Wände, Fenster-Rigs, Energiefluss-Shader in einem Draw-Call, Rendern bei Bedarf) sind ausdrücklich zur Übernahme gedacht. Der Nutzer hat Neon gewählt, möchte es aber **feiner gezeichnet**, und er möchte **Energieflüsse** wie auf einem Referenzbild: leuchtende Leitungen von der Hauszuleitung durch die Wände zu den Verbrauchern, Watt-Angaben an Geräten, Gesamtverbrauch, Solarerzeugung, aktueller Tarif.
+Referencia: la demo de estilo «Stilprobe 3D-Wohnung» (look «Neon», versión 2 con paredes altas, persianas, sensores de ventana y flujo de energía) en https://claude.ai/artifact/X23mncajZKLwMZRoWco2KE, legible con la herramienta Artifact (`action: "read"`). Sus técnicas (abatir las paredes, rigs de ventanas, shader de flujo de energía en un solo draw call, renderizar bajo demanda) están pensadas expresamente para reutilizarse. El usuario eligió el neón, pero lo quiere **dibujado con más finura**, y quiere **flujos de energía** como en una imagen de referencia: líneas luminosas desde la acometida de la casa a través de las paredes hasta los consumidores, vatios junto a los dispositivos, consumo total, producción solar, tarifa actual.
 
-Gestaltungsregeln:
-- Dunkler Grund (Richtwert `#070b14`), Böden fast schwarz mit feinem Raster, Wände dunkel mit **leuchtenden Oberkanten** (Cyan `#37e0ff`), Möbel dunkel mit **zarten Leuchtkanten** (Blau `#5b7cff`, geringe Deckkraft).
-- **Feiner als die Demo:**
-  - Möbel mit mehr Details: Polster, Beine, Fasen, Griffe, Küchenzeile mit Fronten.
-  - Dünnere, sauberere Kanten; Fenster mit Rahmen und Glas, Türen als Öffnung mit Zarge.
-  - Leichte Unterschiede in den Materialhelligkeiten, damit Tiefe entsteht.
-- **Zustände leuchten:** Lampe an → warmer Lichtschein am Boden (Richtwert `#ffb547`). Aktiver Raum heller. Personen als pinkfarbene Marker mit Schein (`#ff5fd2`). Temperatur optional als Raumfärbung (kalt blau, warm orange).
-- **Energieflüsse** (siehe Abschnitt 6):
-  - Leuchtende Leitungen mit **animiertem Fluss**; Geschwindigkeit und Helligkeit folgen der Leistung.
-  - Farben: Bezug aus dem Netz Cyan, Einspeisung oder Solar Gelb, Akku Grün.
-  - Watt-Schilder an den Geräten.
-- Beschriftungen als saubere HTML-Overlays (Schrift z. B. „Bricolage Grotesque“ für Titel, „Figtree“ für UI), nicht als Text-Texturen.
-- Kein Kitsch: keine Verläufe um der Verläufe willen, keine Emojis in der fertigen Oberfläche (in der Demo waren sie Platzhalter), Icons als eigene SVGs.
-- Ein heller Tag-Modus ist optional (Phase 6). Standard ist Neon, auch tagsüber.
+Reglas de diseño:
+- Fondo oscuro (valor orientativo `#070b14`), suelos casi negros con una cuadrícula fina, paredes oscuras con **cantos superiores luminosos** (cian `#37e0ff`), muebles oscuros con **bordes luminosos sutiles** (azul `#5b7cff`, baja opacidad).
+- **Más fino que la demo:**
+  - Muebles con más detalle: cojines, patas, chaflanes, tiradores, cocina con frentes.
+  - Bordes más finos y limpios; ventanas con marco y cristal, puertas como hueco con cerco.
+  - Ligeras diferencias de luminosidad entre materiales para que haya profundidad.
+- **Los estados brillan:** lámpara encendida → resplandor cálido en el suelo (valor orientativo `#ffb547`). La habitación activa, más clara. Personas como marcadores rosas con resplandor (`#ff5fd2`). Temperatura opcional como coloración de la habitación (frío azul, cálido naranja).
+- **Flujos de energía** (ver sección 6):
+  - Líneas luminosas con **flujo animado**; velocidad y brillo siguen a la potencia.
+  - Colores: consumo de la red cian, inyección o solar amarillo, batería verde.
+  - Etiquetas de vatios en los dispositivos.
+- Rótulos como overlays HTML limpios (tipografía p. ej. «Bricolage Grotesque» para títulos, «Figtree» para la UI), no como texturas de texto.
+- Nada de kitsch: nada de degradados por el gusto de ponerlos, nada de emojis en la interfaz final (en la demo eran marcadores de posición), iconos como SVG propios.
+- Un modo de día claro es opcional (fase 6). El estándar es neón, también de día.
 
-**Ehrliche Grenze:** Das Referenzbild ist fotorealistisch gerendert. Das geht auf einem Fire-Tablet nicht in Echtzeit. Ziel ist dessen **Wirkung** (dunkles Schnittmodell, leuchtende Leitungen, Werte an Geräten), umgesetzt mit den Leichtgewichts-Techniken aus Abschnitt 5.
+**Límite honesto:** la imagen de referencia está renderizada de forma fotorrealista. Eso no es posible en tiempo real en una tableta Fire. El objetivo es su **efecto** (maqueta en corte oscura, líneas luminosas, valores en los dispositivos), conseguido con las técnicas ligeras de la sección 5.
 
-## 3. Funktionsumfang
+## 3. Funcionalidades
 
-1. **Zeichnen in HA (2D-Editor)**
-   - Etagen mit Höhe und Reihenfolge; Räume als Rechteck oder freie Form, Maße in Metern exakt eintippbar, Einrasten an Raster und Ecken, Ecken ziehen, Punkt auf Kante einfügen, Rückgängig (Strg+Z), Duplizieren, Löschen.
-   - Jeder Raum wird mit einem **HA-Bereich** verknüpft.
-   - **Wände entstehen automatisch** aus den Räumen: Wandstärke innen und außen, gemeinsame Kanten werden zu einer Wand zusammengelegt, Ecken sauber verbunden.
-   - **Türen und Fenster** per Drag auf eine Wand (Breite, Position, Brüstungshöhe bei Fenstern).
-   - **Möbel** aus einer eigenen Bibliothek per Drag platzieren, drehen, skalieren: Sofa, Sessel, Tisch, Stuhl, Bett, Nachttisch, Schrank, Regal, Küchenzeile, Kühlschrank, Herd, Spüle, Badewanne, Dusche, WC, Waschtisch, Schreibtisch, TV-Board, Pflanze, Teppich.
-   - **Geräte-Platzierung:** Entitäten des verknüpften Bereichs werden vorgeschlagen und automatisch im Raum verteilt, von Hand verschiebbar (Lampen, Schalter, Steckdosen, Sensoren, Rollläden, Thermostate, Medien, Kameras).
-   - Optional ein **Bild als Vorlage** (Grundriss-Foto) mit Maßstab und Deckkraft zum Nachzeichnen.
-   - Bedienung mit Maus und Touch (Pinch-Zoom, zwei Finger verschieben).
-2. **3D-Ansicht (Neon)**
-   - **Volle Wandhöhe mit automatischem Wegklappen (Standard)**:
-     - Wände sind raumhoch (z. B. 2,5 m). Wände, die zwischen Kamera und Raum stehen (Außenwand-Normale zeigt zur Kamera), werden automatisch auf Hüfthöhe (ca. 1,15 m) gekürzt, die hinteren bleiben hoch.
-     - Im Raum-Modus gilt das auch für die Innenwände des gewählten Raums.
-     - Alternativ ein Schalter „Schnitt“ (alle Wände niedrig).
-     - Umsetzung: pro Wand ein unterer Teil (immer sichtbar) und ein oberer Teil (Sichtbarkeit abhängig vom Blickwinkel, nur bei Änderung umschalten).
-   - **Mehrere Etagen in drei Stufen** (so in der Stil-Demo umgesetzt):
-     1. **Haus**: alle Etagen übereinander, standardmäßig **auseinandergezogen** (zusätzlicher Abstand ca. 2,4 m), umschaltbar auf „gestapelt“. An jeder Etage ein Schild „Obergeschoss · 5 Räume · 3 Licht an · 2 offen · 1 Pers.“ zum Antippen. Nur Etagen- und Raumschilder, keine Geräte-Schilder (sonst überdecken sich die Etagen).
-     2. **Etage**: Etagen darüber fahren weich nach oben und blenden aus, Etagen darunter bleiben abgedunkelt (ca. 20 % Deckkraft) als Orientierung. Raum-Chips zeigen nur die Räume dieser Etage.
-     3. **Raum**: Kameraflug in den Raum der gewählten Etage.
-     - Eine Stufe zurück per Doppeltipp, Esc oder Schließen-Knopf (Raum → Etage → Haus).
-     - Treppen als eigenes Element (Position, Laufrichtung, Stufenzahl) mit **Deckenöffnung** in der Etage darüber und Geländer.
-     - Umsetzung: pro Etage eine Gruppe, deren Höhe und Deckkraft animiert wird. Materialien merken sich ihre Grund-Deckkraft. Treffer-Tests nur auf sichtbaren Etagen.
-     - Draw-Calls: in der Haus-Ansicht zählen alle Etagen zusammen → Fensterflügel, Rollläden, Lichtscheine und Glas **pro Etage zusammenfassen** (die Demo liegt mit zwei Etagen bei ca. 105 Draw-Calls, das ist zu viel; Ziel bleibt unter 60).
-   - Kamera: Übersicht → Etage → Raum mit weichen Flügen (ca. 700 ms), Drehen mit Trägheit, Zoom, Verschieben, Doppeltipp zurück, Raum-Chips für schnellen Wechsel.
-   - Raum antippen → Flug hinein + **Raum-Bedienfeld** (rechts, auf schmalen Geräten unten).
-3. **Steuerung** (echte HA-Dienste)
-   - Licht: an/aus, Helligkeit, Farbe/Farbtemperatur; der Lichtschein folgt Helligkeit und Farbe.
-   - **Rollläden sichtbar in 3D**:
-     - Lamellen fahren von oben bis zur eingestellten Position vor jedem Fenster bzw. jeder Terrassentür, mit Rollladenkasten.
-     - Position live aus `cover`-Entitäten, Steuerung per Schieberegler und Auf/Ab/Stopp.
-     - Rollläden werden Fenstern zugeordnet (automatisch per Bereich, manuell änderbar).
-   - **Fenster und Türen mit Kontaktsensoren**:
-     - `binary_sensor` (device_class window/door/opening) wird einem Fenster/einer Tür zugeordnet. Zustände: zu / gekippt / offen; „gekippt“ über einen zweiten Sensor oder ein Attribut, falls vorhanden.
-     - In 3D klappt der Flügel sichtbar auf (Drehung um die Scharnier-Seite) bzw. kippt (Drehung um die Unterkante); die Terrassentür schwenkt auf.
-     - Offene Fenster leuchten warm (z. B. `#ffb547`), der Raum zeigt „2 offen“, die Übersicht kann „alle offenen Fenster“ markieren.
-   - Heizung (Soll/Ist, Modus), Medien (Play/Pause, Titel, Lautstärke), Schalter/Steckdosen, Szenen und Skripte des Bereichs.
-   - Direkt in 3D: Antippen einer Lampe schaltet sie; lange drücken öffnet Details.
-4. **Anwesenheit**
-   - Personen im Raum aus `person`/`device_tracker` sowie Raum-Sensoren (ESPresense, Bermuda – Sensor mit Raumnamen als Zustand, per Konfiguration einem Bereich zugeordnet).
-5. **Energie** (siehe Abschnitt 6).
-6. **Dashboard-Karte und Seitenleiste**
-   - Eigene Seite in der Seitenleiste (`panel_custom`) plus Lovelace-Karte (automatisch geladen, keine Ressource nötig).
-   - Kiosk-Modus für Wandtablets: Vollbild, nur 3D, großer Touch-Bereich, Nachtdimmung.
+1. **Dibujar en HA (editor 2D)**
+   - Plantas con altura y orden; habitaciones como rectángulo o forma libre, medidas en metros introducibles con exactitud, ajuste a cuadrícula y esquinas, arrastrar esquinas, insertar punto en una arista, deshacer (Ctrl+Z), duplicar, borrar.
+   - Cada habitación se vincula con un **área de HA**.
+   - **Las paredes se generan automáticamente** a partir de las habitaciones: grosor de pared interior y exterior, las aristas compartidas se fusionan en una sola pared, esquinas bien unidas.
+   - **Puertas y ventanas** arrastrándolas sobre una pared (ancho, posición, altura del antepecho en ventanas).
+   - **Muebles** de una biblioteca propia: colocar arrastrando, girar, escalar: sofá, sillón, mesa, silla, cama, mesita de noche, armario, estantería, cocina, frigorífico, fogón, fregadero, bañera, ducha, inodoro, lavabo, escritorio, mueble de TV, planta, alfombra.
+   - **Colocación de dispositivos:** se proponen las entidades del área vinculada y se reparten automáticamente por la habitación, movibles a mano (lámparas, interruptores, enchufes, sensores, persianas, termostatos, multimedia, cámaras).
+   - Opcionalmente una **imagen como plantilla** (foto del plano) con escala y opacidad para calcarla.
+   - Manejo con ratón y táctil (zoom con pellizco, desplazar con dos dedos).
+2. **Vista 3D (neón)**
+   - **Paredes a altura completa con abatimiento automático (por defecto)**:
+     - Las paredes llegan hasta el techo (p. ej. 2,5 m). Las paredes que quedan entre la cámara y la habitación (la normal de la pared exterior apunta a la cámara) se recortan automáticamente a la altura de la cadera (aprox. 1,15 m); las de atrás siguen altas.
+     - En el modo habitación esto vale también para las paredes interiores de la habitación elegida.
+     - Alternativamente un interruptor «Corte» (todas las paredes bajas).
+     - Implementación: por pared una parte inferior (siempre visible) y una parte superior (visibilidad según el ángulo de visión, solo se conmuta cuando cambia).
+   - **Varias plantas en tres niveles** (así implementado en la demo de estilo):
+     1. **Casa**: todas las plantas una encima de otra, por defecto **separadas** (distancia adicional aprox. 2,4 m), conmutable a «apiladas». En cada planta un rótulo «Planta alta · 5 habitaciones · 3 luces encendidas · 2 abiertas · 1 pers.» que se puede tocar. Solo rótulos de planta y de habitación, ningún rótulo de dispositivo (si no, las plantas se tapan).
+     2. **Planta**: las plantas superiores suben suavemente y se desvanecen, las inferiores quedan atenuadas (aprox. 20 % de opacidad) como orientación. Los chips de habitación muestran solo las habitaciones de esa planta.
+     3. **Habitación**: vuelo de cámara a la habitación de la planta elegida.
+     - Un nivel atrás con doble toque, Esc o botón de cerrar (habitación → planta → casa).
+     - Escaleras como elemento propio (posición, sentido de subida, número de peldaños) con **hueco en el forjado** de la planta superior y barandilla.
+     - Implementación: por planta un grupo cuya altura y opacidad se animan. Los materiales recuerdan su opacidad base. Las pruebas de impacto solo en plantas visibles.
+     - Draw calls: en la vista de casa cuentan todas las plantas juntas → hojas de ventana, persianas, resplandores de luz y cristal **agrupados por planta** (la demo con dos plantas está en aprox. 105 draw calls, demasiado; el objetivo sigue siendo menos de 60).
+   - Cámara: vista general → planta → habitación con vuelos suaves (aprox. 700 ms), giro con inercia, zoom, desplazamiento, doble toque para volver, chips de habitación para cambiar rápido.
+   - Tocar una habitación → vuelo hacia dentro + **panel de la habitación** (a la derecha; en dispositivos estrechos, abajo).
+3. **Control** (servicios reales de HA)
+   - Luz: encendido/apagado, brillo, color/temperatura de color; el resplandor sigue al brillo y al color.
+   - **Persianas visibles en 3D**:
+     - Las lamas bajan desde arriba hasta la posición ajustada delante de cada ventana o puerta de terraza, con cajón de persiana.
+     - Posición en vivo desde entidades `cover`, control con deslizador y subir/bajar/parar.
+     - Las persianas se asignan a ventanas (automáticamente por área, modificable a mano).
+   - **Ventanas y puertas con sensores de contacto**:
+     - Un `binary_sensor` (device_class window/door/opening) se asigna a una ventana/puerta. Estados: cerrada / abatida / abierta; «abatida» mediante un segundo sensor o un atributo, si existe.
+     - En 3D la hoja se abre visiblemente (giro sobre el lado de las bisagras) o se abate (giro sobre el canto inferior); la puerta de terraza gira hacia fuera.
+     - Las ventanas abiertas brillan en cálido (p. ej. `#ffb547`), la habitación muestra «2 abiertas», la vista general puede marcar «todas las ventanas abiertas».
+   - Calefacción (consigna/real, modo), multimedia (play/pausa, título, volumen), interruptores/enchufes, escenas y scripts del área.
+   - Directamente en 3D: tocar una lámpara la conmuta; una pulsación larga abre los detalles.
+4. **Presencia**
+   - Personas en la habitación a partir de `person`/`device_tracker` y de sensores de habitación (ESPresense, Bermuda: sensor con el nombre de la habitación como estado, asignado a un área por configuración).
+5. **Energía** (ver sección 6).
+6. **Tarjeta de dashboard y barra lateral**
+   - Página propia en la barra lateral (`panel_custom`) más tarjeta de Lovelace (cargada automáticamente, sin necesidad de recurso).
+   - Modo quiosco para tabletas de pared: pantalla completa, solo 3D, zona táctil grande, atenuación nocturna.
 
-## 4. Architektur (bewährt aus dem Projekt „Zigbee Health“)
+## 4. Arquitectura (probada en el proyecto «Zigbee Health»)
 
 - **Backend (Python)**
-  - `custom_components/<domain>/`, Config Flow ohne YAML.
-  - Speicher über `homeassistant.helpers.storage.Store`, **getrennt nach Größe**: Gebäude (Räume, Wände, Möbel, Platzierungen) in einem kleinen Store, Hintergrundbilder in einem eigenen Store. Häufiges Speichern im Editor darf nie Bilder neu schreiben.
-  - Websocket-Befehle (`websocket_api`): `building/get`, `building/save`, `building/image`, … mit voluptuous-Schema. Ändernde Befehle mit `@require_admin`.
-  - Beim Entfernen der Integration (`async_remove_entry`) **alle** Stores löschen.
-- **Frontend**: Lit 3 + TypeScript, gebündelt mit esbuild.
-  - Haupt-Bundle: Karte, Panel, Editor.
-  - **three.js als eigenes Bundle**, erst beim Öffnen der 3D-Ansicht nachgeladen (`import(new URL("./…-3d.js", import.meta.url))`, Version über `?v=` mitgeben).
-  - Beide Dateien als statische Pfade registrieren (`async_register_static_paths`), Karte per `add_extra_js_url` laden.
-- **Dienste und Zustände**: Die Karte bekommt `hass` vom Frontend, liest Zustände aus `hass.states` und ruft Dienste über `hass.callService`. Nur Änderungen an sichtbaren Entitäten lösen ein Neuzeichnen aus.
-- **Datenmodell** (Meter, x nach rechts, z nach unten):
+  - `custom_components/<domain>/`, config flow sin YAML.
+  - Almacenamiento con `homeassistant.helpers.storage.Store`, **separado por tamaño**: el edificio (habitaciones, paredes, muebles, colocaciones) en un store pequeño, las imágenes de fondo en un store propio. Guardar a menudo en el editor nunca debe reescribir imágenes.
+  - Comandos websocket (`websocket_api`): `building/get`, `building/save`, `building/image`, … con esquema voluptuous. Los comandos que modifican, con `@require_admin`.
+  - Al eliminar la integración (`async_remove_entry`) borrar **todos** los stores.
+- **Frontend**: Lit 3 + TypeScript, empaquetado con esbuild.
+  - Bundle principal: tarjeta, panel, editor.
+  - **three.js como bundle propio**, cargado solo al abrir la vista 3D (`import(new URL("./…-3d.js", import.meta.url))`, versión pasada con `?v=`).
+  - Registrar ambos archivos como rutas estáticas (`async_register_static_paths`), cargar la tarjeta con `add_extra_js_url`.
+- **Servicios y estados**: la tarjeta recibe `hass` del frontend, lee estados de `hass.states` y llama a servicios con `hass.callService`. Solo los cambios en entidades visibles provocan un redibujado.
+- **Modelo de datos** (metros, x hacia la derecha, z hacia abajo):
   - `floors[]`: id, name, elevation, height, cut_height, rooms[], openings[], furniture[], placements[], background?
   - `room`: id, name, area_id, points[[x,z]…], floor_material
-  - `opening`: id, wall_ref (Raum-Kante oder Wand-ID), offset, width, type (door/window), sill, height
+  - `opening`: id, wall_ref (arista de habitación o ID de pared), offset, width, type (door/window), sill, height
   - `furniture`: id, type, x, z, rotation, w, d, h, variant
   - `placement`: entity_id, x, z, y?, floor
-  - `energy`: meter-Position, Leitungsführung (auto oder manuell), Sensor-Zuordnung (siehe Abschnitt 6)
+  - `energy`: posición del contador, trazado de las líneas (automático o manual), asignación de sensores (ver sección 6)
 
-## 5. Leistung (harte Regeln)
+## 5. Rendimiento (reglas estrictas)
 
-- **Rendern nur bei Bedarf**: kein Dauer-Loop. Gezeichnet wird nur beim Drehen/Zoomen, während Kamera-Flügen, während sichtbarer Fluss-Animationen und bei Zustandsänderungen. Die Energiefluss-Animation läuft mit reduzierter Bildrate (z. B. 20–30 Bilder/s) und stoppt, wenn nichts fließt oder die Seite unsichtbar ist (`visibilitychange`).
-- **Geometrie zusammenfassen**: pro Etage wenige Meshes (Wände, Möbel, Kanten, Leitungen) mit Vertex-Farben; Kanten als `LineSegments`.
-- **Keine Echtzeit-Schatten, kein teures Post-Processing** auf schwachen Geräten. Glühen über additive Sprites/Planes mit Radial-Textur. Echtes Bloom nur in Qualitätsstufe „Hoch“.
-- **Schatten und Umgebungsverdeckung vorberechnen**: Wandkanten und Möbelschatten einmal in die Boden-Textur (Canvas) bzw. in Vertex-Farben backen.
-- **Qualitätsstufen** automatisch (deviceMemory, hardwareConcurrency, Fire-/Silk-User-Agent) und manuell: Pixel-Ratio, Antialiasing, Bloom.
-- **Budgets**: unter 60 000 Dreiecke pro Etage, unter 60 Draw-Calls, 3D-Bundle unter 650 KB, Haupt-Bundle unter 250 KB. Ziel: 30+ Bilder/s beim Drehen auf einem Fire HD 10, 0 Bilder/s im Leerlauf.
-- Eine eingebaute Leistungsanzeige (Bilder/s, Draw-Calls, Dreiecke) für Entwickler, abschaltbar.
+- **Renderizar solo bajo demanda**: sin bucle continuo. Solo se dibuja al girar/hacer zoom, durante los vuelos de cámara, durante animaciones de flujo visibles y con cambios de estado. La animación del flujo de energía va a una tasa reducida (p. ej. 20–30 fotogramas/s) y se detiene cuando no fluye nada o la página no es visible (`visibilitychange`).
+- **Agrupar geometría**: por planta pocos meshes (paredes, muebles, bordes, líneas) con colores de vértice; bordes como `LineSegments`.
+- **Sin sombras en tiempo real ni post-procesado caro** en dispositivos débiles. Resplandor mediante sprites/planos aditivos con textura radial. Bloom real solo en el nivel de calidad «Alta».
+- **Precalcular sombras y oclusión ambiental**: hornear una vez los bordes de pared y las sombras de los muebles en la textura del suelo (canvas) o en los colores de vértice.
+- **Niveles de calidad** automáticos (deviceMemory, hardwareConcurrency, user agent de Fire/Silk) y manuales: pixel ratio, antialiasing, bloom.
+- **Presupuestos**: menos de 60 000 triángulos por planta, menos de 60 draw calls, bundle 3D por debajo de 650 KB, bundle principal por debajo de 250 KB. Objetivo: 30+ fotogramas/s al girar en una Fire HD 10, 0 fotogramas/s en reposo.
+- Un indicador de rendimiento integrado (fotogramas/s, draw calls, triángulos) para desarrolladores, desactivable.
 
-## 6. Energiefluss (Neon-Highlight)
+## 6. Flujo de energía (el punto fuerte del neón)
 
-- **Konfiguration pro Gerät**: Leistungssensor (W) wird automatisch vorgeschlagen, wenn eine Entität im Bereich `device_class: power` hat oder zum selben Gerät gehört. Dazu gehören Netzbezug/Einspeisung, Solar-Erzeugung, Hausakku (Leistung, Ladestand) und ein optionaler Tarif-Sensor (z. B. aktueller Preis €/kWh, nächster Tarifwechsel). Die Sensoren können aus dem HA-Energie-Dashboard übernommen werden, wo vorhanden.
-- **Leitungsführung automatisch**: vom Zählerplatz (im Editor platziert) entlang der Wandfüße über die kürzeste Route (Graph aus Wand-Mittellinien) zu jedem Verbraucher. Manuelle Korrektur im Editor möglich.
-- **Darstellung**: leuchtende Linie mit animiertem Streifenmuster (Shader oder Textur-Offset). Geschwindigkeit ∝ Leistung, ab 0 W still und abgedunkelt. Farben: Netzbezug Cyan, Einspeisung/Solar Gelb, Akku Grün.
-- **Schilder**: Watt am Gerät; im Übersichtsmodus eine kompakte **Energie-Leiste** mit Gesamtverbrauch, Netzbezug/Einspeisung, Solar, Akku, aktuellem Tarif.
-- Werte aktualisieren sich live; Glättung gegen Flackern.
+- **Configuración por dispositivo**: el sensor de potencia (W) se propone automáticamente cuando una entidad del área tiene `device_class: power` o pertenece al mismo dispositivo. A esto se suman consumo de red/inyección, producción solar, batería de la casa (potencia, nivel de carga) y un sensor de tarifa opcional (p. ej. precio actual €/kWh, próximo cambio de tarifa). Los sensores pueden tomarse del panel de energía de HA, donde exista.
+- **Trazado automático de las líneas**: desde el cuadro del contador (colocado en el editor) a lo largo del pie de las paredes por la ruta más corta (grafo de los ejes de las paredes) hasta cada consumidor. Corrección manual posible en el editor.
+- **Representación**: línea luminosa con patrón de franjas animado (shader o desplazamiento de textura). Velocidad ∝ potencia, a 0 W quieta y atenuada. Colores: consumo de red cian, inyección/solar amarillo, batería verde.
+- **Rótulos**: vatios en el dispositivo; en el modo vista general una **barra de energía** compacta con consumo total, consumo de red/inyección, solar, batería y tarifa actual.
+- Los valores se actualizan en vivo; suavizado contra el parpadeo.
 
-## 7. Phasen (nach jeder Phase lauffähig, Nutzer testet in seinem HA)
+## 7. Fases (funcional tras cada fase, el usuario prueba en su HA)
 
-1. **Grundlage**:
-   - Integration (Config Flow, Stores, Websocket, Panel, Karte), Datenmodell, 2D-Editor für Etagen und Räume, Bereichs-Verknüpfung
-   - **Wand-Erzeugung aus Räumen** (zuerst, mit Unit-Tests)
-   - einfache 3D-Ansicht
-2. **Neon-Look und Kamera**: Schnittmodell, Materialien, Kanten, gebackene Schatten, Kamera-Flüge, Raum-Chips, Etagen, Qualitätsstufen, Rendern bei Bedarf.
-3. **Steuerung**: Geräte-Platzierung, Raum-Bedienfeld, Licht mit Lichtschein, Rollläden, Heizung, Medien, Szenen, Schalten direkt in 3D.
-4. **Einrichtung**: Türen/Fenster auf Wänden, Möbel-Bibliothek (prozedural erzeugte Low-Poly-Modelle, fein und stimmig im Neon-Look), Bodenmaterialien.
-5. **Energie und Anwesenheit**: Energiefluss (Abschnitt 6), Personen-Marker.
-6. **Politur und Release**: Kiosk-Modus, optionaler heller Modus, Barrierefreiheit (Tastatur, reduzierte Bewegung), Dokumentation mit Screenshots, CI, HACS-Release.
+1. **Base**:
+   - Integración (config flow, stores, websocket, panel, tarjeta), modelo de datos, editor 2D para plantas y habitaciones, vinculación de áreas
+   - **Generación de paredes a partir de habitaciones** (primero, con tests unitarios)
+   - vista 3D sencilla
+2. **Look neón y cámara**: maqueta en corte, materiales, bordes, sombras horneadas, vuelos de cámara, chips de habitación, plantas, niveles de calidad, renderizado bajo demanda.
+3. **Control**: colocación de dispositivos, panel de habitación, luz con resplandor, persianas, calefacción, multimedia, escenas, accionar directamente en 3D.
+4. **Equipamiento**: puertas/ventanas en las paredes, biblioteca de muebles (modelos low-poly generados proceduralmente, finos y coherentes con el look neón), materiales de suelo.
+5. **Energía y presencia**: flujo de energía (sección 6), marcadores de personas.
+6. **Pulido y release**: modo quiosco, modo claro opcional, accesibilidad (teclado, movimiento reducido), documentación con capturas, CI, release en HACS.
 
-## 8. Qualität und Arbeitsweise
+## 8. Calidad y forma de trabajo
 
 - **Tests**
-  - Reine Geometrie-/Logik-Module ohne HA-Importe mit pytest bzw. TypeScript-Tests: Wand-Erzeugung, Routen der Leitungen, Einrasten, Platzierung.
-  - Integrationstests mit `pytest-homeassistant-custom-component`: Websocket, Admin-Prüfung, Stores, Entfernen löscht alles.
-- **CI (GitHub Actions)**: Tests, ruff, mypy, `tsc --noEmit`, hassfest, HACS-Validierung.
-- **Vorschau-Seite**: eine eigenständige HTML-Datei mit **erfundenen Demodaten** und einem Mock-`hass` (Zustände, `callService`, `callWS`), damit Oberfläche und Look ohne HA geprüft werden können. Screenshots per Headless-Chrome (puppeteer-core) zur Selbstkontrolle.
-- **Keine persönlichen Daten** im Repository: keine echten Gerätenamen, IPs, Zugangsdaten oder Grundrisse des Nutzers. Wenn der Nutzer eigene Daten zum Testen liefert, nur lokal und per `.gitignore` ausgeschlossen verwenden.
-- Nach jeder Phase: Version erhöhen, committen, pushen, CI prüfen, Vorschau aktualisieren, dem Nutzer auf Deutsch kurz zeigen, was neu ist und wie er es testet.
-- Entwicklung unter Windows: HA-Integrationstests laufen zuverlässig nur in der Linux-CI; lokal die HA-freien Tests ausführen.
+  - Módulos puros de geometría/lógica sin imports de HA con pytest o tests de TypeScript: generación de paredes, rutas de las líneas, ajuste, colocación.
+  - Tests de integración con `pytest-homeassistant-custom-component`: websocket, comprobación de admin, stores, eliminar lo borra todo.
+- **CI (GitHub Actions)**: tests, ruff, mypy, `tsc --noEmit`, hassfest, validación de HACS.
+- **Página de vista previa**: un archivo HTML independiente con **datos de demo inventados** y un `hass` simulado (estados, `callService`, `callWS`), para poder revisar la interfaz y el look sin HA. Capturas con Chrome headless (puppeteer-core) como autocontrol.
+- **Ningún dato personal** en el repositorio: ni nombres reales de dispositivos, ni IPs, ni credenciales, ni planos del usuario. Si el usuario aporta datos propios para probar, usarlos solo en local y excluidos con `.gitignore`.
+- Tras cada fase: subir la versión, hacer commit, push, comprobar la CI, actualizar la vista previa y mostrar brevemente al usuario en castellano qué hay de nuevo y cómo probarlo.
+- Desarrollo en Windows: los tests de integración de HA solo funcionan de forma fiable en la CI de Linux; en local ejecutar los tests sin HA.
 
-## 9. Stolpersteine, die im Vorgängerprojekt aufgetreten sind (vermeiden)
+## 9. Escollos que aparecieron en el proyecto anterior (evitarlos)
 
-- Lit-Komponenten teilen sich Styles: **Klassennamen können mit gemeinsamen Styles kollidieren** (z. B. `.bar`, `.room`) → eigene, eindeutige Klassennamen verwenden.
-- Eigenschaften nicht `focus`, `blur`, `hidden` usw. nennen – das kollidiert mit `HTMLElement`.
-- `THREE.Color(...).multiplyScalar(k).getHex()` **überläuft** bei Werten über 1 (Weiß wird schwarz) → Kanäle vor `getHex()` auf 1 begrenzen.
-- Selektoren wie `[data-look]` treffen auch `<body data-look>` → Selektoren auf Buttons beschränken.
-- Eigene Shader: `active` (und weitere Wörter) sind in GLSL ES 3.0 reserviert → Variablen eindeutig benennen; negative Geschwindigkeiten (Fluss rückwärts) mit `abs()` prüfen.
-- Kleine Teile (Fensterrahmen, Möbelteile) immer in wenige Meshes zusammenfassen, sonst steigen die Draw-Calls schnell über das Budget.
-- CSS-Variablen wie `--title: var(--text)` werden am definierenden Element aufgelöst → pro Look explizit setzen.
-- SVG in Meter-Einheiten: Striche und Texte brauchen `vector-effect: non-scaling-stroke` bzw. Mindestgrößen in Pixeln, sonst werden Linien riesig oder Texte winzig.
-- Große Daten (Bilder) nie mit den häufig gespeicherten Daten und nie im Rückgängig-Verlauf speichern.
-- Beim Entfernen der Integration jeden Store löschen, nicht nur einen.
-- HACS braucht ein öffentliches Repository mit Release; `hacs.json`, `manifest.json` (Version, Dokumentation, Issue-Tracker, Codeowner) und README mit Bildern.
+- Los componentes Lit comparten estilos: **los nombres de clase pueden chocar con estilos comunes** (p. ej. `.bar`, `.room`) → usar nombres de clase propios y únicos.
+- No llamar a las propiedades `focus`, `blur`, `hidden`, etc.: chocan con `HTMLElement`.
+- `THREE.Color(...).multiplyScalar(k).getHex()` **desborda** con valores por encima de 1 (el blanco se vuelve negro) → limitar los canales a 1 antes de `getHex()`.
+- Selectores como `[data-look]` también aciertan en `<body data-look>` → limitar los selectores a botones.
+- Shaders propios: `active` (y otras palabras) están reservadas en GLSL ES 3.0 → nombrar las variables sin ambigüedad; comprobar con `abs()` las velocidades negativas (flujo hacia atrás).
+- Agrupar siempre las piezas pequeñas (marcos de ventana, partes de muebles) en pocos meshes; si no, los draw calls superan rápido el presupuesto.
+- Las variables CSS como `--title: var(--text)` se resuelven en el elemento que las define → fijarlas explícitamente por look.
+- SVG en unidades de metro: los trazos y textos necesitan `vector-effect: non-scaling-stroke` o tamaños mínimos en píxeles; si no, las líneas se vuelven enormes o los textos diminutos.
+- Los datos grandes (imágenes) nunca se guardan junto con los datos que se guardan a menudo ni en el historial de deshacer.
+- Al eliminar la integración, borrar todos los stores, no solo uno.
+- HACS necesita un repositorio público con release; `hacs.json`, `manifest.json` (versión, documentación, issue tracker, codeowner) y un README con imágenes.
 
-## 10. Zuerst tun
+## 10. Lo primero
 
-1. Kurz bestätigen, dass du den Prompt verstanden hast, und offene Fragen stellen (z. B. Domain-Name der Integration, GitHub-Repo, minimale HA-Version).
-2. Die Stil-Demo lesen (Link in Abschnitt 2) und daraus die Neon-Farben und die Kamera-Steuerung übernehmen.
-3. Phase 1 planen und umsetzen – beginnend mit dem Datenmodell und der getesteten Wand-Erzeugung.
+1. Confirmar brevemente que has entendido el prompt y plantear las preguntas abiertas (p. ej. nombre de dominio de la integración, repo de GitHub, versión mínima de HA).
+2. Leer la demo de estilo (enlace en la sección 2) y tomar de ella los colores neón y el control de la cámara.
+3. Planificar e implementar la fase 1, empezando por el modelo de datos y la generación de paredes con tests.
