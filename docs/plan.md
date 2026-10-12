@@ -12,7 +12,7 @@ La ambición en tres frases:
 - Tiene que ser **increíblemente fácil de usar**: girar, hacer zoom, volar a las habitaciones con un toque, cambiar rápido entre habitaciones y plantas, accionar dispositivos directamente, con ratón y con pantalla táctil.
 - Tiene que ser **ligero**: fluido en una **Amazon Fire HD 10** (Fully Kiosk / Silk) como tableta de pared, con prácticamente 0 % de carga en reposo.
 
-Idiomas: interfaz en castellano e inglés (castellano primero). Código, identificadores y comentarios en inglés.
+Idioma: interfaz solo en castellano. Código, identificadores y comentarios en inglés.
 
 ## 2. Look: neón (vinculante)
 
