@@ -4,6 +4,18 @@ All notable changes to NeonPlan 3D. The full notes in German and English are on 
 [releases page](https://github.com/Mastershort/neonplan3d/releases). Ideas and votes:
 [Discussions → Ideas](https://github.com/Mastershort/neonplan3d/discussions/categories/ideas).
 
+## 1.17.0
+
+### Changed
+
+- **Everything unlocked:** the Pro add-ons (camera cockpit, weather outside, live screens, Energie Pro, sound & cinema, Auto Pro, time travel) work without a pack or licence; Pool Pro stays hidden until it is released.
+- **Furniture packs without a signature check:** any pack with valid content is imported and restored from a backup, signed or not.
+- **Spanish documentation:** the plan (`docs/plan.md`) and the manual in `docs/anleitung.md` are now in Spanish.
+
+### New
+
+- **Live development page:** `npm run live` serves `preview/live.html` against a real Home Assistant (states, services, history through a local proxy) with the plan from a NeonPlan backup file; settings in the untracked `live.local.json`.
+
 ## 1.16.0
 
 ### New
