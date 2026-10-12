@@ -58,14 +58,14 @@ def test_bound_packs_are_only_accepted_by_their_installation() -> None:
     fp = packs.fingerprint("some-instance-id")
     assert len(fp) == 16
     bound = _sign(private, keys, {**PAYLOAD, "instance": fp, "release": 3})
-    assert packs.verify_pack(bound, keys, instance=fp)["release"] == 3
+    assert packs.verify_pack(bound, instance=fp)["release"] == 3
     # no binding check without an instance (tools), refused on another installation
-    assert packs.verify_pack(bound, keys)["instance"] == fp
+    assert packs.verify_pack(bound)["instance"] == fp
     with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(bound, keys, instance=packs.fingerprint("other"))
+        packs.verify_pack(bound, instance=packs.fingerprint("other"))
     assert err.value.code == "wrong_instance"
     # an unbound pack is fine anywhere, and defaults to release 1
-    free = packs.verify_pack(_sign(private, keys, PAYLOAD), keys, instance=fp)
+    free = packs.verify_pack(_sign(private, keys, PAYLOAD), instance=fp)
     assert free["instance"] is None and free["release"] == 1
 
 
@@ -79,7 +79,6 @@ async def _setup(hass: HomeAssistant) -> None:
 
 async def test_activate_install_and_update(hass: HomeAssistant, hass_ws_client, aioclient_mock, monkeypatch) -> None:
     private, keys = _key()
-    monkeypatch.setattr(packs, "PACK_PUBLIC_KEYS", keys)
     await _setup(hass)
     client = await hass_ws_client(hass)
     fp = await lic.async_instance_fingerprint(hass)
@@ -187,7 +186,6 @@ async def test_activate_install_and_update(hass: HomeAssistant, hass_ws_client, 
 
 async def test_a_pack_bound_elsewhere_is_refused_on_import(hass: HomeAssistant, hass_ws_client, monkeypatch) -> None:
     private, keys = _key()
-    monkeypatch.setattr(packs, "PACK_PUBLIC_KEYS", keys)
     await _setup(hass)
     client = await hass_ws_client(hass)
     await client.send_json_auto_id(

@@ -127,8 +127,7 @@ test("a power outage: grid sensors off, helpers on, a UPS on battery, a low main
   assert.equal(alertText(hass, b, alerts[0]), "Stromausfall: Netz");
 });
 
-test("Pool Pro warns when pH or chlorine are far off or the water freezes while the pump rests", async () => {
-  const { setPacks } = await import("./packs.ts");
+test("Pool Pro warns when pH or chlorine are far off or the water freezes while the pump rests", () => {
   const st = (entity_id: string, state: string, attributes: Record<string, unknown> = {}) => ({ entity_id, state, attributes });
   const hass = {
     language: "de",
@@ -142,12 +141,15 @@ test("Pool Pro warns when pH or chlorine are far off or the water freezes while 
   } as unknown as HomeAssistant;
   const b = emptyBuilding();
   b.floors = [{ ...newFloor("eg", "EG", 0), outdoor: [{ id: "p1", type: "pool", points: [[0, 0], [4, 0], [4, 3], [0, 3]], pool: {} }] }];
-  // without the add-on no pool warnings
-  setPacks([]);
+  // Pool Pro is not released yet: no pool warnings unless the lab switch is on
   assert.deepEqual(findAlerts(hass, b, alertSources(hass, b), new Map()), []);
-  setPacks([{ id: "pro", name: "Pro", items: [], features: ["pool"] } as never]);
-  const alerts = findAlerts(hass, b, alertSources(hass, b), new Map());
-  assert.deepEqual(alerts.map((a) => a.kind), ["pool_ph", "pool_frost"]);
-  assert.equal(alertText(hass, b, alerts[0]), "Pool: pH 8.3");
-  setPacks([]);
+  const lab = new Map([["neonplan3d.lab", "1"]]);
+  (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => lab.get(k) ?? null };
+  try {
+    const alerts = findAlerts(hass, b, alertSources(hass, b), new Map());
+    assert.deepEqual(alerts.map((a) => a.kind), ["pool_ph", "pool_frost"]);
+    assert.equal(alertText(hass, b, alerts[0]), "Pool: pH 8.3");
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });

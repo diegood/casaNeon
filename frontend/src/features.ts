@@ -1,8 +1,7 @@
 /**
- * Pro features: unlocked by an installed, signed feature pack (a pack whose payload lists `features`).
- * The code of every feature is in the integration; the pack is the licence and carries its content.
+ * Pro features: every feature is unlocked, no pack or licence needed. Only add-ons not released yet
+ * (UNRELEASED) stay hidden unless the lab switch is on.
  */
-import { getPacks } from "./packs.ts";
 
 export type Feature = "camera_cockpit" | "weather" | "screens" | "energy_pro" | "sound" | "auto_pro" | "time_travel" | "pool" | "fridge_smart";
 
@@ -23,9 +22,9 @@ function labOn(): boolean {
   }
 }
 
-/** Whether an add-on may be shown and advertised: released, or unlocked, or the lab switch is on. */
+/** Whether an add-on may be shown: released, or the lab switch is on. */
 export function released(feature: Feature): boolean {
-  return !UNRELEASED.includes(feature) || hasFeature(feature) || labOn();
+  return !UNRELEASED.includes(feature) || labOn();
 }
 
 /** Features unlocked by a pack but not listed anywhere (exclusive items). */
@@ -69,12 +68,11 @@ export function manualUrl(lang: string | undefined, topic?: Feature | "extension
   return `${base}${page}?lang=${de ? "de" : "en"}${anchor ? `#${anchor}` : ""}`;
 }
 
-export function unlockedFeatures(packs: readonly { features?: string[] }[] = getPacks()): Set<Feature> {
-  const out = new Set<Feature>();
-  for (const p of packs) for (const f of p.features ?? []) if ((FEATURES as readonly string[]).includes(f) || (HIDDEN as readonly string[]).includes(f)) out.add(f as Feature);
-  return out;
+/** The unlocked features: all of them, except add-ons not released yet. */
+export function unlockedFeatures(): Set<Feature> {
+  return new Set([...FEATURES, ...HIDDEN].filter(released));
 }
 
-export function hasFeature(feature: Feature, packs?: readonly { features?: string[] }[]): boolean {
-  return unlockedFeatures(packs).has(feature);
+export function hasFeature(feature: Feature): boolean {
+  return released(feature);
 }

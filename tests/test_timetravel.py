@@ -24,8 +24,6 @@ from custom_components.neonplan3d.timetravel_rows import (
     columnar,
     dedupe,
     entity_rows,
-    has_feature,
-    has_time_travel,
     location_like,
     oldest_data,
     quantise,
@@ -156,9 +154,7 @@ def test_a_car_tracker_says_home_or_away_only() -> None:
     assert reduce_attributes("vacuum", {"current_room": "Kitchen", "battery_level": 80}) == {"current_room": "Kitchen"}
 
 
-def test_the_pack_feature_unlocks_time_travel() -> None:
-    assert has_time_travel([{"features": ["energy_pro"]}, {"features": ["time_travel"]}])
-    assert not has_time_travel([{"features": ["energy_pro"]}, {"features": None}, {}])
+def test_time_travel_is_a_known_feature() -> None:
     assert "time_travel" in packs.KNOWN_FEATURES
 
 
@@ -193,8 +189,6 @@ def test_car_trackers_come_from_the_parking_spots() -> None:
     assert trackers == {"device_tracker.spot", "device_tracker.named"}
     assert seeds == {"binary_sensor.spot2", "sensor.ev_soc", "sensor.spot4"}
     assert car_refs({}) == (set(), set())
-    assert has_feature([{"features": ["auto_pro"]}], "auto_pro")
-    assert not has_feature([{"features": ["time_travel"]}], "auto_pro")
 
 
 async def _setup(hass: HomeAssistant) -> None:
@@ -216,18 +210,18 @@ def _msg(**over: Any) -> dict[str, Any]:
     }
 
 
-async def test_history_needs_the_pro_add_on(hass: HomeAssistant, hass_ws_client) -> None:
+async def test_history_needs_no_pack(hass: HomeAssistant, hass_ws_client) -> None:
+    """Time travel is free: without any pack the request gets past the unlock and stops at the recorder."""
     await _setup(hass)
     client = await hass_ws_client(hass)
     await client.send_json_auto_id(_msg())
     result = await client.receive_json()
     assert not result["success"]
-    assert result["error"]["code"] == "not_unlocked"
+    assert result["error"]["code"] == "no_recorder"
 
 
 async def test_history_checks_the_window_and_the_recorder(hass: HomeAssistant, hass_ws_client) -> None:
     await _setup(hass)
-    hass.data[DOMAIN].packs = [{"id": "test.pro", "features": ["time_travel"], "items": []}]
     client = await hass_ws_client(hass)
     await client.send_json_auto_id(_msg(end_time=START + 30 * 3600))
     result = await client.receive_json()
@@ -242,7 +236,6 @@ async def test_history_checks_the_window_and_the_recorder(hass: HomeAssistant, h
 async def test_history_answer(hass: HomeAssistant, hass_ws_client) -> None:
     """With the add-on and a recorder the compact answer comes back; people are never asked for."""
     await _setup(hass)
-    hass.data[DOMAIN].packs = [{"id": "test.pro", "features": ["time_travel"], "items": []}]
     hass.config.components.add("recorder")
     asked: dict[str, Any] = {}
 
@@ -286,7 +279,6 @@ async def test_history_car_trackers(hass: HomeAssistant, hass_ws_client) -> None
     """A car's tracker comes back as home or away; a person's tracker or one of no parked car is never asked for."""
     await _setup(hass)
     data = hass.data[DOMAIN]
-    data.packs = [{"id": "test.pro", "features": ["time_travel", "auto_pro"], "items": []}]
     data.building = {
         **data.building,
         "floors": [
@@ -342,11 +334,10 @@ class _Instance:
         return func(*args)
 
 
-async def test_history_without_auto_pro_has_no_cars(hass: HomeAssistant, hass_ws_client) -> None:
-    """Without Auto Pro no tracker is answered, even one on a parking spot."""
+async def test_history_answers_the_parking_spot_trackers(hass: HomeAssistant, hass_ws_client) -> None:
+    """A tracker on a parking spot is answered without any pack."""
     await _setup(hass)
     data = hass.data[DOMAIN]
-    data.packs = [{"id": "test.pro", "features": ["time_travel"], "items": []}]
     data.building = {**data.building, "floors": [{"furniture": [{"type": "parking", "entity": "device_tracker.car"}]}]}
     hass.config.components.add("recorder")
     asked: list[list[str]] = []
@@ -365,13 +356,12 @@ async def test_history_without_auto_pro_has_no_cars(hass: HomeAssistant, hass_ws
         )
         result = await client.receive_json()
     assert result["success"], result
-    assert "device_tracker.car" not in str(asked)
+    assert "device_tracker.car" in str(asked)
 
 
 async def test_history_leaves_places_and_carried_devices_out(hass: HomeAssistant, hass_ws_client) -> None:
     """A phone's sensors (its device has a person's tracker) and anything telling a place are never asked for."""
     await _setup(hass)
-    hass.data[DOMAIN].packs = [{"id": "test.pro", "features": ["time_travel"], "items": []}]
     hass.config.components.add("recorder")
     phone = MockConfigEntry(domain="mobile_app", data={})
     phone.add_to_hass(hass)

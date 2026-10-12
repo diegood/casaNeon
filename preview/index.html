@@ -173,9 +173,9 @@
             case "neonplan3d/packs/list":
               return { packs: await previewPacks() };
             case "neonplan3d/packs/import": {
-              // the preview cannot check signatures: a file with a payload counts as valid
+              // signatures are not checked: a file with a payload counts as valid
               const data = JSON.parse(msg.pack);
-              if (!data.payload || !data.signature) throw { code: "unsigned", message: "unsigned" };
+              if (!data.payload) throw { code: "not_a_pack", message: "not_a_pack" };
               importedPacks = [...importedPacks.filter((p) => p.id !== data.payload.id), data.payload];
               return { id: data.payload.id, name: data.payload.name, publisher: data.payload.publisher, licensee: data.payload.licensee ?? null, items: data.payload.items.length };
             }

@@ -1,41 +1,25 @@
 """Furniture packs: signed files with furniture models built from boxes and cylinders.
 
-A pack is JSON: the payload (format, id, name, publisher, items) plus a signature. Only packs signed
-with a publisher key listed in PACK_PUBLIC_KEYS are accepted. The signature covers the payload in a
-canonical form (sorted keys, no whitespace, UTF-8), so any change to the file invalidates it.
+A pack is JSON: the payload (format, id, name, publisher, items) plus a signature. The signature is
+kept with the pack but not checked: any pack with valid content is accepted. tools/fp3dpack.py still
+signs packs over the payload in a canonical form (sorted keys, no whitespace, UTF-8).
 
-This module only depends on voluptuous and cryptography, so tools/fp3dpack.py (which signs packs)
+This module only depends on voluptuous, so tools/fp3dpack.py (which signs packs)
 uses the same schema and canonical form.
 """
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 from typing import Any
 
-from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import voluptuous as vol
 
 PACK_FORMAT = "fp3dpack"
 PACK_VERSION = 1
 # largest pack file accepted (characters of JSON)
 MAX_PACK_SIZE = 1_000_000
-
-# Publisher keys whose packs are accepted: key id -> raw Ed25519 public key (base64).
-PACK_PUBLIC_KEYS: dict[str, str] = {
-    # Mastershort (master key, kept offline)
-    "62863e45df5a": "D3sbiEQibaCVm1OWcYUrQc424c2t+pmSQqWg6l6fNSE=",
-    # Mastershort shop (signs purchased packs with the buyer's name; revocable by removing it here)
-    "867371cc70e6": "uP74xZzFJ2yysjdIZVq5q9G/yn5hVX4HJ6wHv7pqqwo=",
-    # Mastershort Möbel-Studio (signs customers' own furniture on api.mastershort.de; limited, see STUDIO_KEYS)
-    "bdac241ae58b": "+oU/fcdvK7sfvpmz/aq63Y1QIymqK5+pKYGrGksrco8=",
-}
-# keys that may only sign furniture of their own: "studio.*" packs without Pro features (a leaked studio key
-# cannot unlock anything)
-STUDIO_KEYS = {"bdac241ae58b"}
 
 _ID = vol.All(str, vol.Match(r"^[a-z0-9][a-z0-9_.-]{0,39}$"))
 _TEXT = vol.All(str, vol.Length(min=1, max=80))
@@ -198,12 +182,14 @@ def fingerprint(instance_id: str) -> str:
 
 
 def parts_of(text: str) -> tuple[dict[str, Any], dict[str, str]]:
-    """The payload exactly as signed and the signature of a pack file that verify_pack accepted; both are
-    kept with the pack so a backup can carry it and a restore can check it again (the validated payload
-    has defaults filled in, so its bytes no longer match the signature)."""
+    """The payload exactly as written and the signature (empty when unsigned) of a pack file that
+    verify_pack accepted; both are kept with the pack so a backup can carry it and a restore can check it
+    again (the validated payload has defaults filled in, so its bytes no longer match the signature)."""
     data = json.loads(text)
-    sig = data["signature"]
-    return data["payload"], {"key": sig["key"], "sig": sig["sig"]}
+    sig = data.get("signature")
+    if not isinstance(sig, dict):
+        return data["payload"], {}
+    return data["payload"], {"key": str(sig.get("key", "")), "sig": str(sig.get("sig", ""))}
 
 
 def validate_payload(payload: Any) -> dict[str, Any]:
@@ -229,12 +215,12 @@ def validate_payload(payload: Any) -> dict[str, Any]:
     return clean
 
 
-def verify_pack(text: str, keys: dict[str, str] | None = None, instance: str | None = None) -> dict[str, Any]:
-    """Parse a pack file, check its signature against the publisher keys and return its payload.
+def verify_pack(text: str, *, instance: str | None = None) -> dict[str, Any]:
+    """Parse a pack file and return its checked payload. The signature is not checked: any pack with valid
+    content is accepted, signed or not.
 
     A pack bound to an installation (payload "instance") is only accepted when `instance` is that
     fingerprint; with instance=None the binding is not checked (tools)."""
-    keys = PACK_PUBLIC_KEYS if keys is None else keys
     if len(text) > MAX_PACK_SIZE:
         raise PackError("too_large")
     try:
@@ -247,25 +233,7 @@ def verify_pack(text: str, keys: dict[str, str] | None = None, instance: str | N
         or data["payload"].get("format") != PACK_FORMAT
     ):
         raise PackError("not_a_pack")
-    signature = data.get("signature")
-    if (
-        not isinstance(signature, dict)
-        or not isinstance(signature.get("key"), str)
-        or not isinstance(signature.get("sig"), str)
-    ):
-        raise PackError("unsigned")
-    public = keys.get(signature["key"])
-    if public is None:
-        raise PackError("unknown_publisher")
-    try:
-        Ed25519PublicKey.from_public_bytes(base64.b64decode(public)).verify(
-            base64.b64decode(signature["sig"], validate=True), canonical(data["payload"])
-        )
-    except (InvalidSignature, ValueError) as err:
-        raise PackError("bad_signature") from err
     payload = validate_payload(data["payload"])
-    if signature["key"] in STUDIO_KEYS and (not str(payload["id"]).startswith("studio.") or payload["features"]):
-        raise PackError("bad_signature", "the studio key signs studio furniture only")
     if instance is not None and payload["instance"] is not None and payload["instance"] != instance:
         raise PackError("wrong_instance", "the pack is bound to another installation")
     return payload

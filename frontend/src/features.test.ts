@@ -2,19 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { hasFeature, manualUrl, shopUrl, unlockedFeatures } from "./features.ts";
 
-test("features come from installed packs that list them; unknown names are ignored", () => {
-  assert.deepEqual([...unlockedFeatures([])], []);
-  const packs = [{ features: ["weather", "teleport"] }, { features: undefined }, { features: ["camera_cockpit"] }];
-  assert.deepEqual([...unlockedFeatures(packs)].sort(), ["camera_cockpit", "weather"]);
-  assert.equal(hasFeature("screens", [{ features: ["screens"] }]), true);
-  assert.equal(hasFeature("screens", [{ features: ["screens"] }]), true);
-  assert.equal(hasFeature("weather", [{ features: ["weather"] }]), true);
-  assert.equal(hasFeature("camera_cockpit", [{ features: ["weather"] }]), false);
+test("every released feature is unlocked without any pack", () => {
+  for (const f of ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "fridge_smart"] as const) assert.equal(hasFeature(f), true);
+  assert.deepEqual([...unlockedFeatures()].sort(), ["auto_pro", "camera_cockpit", "energy_pro", "fridge_smart", "screens", "sound", "time_travel", "weather"]);
 });
 
-test("time travel is a Pro add-on of its own with its section in the manual", () => {
-  assert.equal(hasFeature("time_travel", [{ features: ["time_travel"] }]), true);
-  assert.equal(hasFeature("time_travel", [{ features: ["energy_pro"] }]), false);
+test("time travel has its section in the manual", () => {
   assert.equal(manualUrl("de", "time_travel"), "https://mastershort.de/neonplan3d/anleitung/pro-erweiterungen/?lang=de#67-zeitreise");
   assert.equal(manualUrl("en", "time_travel"), "https://mastershort.de/en/neonplan3d/manual/pro-add-ons/?lang=en#67-time-travel");
 });
@@ -28,14 +21,13 @@ test("manual and shop links follow the language and point Pro add-ons at their s
   assert.equal(shopUrl("nl"), "https://mastershort.de/en/neonplan3d/?lang=en");
 });
 
-test("an unreleased add-on shows only to whoever has its pack", async () => {
+test("an unreleased add-on stays locked and hidden, even with its pack", async () => {
   const { released, UNRELEASED } = await import("./features.ts");
   const { setPacks } = await import("./packs.ts");
   assert.ok(UNRELEASED.includes("pool"));
-  setPacks([]);
-  assert.equal(released("pool"), false);
-  assert.equal(released("auto_pro"), true);
   setPacks([{ id: "mastershort.pro_pool", name: "Pro: Pool Pro", items: [], features: ["pool"] } as never]);
-  assert.equal(released("pool"), true);
+  assert.equal(released("pool"), false);
+  assert.equal(hasFeature("pool"), false);
+  assert.equal(released("auto_pro"), true);
   setPacks([]);
 });

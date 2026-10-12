@@ -237,16 +237,6 @@ def car_state(state: str) -> str:
     return state if state in ("home", "unavailable", "unknown") else "not_home"
 
 
-def has_feature(packs: Iterable[Mapping[str, Any]], feature: str) -> bool:
-    """Whether an installed pack unlocks a Pro feature."""
-    return any(feature in (pack.get("features") or []) for pack in packs)
-
-
-def has_time_travel(packs: Iterable[Mapping[str, Any]]) -> bool:
-    """Whether an installed pack unlocks the time travel."""
-    return has_feature(packs, "time_travel")
-
-
 # where something or someone is: never part of the past (a phone's address, a car's coordinates, a Wi-Fi name)
 _LOCATION_CLASSES = frozenset({"geocoded_location", "location"})
 _LOCATION_NAME = re.compile(r"location|address|geocoded|ssid|bssid|standort|adresse", re.IGNORECASE)

@@ -45,7 +45,6 @@ def _sign(private: Ed25519PrivateKey, keys: dict[str, str], payload: dict) -> st
 
 async def test_backup_round_trip(hass: HomeAssistant, hass_ws_client, monkeypatch) -> None:
     private, keys = _key()
-    monkeypatch.setattr(packs, "PACK_PUBLIC_KEYS", keys)
     await async_setup_component(hass, "http", {})
     entry = MockConfigEntry(domain=DOMAIN, data={})
     entry.add_to_hass(hass)
@@ -67,24 +66,24 @@ async def test_backup_round_trip(hass: HomeAssistant, hass_ws_client, monkeypatc
     assert backup["building"]["floors"][0]["name"] == "Backup floor"
     assert backup["packs"][0]["signature"]["key"] == next(iter(keys))
 
-    # a tampered pack and an unsigned one are skipped on restore, the good one comes back
+    # the signature is not checked: a changed pack and an unsigned one come back too
     tampered = json.loads(json.dumps(backup["packs"][0]))
     tampered["id"] = tampered["source"]["id"] = "test.tampered"
     tampered["source"]["name"] = "Changed"
-    unsigned = {k: v for k, v in backup["packs"][0].items() if k != "signature"}
-    unsigned["id"] = "test.unsigned"
+    unsigned = json.loads(json.dumps({k: v for k, v in backup["packs"][0].items() if k != "signature"}))
+    unsigned["id"] = unsigned["source"]["id"] = "test.unsigned"
     backup["building"]["floors"][0]["name"] = "Restored floor"
     restore = {"type": "neonplan3d/backup/import", "building": backup["building"]}
     await client.send_json_auto_id({**restore, "packs": [*backup["packs"], tampered, unsigned]})
     result = await client.receive_json()
     assert result["success"], result
-    assert result["result"]["packs"] == 1
-    assert sorted(s["id"] for s in result["result"]["skipped"]) == ["test.tampered", "test.unsigned"]
+    assert result["result"]["packs"] == 3
+    assert result["result"]["skipped"] == []
     assert result["result"]["building"]["floors"][0]["name"] == "Restored floor"
 
     await client.send_json_auto_id({"type": "neonplan3d/packs/list"})
     listed = (await client.receive_json())["result"]["packs"]
-    assert [p["id"] for p in listed] == ["test.backup"]
+    assert sorted(p["id"] for p in listed) == ["test.backup", "test.tampered", "test.unsigned"]
 
     # a broken building is refused before anything changes
     await client.send_json_auto_id({"type": "neonplan3d/backup/import", "building": {"version": 99}, "packs": []})

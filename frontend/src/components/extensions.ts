@@ -66,7 +66,7 @@ export class Extensions extends LitElement {
   }
 
   protected render() {
-    const unlocked = unlockedFeatures(this.packs ?? []);
+    const unlocked = unlockedFeatures();
     return html`<div class="fp3d-ext">
       <header class="fp3d-ext-head">
         <h2>${this.t("ext_title")}</h2>

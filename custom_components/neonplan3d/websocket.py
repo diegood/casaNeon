@@ -207,7 +207,7 @@ def ws_packs_list(hass: HomeAssistant, connection: websocket_api.ActiveConnectio
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_packs_import(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Check a pack file's signature and content, then keep it."""
+    """Check a pack file's content, then keep it."""
     if (data := _data(hass, connection, msg)) is None:
         return
     try:
@@ -344,9 +344,9 @@ def ws_backup_export(hass: HomeAssistant, connection: websocket_api.ActiveConnec
 async def ws_backup_import(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Replace the plan and the packs from a backup. Packs are checked again: only ones whose
-    signature verifies (and that are not bound to another installation) come back; the rest are
-    reported as skipped. The state before becomes a restore point."""
+    """Replace the plan and the packs from a backup. Packs are checked again: only ones with valid
+    content (and that are not bound to another installation) come back; the rest are reported as
+    skipped. The state before becomes a restore point."""
     if (data := _data(hass, connection, msg)) is None:
         return
     try:
@@ -361,11 +361,11 @@ async def ws_backup_import(
         signature = entry.get("signature")
         source = entry.get("source")
         name = str(entry.get("id") or "?")
-        if not isinstance(signature, dict) or not isinstance(source, dict):
-            skipped.append({"id": name, "reason": "unsigned"})
+        if not isinstance(source, dict):
+            skipped.append({"id": name, "reason": "not_a_pack"})
             continue
         try:
-            text = json.dumps({"payload": source, "signature": signature})
+            text = json.dumps({"payload": source, "signature": signature if isinstance(signature, dict) else {}})
             clean = verify_pack(text, instance=instance)
         except (PackError, TypeError, ValueError) as err:
             skipped.append({"id": name, "reason": getattr(err, "code", "bad_signature")})

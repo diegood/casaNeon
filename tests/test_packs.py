@@ -1,4 +1,4 @@
-"""Furniture packs: signature check, content check and import through the websocket."""
+"""Furniture packs: content check (the signature is not checked) and import through the websocket."""
 
 from __future__ import annotations
 
@@ -49,37 +49,24 @@ def _sign(private: Ed25519PrivateKey, keys: dict[str, str], payload: dict) -> st
 
 def test_signed_pack_is_accepted() -> None:
     private, keys = _key()
-    payload = packs.verify_pack(_sign(private, keys, PAYLOAD), keys)
+    payload = packs.verify_pack(_sign(private, keys, PAYLOAD))
     assert payload["items"][0]["parts"][0]["edges"] is False
     assert payload["licensee"] is None
 
 
-def test_changed_or_foreign_packs_are_rejected() -> None:
+def test_the_signature_is_not_checked() -> None:
+    """Changed, foreign-signed and unsigned packs are all accepted; only the content counts."""
     private, keys = _key()
-    text = _sign(private, keys, PAYLOAD)
-    # a changed file breaks the signature
-    changed = json.loads(text)
+    changed = json.loads(_sign(private, keys, PAYLOAD))
     changed["payload"]["name"] = "Mine now"
-    with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(json.dumps(changed), keys)
-    assert err.value.code == "bad_signature"
-    # signed with another key: the publisher is unknown
+    assert packs.verify_pack(json.dumps(changed))["name"] == "Mine now"
     other, other_keys = _key()
+    assert packs.verify_pack(_sign(other, other_keys, PAYLOAD))["id"] == "test.starter"
+    unsigned = json.dumps({"payload": PAYLOAD})
+    assert packs.verify_pack(unsigned)["id"] == "test.starter"
+    assert packs.parts_of(unsigned) == (PAYLOAD, {})
     with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(_sign(other, other_keys, PAYLOAD), keys)
-    assert err.value.code == "unknown_publisher"
-    # another key claiming the known key id
-    forged = json.loads(_sign(other, other_keys, PAYLOAD))
-    forged["signature"]["key"] = next(iter(keys))
-    with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(json.dumps(forged), keys)
-    assert err.value.code == "bad_signature"
-    # without a signature, or not a pack at all
-    with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(json.dumps({"payload": PAYLOAD}), keys)
-    assert err.value.code == "unsigned"
-    with pytest.raises(packs.PackError) as err:
-        packs.verify_pack("{}", keys)
+        packs.verify_pack("{}")
     assert err.value.code == "not_a_pack"
 
 
@@ -91,13 +78,13 @@ def test_sloped_and_lying_parts_are_accepted() -> None:
         {"shape": "loft", **box, "tx": 0, "tz": 0.1, "tw": 0.9, "td": 0.2, "edges": "glow"},
         {"shape": "cyl", "axis": "x", **box, "edges": "faint"},
     ]
-    payload = packs.verify_pack(_sign(private, keys, shaped), keys)
+    payload = packs.verify_pack(_sign(private, keys, shaped))
     assert payload["items"][0]["parts"][0]["edges"] == "glow"
     assert payload["items"][0]["parts"][1]["axis"] == "x"
     bad = copy.deepcopy(shaped)
     bad["items"][0]["parts"][1]["axis"] = "w"
     with pytest.raises(packs.PackError):
-        packs.verify_pack(_sign(private, keys, bad), keys)
+        packs.verify_pack(_sign(private, keys, bad))
 
 
 def test_shop_signing_from_the_canonical_template() -> None:
@@ -113,7 +100,7 @@ def test_shop_signing_from_the_canonical_template() -> None:
     signed = template[:at] + b'"licensee":' + encoded + template[at + len(marker) :]
     sig = base64.b64encode(private.sign(signed)).decode()
     text = '{"payload":' + signed.decode() + ',"signature":{"key":"' + next(iter(keys)) + '","sig":"' + sig + '"}}'
-    payload = packs.verify_pack(text, keys)
+    payload = packs.verify_pack(text)
     assert payload["licensee"] == name
     # the same bytes, canonicalised again by the integration, are what was signed
     assert packs.canonical(json.loads(text)["payload"]) == signed
@@ -124,17 +111,16 @@ def test_pack_content_is_checked() -> None:
     heavy = copy.deepcopy(PAYLOAD)
     heavy["items"][0]["parts"] *= 31  # more than 60 parts
     with pytest.raises(packs.PackError) as err:
-        packs.verify_pack(_sign(private, keys, heavy), keys)
+        packs.verify_pack(_sign(private, keys, heavy))
     assert err.value.code == "invalid_content"
     twice = copy.deepcopy(PAYLOAD)
     twice["items"].append(copy.deepcopy(twice["items"][0]))
     with pytest.raises(packs.PackError):
-        packs.verify_pack(_sign(private, keys, twice), keys)
+        packs.verify_pack(_sign(private, keys, twice))
 
 
 async def test_import_list_and_remove(hass: HomeAssistant, hass_ws_client, monkeypatch: pytest.MonkeyPatch) -> None:
     private, keys = _key()
-    monkeypatch.setattr(packs, "PACK_PUBLIC_KEYS", keys)
     await async_setup_component(hass, "http", {})
     entry = MockConfigEntry(domain=DOMAIN, data={})
     entry.add_to_hass(hass)
@@ -170,13 +156,6 @@ async def test_import_list_and_remove(hass: HomeAssistant, hass_ws_client, monke
     assert (await client.receive_json())["result"]["packs"] == []
 
 
-def test_publisher_key_is_configured() -> None:
-    # the published integration accepts packs of the publisher's key only
-    assert len(packs.PACK_PUBLIC_KEYS) >= 1
-    for kid, public in packs.PACK_PUBLIC_KEYS.items():
-        assert packs.key_id(base64.b64decode(public)) == kid
-
-
 def test_turned_parts_and_stairs_holes_are_accepted() -> None:
     """A part may turn around its centre (rot) and a stairs item may cut the floor above (hole)."""
     item = copy.deepcopy(PAYLOAD["items"][0])
@@ -201,16 +180,3 @@ def test_feature_packs_need_no_items_but_a_pack_needs_something() -> None:
         packs.validate_payload({**pro, "features": ["some_future_addon"]})
     assert err.value.code == "needs_update"
     assert err.value.detail == "some_future_addon"
-
-
-def test_studio_key_signs_studio_furniture_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Möbel-Studio key may sign "studio.*" furniture packs, never Pro features or other packs."""
-    private, keys = _key()
-    kid = next(iter(keys))
-    monkeypatch.setattr(packs, "STUDIO_KEYS", {kid})
-    studio = {**PAYLOAD, "id": "studio.abc123"}
-    assert packs.verify_pack(_sign(private, keys, studio), keys)["id"] == "studio.abc123"
-    for bad in ({**PAYLOAD, "id": "test.other"}, {**studio, "features": ["camera_cockpit"]}):
-        with pytest.raises(packs.PackError) as err:
-            packs.verify_pack(_sign(private, keys, bad), keys)
-        assert err.value.code == "bad_signature"
