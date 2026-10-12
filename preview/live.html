@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NeonPlan 3D – Live</title>
+    <style>
+      body {
+        margin: 0;
+        background: #070b14;
+      }
+      #fp3d-live-bar {
+        position: fixed;
+        right: 8px;
+        bottom: 8px;
+        z-index: 30;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(7, 11, 20, 0.85);
+        border: 1px solid rgba(0, 229, 255, 0.4);
+        color: #cfe9ff;
+        font: 12px/1.3 Figtree, Roboto, sans-serif;
+      }
+      #fp3d-live-bar.fp3d-live-error {
+        border-color: #ff5f7a;
+        color: #ffc2cc;
+      }
+    </style>
+  </head>
+  <body>
+    <neonplan3d-panel></neonplan3d-panel>
+    <div id="fp3d-live-bar">connecting…</div>
+    <script type="module">
+      // Development page against a real Home Assistant (see scripts/live.mjs): states, registries and
+      // services come from Home Assistant through the local proxy; the plan, its pictures and packs come
+      // from a NeonPlan backup file and live in this page only (saving changes nothing in Home Assistant).
+      // ?lang=de|en|es|… sets the language, ?user shows the view of a non-admin user, ?card the card.
+
+      const params = new URLSearchParams(location.search);
+      const bar = document.getElementById("fp3d-live-bar");
+      const status = (text, error = false) => {
+        bar.textContent = text;
+        bar.classList.toggle("fp3d-live-error", error);
+      };
+      const cfg = await (await fetch("/live/config.json")).json();
+
+      /** Minimal Home Assistant websocket client: auth, request/answer by id, subscriptions. */
+      class HaSocket {
+        constructor(token) {
+          this.token = token;
+          this.nextId = 1;
+          this.pending = new Map();
+          this.subs = new Map();
+          this.onReconnect = null;
+        }
+        open() {
+          return new Promise((ok, fail) => {
+            const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/websocket`);
+            this.ws = ws;
+            ws.onmessage = (e) => {
+              const msg = JSON.parse(e.data);
+              if (msg.type === "auth_required") ws.send(JSON.stringify({ type: "auth", access_token: this.token }));
+              else if (msg.type === "auth_ok") ok();
+              else if (msg.type === "auth_invalid") fail(new Error(`auth_invalid: ${msg.message}`));
+              else if (msg.type === "result") {
+                const p = this.pending.get(msg.id);
+                if (!p) return;
+                this.pending.delete(msg.id);
+                if (msg.success) p.ok(msg.result);
+                else p.fail(msg.error ?? { code: "unknown_error", message: "failed" });
+              } else if (msg.type === "event") this.subs.get(msg.id)?.(msg.event);
+            };
+            ws.onclose = () => {
+              for (const p of this.pending.values()) p.fail({ code: "connection_lost", message: "Connection lost" });
+              this.pending.clear();
+              this.subs.clear();
+              status("Home Assistant disconnected – reconnecting…", true);
+              // a failed attempt closes its own socket, which schedules the next one
+              setTimeout(() => this.open().then(() => this.onReconnect?.()).catch(() => {}), 5000);
+            };
+          });
+        }
+        send(msg) {
+          const id = this.nextId++;
+          return new Promise((ok, fail) => {
+            this.pending.set(id, { ok, fail });
+            this.ws.send(JSON.stringify({ ...msg, id }));
+          });
+        }
+        async subscribe(msg, cb) {
+          const id = this.nextId;
+          this.subs.set(id, cb);
+          try {
+            await this.send(msg);
+          } catch (err) {
+            this.subs.delete(id);
+            throw err;
+          }
+          return async () => {
+            this.subs.delete(id);
+            await this.send({ type: "unsubscribe_events", subscription: id }).catch(() => {});
+          };
+        }
+      }
+
+      const sock = new HaSocket(cfg.token);
+      try {
+        await sock.open();
+      } catch (err) {
+        status(`Home Assistant: ${err.message} (check url and token in live.local.json)`, true);
+        throw err;
+      }
+
+      const byKey = (list, key) => Object.fromEntries(list.map((x) => [x[key], x]));
+      async function registries() {
+        const [user, config, areas, floors, display, devices, states] = await Promise.all([
+          sock.send({ type: "auth/current_user" }),
+          sock.send({ type: "get_config" }),
+          sock.send({ type: "config/area_registry/list" }),
+          sock.send({ type: "config/floor_registry/list" }).catch(() => []),
+          sock.send({ type: "config/entity_registry/list_for_display" }),
+          sock.send({ type: "config/device_registry/list" }).catch(() => []),
+          sock.send({ type: "get_states" }),
+        ]);
+        // the compact registry the HA frontend uses for hass.entities
+        const categories = display.entity_categories ?? {};
+        const entities = Object.fromEntries(
+          display.entities.map((e) => [
+            e.ei,
+            { entity_id: e.ei, name: e.en ?? null, device_id: e.di ?? null, area_id: e.ai ?? null, hidden: !!e.hb, entity_category: e.ec !== undefined ? categories[e.ec] ?? null : null, translation_key: e.tk ?? null, display_precision: e.dp ?? null },
+          ]),
+        );
+        return {
+          user: { is_admin: user.is_admin && !params.has("user"), name: user.name },
+          config,
+          areas: byKey(areas, "area_id"),
+          floors: byKey(floors, "floor_id"),
+          entities,
+          devices: byKey(devices.map(({ id, area_id, name, name_by_user }) => ({ id, area_id, name, name_by_user })), "id"),
+          states: byKey(states, "entity_id"),
+        };
+      }
+
+      // the plan: from the backup file, kept in this page
+      const backup = cfg.backup ? await (await fetch("/live/backup.json")).json() : null;
+      if (backup && backup.format !== "neonplan3d-backup") {
+        status("The backup file is not a NeonPlan backup (\"Save everything (plan, pictures, packs)\" in the editor).", true);
+        throw new Error("not a NeonPlan backup");
+      }
+      let building = backup?.building ?? { version: 1, floors: [], settings: { wall_exterior: 0.24, wall_interior: 0.12, grid: 0.05 } };
+      let packs = backup?.packs ?? [];
+      const images = { ...(backup?.images ?? {}) };
+      let revision = 1;
+      const planListeners = new Set();
+      const history = [{ id: "s0", revision: 0, saved_at: Date.now() / 1000, building: structuredClone(building) }];
+      const changed = () => {
+        revision += 1;
+        for (const cb of planListeners) cb({ revision });
+        return { revision };
+      };
+      const noLicense = { instance: "live", active: false, key_hint: null, licensee: null, checked_at: null, error: null, shop_url: "", packs: [], offers: [], loyalty: null, supporter: null, updates: [] };
+
+      /** The integration's commands, answered here instead of by Home Assistant. */
+      function local(msg) {
+        switch (msg.type) {
+          case "neonplan3d/building/get":
+            return { building: structuredClone(building), revision };
+          case "neonplan3d/building/save":
+            building = structuredClone(msg.building);
+            return changed();
+          case "neonplan3d/history/list":
+            return { snapshots: history.map(({ building: b, ...rest }) => ({ ...rest, floors: b.floors.length, rooms: b.floors.reduce((n, f) => n + f.rooms.length, 0), furniture: b.floors.reduce((n, f) => n + f.furniture.length, 0) })).reverse() };
+          case "neonplan3d/history/snapshot":
+            history.push({ id: `s${history.length}`, revision, saved_at: Date.now() / 1000, building: structuredClone(building) });
+            return null;
+          case "neonplan3d/history/restore":
+            building = structuredClone(history.find((h) => h.id === msg.snapshot_id).building);
+            return changed();
+          case "neonplan3d/image/get":
+            if (!images[msg.image_id]) throw { code: "not_found", message: "Image not found" };
+            return { data: images[msg.image_id] };
+          case "neonplan3d/image/set":
+            images[msg.image_id] = msg.data;
+            return null;
+          case "neonplan3d/packs/list":
+            return { packs };
+          case "neonplan3d/packs/import": {
+            const data = JSON.parse(msg.pack);
+            if (!data.payload) throw { code: "not_a_pack", message: "not_a_pack" };
+            packs = [...packs.filter((p) => p.id !== data.payload.id), { licensee: null, release: 1, instance: null, features: [], ...data.payload }];
+            return { id: data.payload.id, name: data.payload.name, publisher: data.payload.publisher, licensee: data.payload.licensee ?? null, items: data.payload.items.length };
+          }
+          case "neonplan3d/packs/remove":
+            packs = packs.filter((p) => p.id !== msg.pack_id);
+            return null;
+          case "neonplan3d/backup/export":
+            return { format: "neonplan3d-backup", version: 1, building: structuredClone(building), packs };
+          case "neonplan3d/backup/import":
+            building = structuredClone(msg.building);
+            packs = msg.packs;
+            return { ...changed(), building: structuredClone(building), packs: packs.length, skipped: [] };
+          case "neonplan3d/license/get":
+          case "neonplan3d/license/refresh":
+          case "neonplan3d/license/remove":
+            return noLicense;
+          case "neonplan3d/license/activate":
+          case "neonplan3d/packs/install":
+            throw { code: "not_available", message: "No shop on the live page" };
+          default:
+            return undefined;
+        }
+      }
+
+      let current = null;
+      const push = () => {
+        if (window.fp3dCard) window.fp3dCard.hass = current;
+        else if (window.fp3dPanel) window.fp3dPanel.hass = current;
+      };
+      // state changes arrive one by one: hand them over at most once per frame
+      let queued = null;
+      const changedStates = new Map();
+      function onStateChanged(event) {
+        const { entity_id, new_state } = event.data;
+        changedStates.set(entity_id, new_state);
+        queued ??= requestAnimationFrame(() => {
+          queued = null;
+          const states = { ...current.states };
+          for (const [id, st] of changedStates) {
+            if (st) states[id] = st;
+            else delete states[id];
+          }
+          changedStates.clear();
+          current = { ...current, states };
+          push();
+        });
+      }
+
+      async function connectHass() {
+        const reg = await registries();
+        await sock.subscribe({ type: "subscribe_events", event_type: "state_changed" }, onStateChanged);
+        current = {
+          ...(current ?? {}),
+          ...reg,
+          language: params.get("lang") || "es",
+          connection: {
+            async subscribeMessage(cb, msg) {
+              if (msg.type === "neonplan3d/building/subscribe") {
+                planListeners.add(cb);
+                return async () => planListeners.delete(cb);
+              }
+              return sock.subscribe(msg, cb);
+            },
+          },
+          async callService(domain, service, data) {
+            if (cfg.dry_run) {
+              console.info("[dry run]", `${domain}.${service}`, data);
+              return null;
+            }
+            return sock.send({ type: "call_service", domain, service, service_data: data ?? {} });
+          },
+          async callWS(msg) {
+            const answer = local(msg);
+            if (answer !== undefined) return answer;
+            // everything else (statistics, history, the time travel's history…) goes to Home Assistant
+            return sock.send(msg);
+          },
+        };
+        status(`Live · ${cfg.ha} · ${Object.keys(reg.states).length} entities${cfg.dry_run ? " · dry run" : ""}${backup ? "" : " · no backup"}`);
+      }
+      sock.onReconnect = async () => {
+        await connectHass();
+        push();
+      };
+      await connectHass();
+
+      window.addEventListener("hass-more-info", (e) => console.log("more-info", e.detail.entityId));
+      await import("../custom_components/neonplan3d/frontend/neonplan3d.js");
+      if (params.has("card")) {
+        // ?card: the dashboard card (optionally ?floor=<id>) next to its visual editor
+        document.querySelector("neonplan3d-panel").remove();
+        const CardClass = customElements.get("neonplan3d-card");
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "display:grid;grid-template-columns:420px 1fr;gap:24px;padding:24px;font-family:Figtree,Roboto,sans-serif;--primary-text-color:#e1e1e1;--secondary-text-color:#9b9b9b;--card-background-color:#1c1c1c;--primary-color:#03a9f4;--divider-color:rgba(225,225,225,.2)";
+        const editorBox = document.createElement("div");
+        editorBox.style.cssText = "background:#1c1c1c;border-radius:12px;padding:20px";
+        const editor = await CardClass.getConfigElement();
+        const card = document.createElement("neonplan3d-card");
+        let config = { type: "custom:neonplan3d-card", ...(params.get("floor") ? { floor: params.get("floor") } : {}) };
+        card.setConfig(config);
+        editor.setConfig(config);
+        editor.addEventListener("config-changed", (e) => {
+          config = e.detail.config;
+          card.setConfig(config);
+          editor.setConfig(config);
+        });
+        editor.hass = current;
+        card.hass = current;
+        editorBox.append(editor);
+        wrap.append(editorBox, card);
+        document.body.append(wrap);
+        window.fp3dCard = card;
+      } else {
+        const panel = document.querySelector("neonplan3d-panel");
+        panel.hass = current;
+        panel.narrow = window.innerWidth < 870;
+        window.fp3dPanel = panel;
+      }
+    </script>
+  </body>
+</html>
