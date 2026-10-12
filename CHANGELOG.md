@@ -1,8 +1,21 @@
 # Changelog
 
-All notable changes to NeonPlan 3D. The full notes in German and English are on the
-[releases page](https://github.com/Mastershort/neonplan3d/releases). Ideas and votes:
-[Discussions → Ideas](https://github.com/Mastershort/neonplan3d/discussions/categories/ideas).
+All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
+earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
+
+## 1.18.0
+
+### Novedades
+
+- **Proxmox VE:** el botón **Proxmox** de la vista 3D abre un panel con el nodo (CPU, RAM, disco, carga, VMs y LXC encendidos, actualizaciones, tareas fallidas) y un mosaico por cada VM y contenedor (estado, CPU, RAM, disco, IP, tiempo encendida), con filtros; al tocarlo se abren sus detalles en Home Assistant. Necesita la integración Proxmox VE.
+- **Avisos de Proxmox:** nodo sin conexión, disco que pasa a dar problemas y VM o contenedor que estaba encendido y se para; señalan la habitación del rack si está en el plano.
+- **Portón de garaje con interruptor:** el contacto de una puerta de garaje admite un `switch` o `input_boolean` (encendido = abierta); al tocarla en 3D se conmuta, con «Preguntar antes de accionar» si se quiere.
+- **Invertir el estado de cortinas y persianas:** casilla en la ventana o puerta para las que informan abierta cuando están cerradas; solo cambia lo que se ve.
+- **Packs propios:** un Volvo V60 para la plaza de aparcamiento y muebles (escritorio infantil, impresora 3D grande, armario alto con hueco, impresora láser, impresora de resina, rack de servidores), en `packs/`.
+
+### Cambios
+
+- **Solo castellano:** la interfaz está siempre en castellano; ya no hay alemán, inglés ni archivos de idioma descargables (los bundles pesan unos 80 KB menos).
 
 ## 1.17.1
 
