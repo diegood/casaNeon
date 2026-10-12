@@ -1,0 +1,32 @@
+# Checks before every commit, the same as the CI: ruff, the frontend's typecheck and tests, and the build.
+# The build hook stages the rebuilt bundles, so the committed bundles always match the sources.
+# Set up once: python3 -m venv .venv && .venv/bin/pip install pre-commit && .venv/bin/pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^(custom_components|tests|packs)/
+      - id: ruff-format
+        files: ^(custom_components|tests|packs)/
+  - repo: local
+    hooks:
+      - id: frontend-typecheck
+        name: frontend typecheck
+        entry: npm --prefix frontend run typecheck
+        language: system
+        pass_filenames: false
+        files: ^frontend/(src/|tsconfig\.json)
+      - id: frontend-test
+        name: frontend tests
+        entry: npm --prefix frontend test
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/
+      - id: frontend-build
+        name: build bundles (staged with the commit)
+        entry: scripts/precommit-build.sh
+        language: system
+        pass_filenames: false
+        files: ^(frontend/(src/|build\.mjs|package\.json)|custom_components/neonplan3d/(manifest\.json|frontend/))

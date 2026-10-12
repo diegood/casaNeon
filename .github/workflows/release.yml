@@ -1,17 +1,17 @@
 name: Release
 
-# On a published GitHub release: check that the tag matches the manifest version, pack the integration
-# as neonplan3d.zip (HACS installs this file because hacs.json sets zip_release) and attach it. The
-# asset's download count is the number of HACS installs and updates of that version.
+# On a pushed version tag (scripts/release.sh): check that the tag matches the manifest version, pack the
+# integration as neonplan3d.zip (HACS installs this file because hacs.json sets zip_release) and publish the
+# GitHub release with that version's section of CHANGELOG.md as its notes.
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
-  zip:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,12 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match manifest version $version" >&2
             exit 1
           fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Release notes from the changelog
+        run: |
+          awk -v v="## $VERSION" '$0 == v {on = 1; next} on && /^## / {exit} on {print}' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "NeonPlan 3D $VERSION" > notes.md
+          cat notes.md
       - name: Pack the integration
         run: |
           cd custom_components/neonplan3d
@@ -30,7 +36,12 @@ jobs:
           zip -q -X ../../neonplan3d.zip -@ < /tmp/files
           cd ../..
           unzip -l neonplan3d.zip | tail -1
-      - name: Attach to the release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" neonplan3d.zip --clobber
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" neonplan3d.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" neonplan3d.zip --title "$VERSION" --notes-file notes.md
+          fi
