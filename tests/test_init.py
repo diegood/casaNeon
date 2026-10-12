@@ -142,6 +142,7 @@ async def test_opening_fields_get_defaults(hass: HomeAssistant, hass_ws_client) 
         "sidelight_width2": None,
         "position": None,
         "position_inverted": False,
+        "cover_invert": False,
         "tilt_angle": None,
         "tilt_max": None,
         "tilt_offset": None,
