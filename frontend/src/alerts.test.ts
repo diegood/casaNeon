@@ -57,12 +57,12 @@ test("smoke and water raise room warnings, a triggered alarm a house-wide one", 
     alerts.map((a) => [a.kind, a.roomId]),
     [["smoke", "k"], ["water", "b"], ["alarm", null]],
   );
-  assert.equal(alertText(hass, b, alerts[0]), "Küche · Rauch: Rauchmelder");
-  assert.equal(alertText(hass, b, alerts[2]), "Alarm ausgelöst");
+  assert.equal(alertText(hass, b, alerts[0]), "Küche · Humo: Rauchmelder");
+  assert.equal(alertText(hass, b, alerts[2]), "Alarma activada");
   // without device names only the room and the kind remain; a warning without a room keeps its text (#374)
   b.settings.alert_names = false;
-  assert.equal(alertText(hass, b, alerts[0]), "Küche · Rauch");
-  assert.equal(alertText(hass, b, alerts[2]), "Alarm ausgelöst");
+  assert.equal(alertText(hass, b, alerts[0]), "Küche · Humo");
+  assert.equal(alertText(hass, b, alerts[2]), "Alarma activada");
   delete b.settings.alert_names;
   hass.states["alarm_control_panel.haus"].state = "pending";
   assert.equal(findAlerts(hass, b, src, links).at(-1)?.kind, "alarm_pending");
@@ -124,7 +124,7 @@ test("a power outage: grid sensors off, helpers on, a UPS on battery, a low main
   assert.deepEqual(alertEntities(sources), ["binary_sensor.netz"]);
   const alerts = findAlerts(hass, b, sources, new Map());
   assert.deepEqual(alerts.map((a) => a.kind), ["power_outage"]);
-  assert.equal(alertText(hass, b, alerts[0]), "Stromausfall: Netz");
+  assert.equal(alertText(hass, b, alerts[0]), "Corte de luz: Netz");
 });
 
 test("Pool Pro warns when pH or chlorine are far off or the water freezes while the pump rests", () => {
@@ -148,7 +148,7 @@ test("Pool Pro warns when pH or chlorine are far off or the water freezes while 
   try {
     const alerts = findAlerts(hass, b, alertSources(hass, b), new Map());
     assert.deepEqual(alerts.map((a) => a.kind), ["pool_ph", "pool_frost"]);
-    assert.equal(alertText(hass, b, alerts[0]), "Pool: pH 8.3");
+    assert.equal(alertText(hass, b, alerts[0]), "Piscina: pH 8.3");
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }

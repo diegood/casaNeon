@@ -66,5 +66,5 @@ test("floor labels count rooms, lights on, open windows and people", () => {
   const { hass, building } = setup();
   const counts = floorCounts(hass, building, new Map(), personsInRooms(hass, building)).get("eg")!;
   assert.deepEqual(counts, { rooms: 2, lightsOn: 1, open: 0, persons: 2 });
-  assert.equal(floorInfoText(hass, counts), "2 Räume · 1 Licht an · 2 Pers.");
+  assert.equal(floorInfoText(hass, counts), "2 habitaciones · 1 luces encendidas · 2 personas");
 });

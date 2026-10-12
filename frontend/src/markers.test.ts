@@ -21,15 +21,15 @@ function hassWith(states: HassEntity[]): HomeAssistant {
 test("state texts are short and localised", () => {
   const hass = hassWith([]);
   assert.equal(stateText(hass, st("light.a", "on", { brightness: 128 })), "50 %");
-  assert.equal(stateText(hass, st("light.a", "off")), "Aus");
+  assert.equal(stateText(hass, st("light.a", "off")), "Apagado");
   assert.equal(stateText(hass, st("cover.a", "open", { current_position: 70 })), "70 %");
-  assert.equal(stateText(hass, st("cover.a", "closing", { current_position: 70 })), "Schließt");
-  assert.equal(stateText(hass, st("binary_sensor.f", "on", { device_class: "window" })), "Offen");
-  assert.equal(stateText(hass, st("binary_sensor.m", "off", { device_class: "motion" })), "Frei");
+  assert.equal(stateText(hass, st("cover.a", "closing", { current_position: 70 })), "Cerrando");
+  assert.equal(stateText(hass, st("binary_sensor.f", "on", { device_class: "window" })), "Abierto");
+  assert.equal(stateText(hass, st("binary_sensor.m", "off", { device_class: "motion" })), "Despejado");
   assert.equal(stateText(hass, st("climate.h", "heat", { current_temperature: 21.4 })), "21,4 °C");
   assert.equal(stateText(hass, st("sensor.t", "21.44", { unit_of_measurement: "°C" })), "21,4 °C");
-  assert.equal(stateText(hass, st("light.a", "unavailable")), "Nicht verfügbar");
-  assert.equal(stateText(hass, undefined), "Nicht verfügbar");
+  assert.equal(stateText(hass, st("light.a", "unavailable")), "No disponible");
+  assert.equal(stateText(hass, undefined), "No disponible");
 });
 
 test("markers find their room, default height and light glow; missing entities are skipped", () => {
@@ -58,14 +58,14 @@ test("a TV shows the app that is running", () => {
   const hass = hassWith([]);
   assert.equal(stateText(hass, st("media_player.tv", "on", { app_name: "YouTube" })), "YouTube");
   assert.equal(stateText(hass, st("media_player.tv", "playing", { media_title: "Nachrichten" })), "Nachrichten");
-  assert.equal(stateText(hass, st("media_player.tv", "off", { app_name: "YouTube" })), "Aus");
+  assert.equal(stateText(hass, st("media_player.tv", "off", { app_name: "YouTube" })), "Apagado");
 });
 
 test("sensor values use the decimals set in Home Assistant", () => {
   const st = { entity_id: "sensor.gas", state: "1234.567", attributes: { unit_of_measurement: "m³" } };
   const hass = { language: "en", entities: { "sensor.gas": { entity_id: "sensor.gas", display_precision: 3 } } } as unknown as HomeAssistant;
-  assert.equal(stateText(hass, st), "1,234.567 m³");
-  assert.equal(stateText({ ...hass, entities: {} } as HomeAssistant, st), "1,234.6 m³");
+  assert.equal(stateText(hass, st), "1234,567 m³");
+  assert.equal(stateText({ ...hass, entities: {} } as HomeAssistant, st), "1234,6 m³");
 });
 
 test("a placement's marker setting reaches the marker", () => {

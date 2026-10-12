@@ -9,5 +9,5 @@ import type { HomeAssistant } from "./types.ts";
 export function furnitureName(hass: HomeAssistant | undefined, type: string): string {
   if (!isPackType(type)) return translate(hass, `furn_${type}` as Parameters<typeof translate>[1]);
   const item = packItem(type);
-  return item ? packItemName(item, hass?.language ?? navigator.language) : translate(hass, "pack_missing_item");
+  return item ? packItemName(item) : translate(hass, "pack_missing_item");
 }

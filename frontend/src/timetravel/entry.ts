@@ -126,7 +126,7 @@ export class Session implements TimeTravelSession {
     this.startStates = opts.live.states;
     this.quality = opts.quality;
     this.low = opts.spec.low;
-    this.t = withTexts(opts.t, () => this.live.language);
+    this.t = withTexts(opts.t);
     setZone(zoneOf(opts.live));
     this.end = Date.now();
     this.range = opts.range === "7d" ? "7d" : "24h";

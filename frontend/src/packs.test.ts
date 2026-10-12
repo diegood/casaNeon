@@ -17,8 +17,8 @@ test("pack furniture resolves by type, with size, name and power link", () => {
   assert.equal(type, "pack:demo.pack:tv");
   assert.deepEqual(furnitureSize(type), [2, 0.3, 1.2]);
   assert.equal(isElectric(type), true);
-  assert.equal(packItemName(packItem(type)!, "de-DE"), "Fernseher groß");
-  assert.equal(packItemName(packItem(type)!, "fr"), "Big TV");
+  assert.equal(packItemName(packItem(type)!), "Big TV");
+  assert.equal(packItemName({ ...packItem(type)!, name: { de: "Fernseher groß", en: "Big TV", es: "Tele grande" } }), "Tele grande");
   // built-in types keep their sizes; a removed pack leaves a plain default box
   assert.equal(furnitureSize("sofa").length, 3);
   setPacks([]);
@@ -56,12 +56,11 @@ test("pack items stand on the floor, on furniture, on a wall or hang from the ce
   setPacks([]);
 });
 
-test("our packs show an English name outside German, others keep theirs (#224)", () => {
-  assert.equal(packName({ id: "mastershort.office", name: "Büro & Gaming" }, "en"), "Office & Gaming");
-  assert.equal(packName({ id: "mastershort.office", name: "Büro & Gaming" }, "de-DE"), "Büro & Gaming");
-  assert.equal(packName({ id: "mastershort.living_sample", name: "Wohnzimmer – Schnupper-Pack" }, "fr"), "Living Room – Sampler");
-  assert.equal(packName({ id: "pro_weather", name: "Wetter draußen" }, "en"), "Pro: Weather Outside");
-  assert.equal(packName({ id: "someone.else", name: "Möbel" }, "en"), "Möbel");
+test("our packs show a Spanish name, others keep theirs", () => {
+  assert.equal(packName({ id: "mastershort.office", name: "Büro & Gaming" }), "Oficina y gaming");
+  assert.equal(packName({ id: "mastershort.living_sample", name: "Wohnzimmer – Schnupper-Pack" }), "Salón – muestra");
+  assert.equal(packName({ id: "pro_weather", name: "Wetter draußen" }), "Pro: Tiempo exterior");
+  assert.equal(packName({ id: "someone.else", name: "Möbel" }), "Möbel");
 });
 
 test("a status light is no display: printers ask for a device, TVs for a media player", () => {

@@ -157,7 +157,7 @@ export class Extensions extends LitElement {
     if (!this.freshUpdates.length) return nothing;
     return html`<section class="fp3d-ext-card fp3d-updates">
       ${this.freshUpdates.map(
-        (u) => html`<p>✨ ${u.added > 0 ? this.t("pack_updated_added", { name: packName(u, this.hass?.language ?? "de"), release: u.release, n: u.added }) : this.t("pack_updated", { name: packName(u, this.hass?.language ?? "de"), release: u.release })}</p>`,
+        (u) => html`<p>✨ ${u.added > 0 ? this.t("pack_updated_added", { name: packName(u), release: u.release, n: u.added }) : this.t("pack_updated", { name: packName(u), release: u.release })}</p>`,
       )}
     </section>`;
   }
@@ -226,7 +226,7 @@ export class Extensions extends LitElement {
           (o) => html`<a class="fp3d-offer" href=${offerLink(o.url, loyalty)} target="_blank" rel="noopener">
             ${o.image ? html`<img src=${o.image} alt="" loading="lazy" />` : html`<div class="fp3d-offer-ph">✦</div>`}
             <div class="fp3d-offer-body">
-              <b>${packName(o, this.hass?.language ?? "de")}</b>
+              <b>${packName(o)}</b>
               ${o.new ? html`<span class="fp3d-offer-new">${this.t("offers_new")}</span>` : nothing}
               <span class="fp3d-offer-kind">${this.t(`offers_kind_${o.kind}` as I18nKey)}${o.price ? ` · ${o.price}` : ""}</span>
               ${o.teaser ? html`<span class="fp3d-sub">${o.teaser}</span>` : nothing}
@@ -284,7 +284,7 @@ export class Extensions extends LitElement {
                   const state = p.installed === null ? "install" : p.installed < p.release ? "update" : "installed";
                   return html`<div class="fp3d-pack">
                     <div>
-                      <b>${packName(p, this.hass?.language ?? "de")}</b>
+                      <b>${packName(p)}</b>
                       <span class="fp3d-sub">${state === "installed" ? this.t("license_installed", { release: p.release }) : state === "update" ? this.t("license_update_available", { release: p.release }) : this.t("license_not_installed")}</span>
                     </div>
                     ${state === "installed"
@@ -324,7 +324,7 @@ export class Extensions extends LitElement {
       ${packs.map(
         (p) => html`<div class="fp3d-pack">
           <div>
-            <b>${packName(p, this.hass?.language ?? "de")}</b>
+            <b>${packName(p)}</b>
             <span class="fp3d-sub">${p.features?.length ? this.t("pack_features", { publisher: p.publisher, n: p.features.length }) : this.t("pack_by", { publisher: p.publisher, n: p.items.length })}</span>
             ${p.licensee ? html`<span class="fp3d-sub">${this.t("pack_licensed", { name: p.licensee })}${p.release && p.release > 1 ? ` · v${p.release}` : ""}</span>` : nothing}
             ${(p.features ?? []).some((f) => !knownFeature(f)) ? html`<span class="fp3d-sub fp3d-pack-error">${this.t("pack_needs_update")}</span>` : nothing}
@@ -367,7 +367,7 @@ export class Extensions extends LitElement {
   }
 
   private async deletePack(pack: FurniturePack): Promise<void> {
-    if (!this.hass || !confirm(this.t("pack_remove_confirm", { name: packName(pack, this.hass?.language ?? "de") }))) return;
+    if (!this.hass || !confirm(this.t("pack_remove_confirm", { name: packName(pack) }))) return;
     await removePack(this.hass, pack.id);
     this._packMsg = null;
     this.dispatchEvent(new CustomEvent("packs-changed", { bubbles: true, composed: true }));

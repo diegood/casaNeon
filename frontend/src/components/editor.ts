@@ -45,7 +45,7 @@ import { type CarLinks, type Background, OUTDOOR_TOP, sidelightLayout, DEFAULT_W
 } from "../model.ts";
 import { furnishRoom, PACKAGES, type PackageId } from "../packages.ts";
 import { generateWalls, locateOpening, openingHost, pointOnRoomEdge, type Wall } from "../geometry/walls.ts";
-import { formatNumber, languageReady, loadLanguage, translate, type I18nKey } from "../i18n.ts";
+import { formatNumber, translate, type I18nKey } from "../i18n.ts";
 import { iconPath } from "../icons.ts";
 import {
   bounds,
@@ -617,7 +617,6 @@ export class Fp3dEditor extends LitElement {
   protected willUpdate(changed: PropertyValues): void {
     // this bundle keeps its own pack registry – and its own language table, so it fetches the language itself
     if (changed.has("packs")) setPacks(this.packs ?? []);
-    if (changed.has("hass") && this.hass && !languageReady(this.hass.language)) void loadLanguage(this.hass.language).then(() => this.requestUpdate());
     // the 3D pane and the wall view's 3D both show the draft (otherwise a piece moved in the wall view jumps back)
     if (changed.has("_doc") && (this._split || this._wallView)) this.queue3d();
     if ((changed.has("_split") && this._split) || (changed.has("_wallView") && this._wallView)) this._doc3d = this._doc;
@@ -4253,10 +4252,9 @@ export class Fp3dEditor extends LitElement {
   /** Furniture that can stand for a placed device of this kind (a speaker for a media player, a lamp for a light …). */
   private furnitureFor(entityId: string): { type: string; label: string }[] {
     const kind = kindOf(entityId);
-    const lang = this.hass?.language ?? "en";
     const all = [
       ...FURNITURE_TYPES.map((t) => ({ type: t as string, label: this.t(`furn_${t}` as I18nKey) })),
-      ...(this.packs ?? []).flatMap((p) => p.items.map((it) => ({ type: packType(p.id, it.id), label: `${packItemName(it, lang)} · ${packName(p, lang)}` }))),
+      ...(this.packs ?? []).flatMap((p) => p.items.map((it) => ({ type: packType(p.id, it.id), label: `${packItemName(it)} · ${packName(p)}` }))),
     ];
     const speakerish = /speaker|sound|subwoofer|receiver|smart_|display|tv|media|turntable|projector|console/;
     const fits = (t: string): boolean => {
@@ -8611,10 +8609,10 @@ export class Fp3dEditor extends LitElement {
             ${(this.packs ?? [])
               .filter((pack) => pack.items.length)
               .map(
-              (pack) => html`<optgroup label=${packName(pack, (this.hass?.language ?? "de"))}>
+              (pack) => html`<optgroup label=${packName(pack)}>
                 ${pack.items.map((it) => {
                   const t = packType(pack.id, it.id);
-                  return html`<option value=${t} ?selected=${t === f.type}>${packItemName(it, this.hass?.language ?? "en")}</option>`;
+                  return html`<option value=${t} ?selected=${t === f.type}>${packItemName(it)}</option>`;
                 })}
               </optgroup>`,
             )}
@@ -9202,8 +9200,7 @@ export class Fp3dEditor extends LitElement {
   /** Parking spot: presence sensor, the vehicle shown, its size, and an optional vehicle type sensor. */
   private renderParkingForm(f: Furniture) {
     const admin = this.isAdmin;
-    const lang = this.hass?.language ?? "en";
-    const vehicles = (this.packs ?? []).flatMap((p) => p.items.filter((it) => it.vehicle).map((it) => ({ id: packType(p.id, it.id), label: `${packItemName(it, lang)} · ${packName(p, lang)}` })));
+    const vehicles = (this.packs ?? []).flatMap((p) => p.items.filter((it) => it.vehicle).map((it) => ({ id: packType(p.id, it.id), label: `${packItemName(it)} · ${packName(p)}` })));
     // presence: GPS trackers (a car's own integration, a phone) before the many network trackers of a router (#227)
     const rank = (id: string) => {
       if (!id.startsWith("device_tracker.")) return 1;
@@ -9324,10 +9321,9 @@ export class Fp3dEditor extends LitElement {
   /** Whether the furniture library has any item for the query (else a "nothing found" line shows). */
   private libraryHasHits(q: string): boolean {
     const words = fold(q).split(/\s+/).filter(Boolean);
-    const lang = this.hass?.language ?? "en";
     const all: string[] = [
       ...Object.entries(FURNITURE_GROUPS).flatMap(([g, types]) => types.map((t) => `${this.t(`furn_${t}` as I18nKey)} ${translate(EN_HASS, `furn_${t}` as I18nKey)} ${t.replace(/_/g, " ")} ${this.t(`furn_group_${g}` as I18nKey)}`)),
-      ...(this.packs ?? []).flatMap((p) => p.items.map((it) => `${packItemName(it, lang)} ${Object.values(it.name).join(" ")} ${it.id.replace(/_/g, " ")} ${p.name} ${packName(p, "en")}`)),
+      ...(this.packs ?? []).flatMap((p) => p.items.map((it) => `${packItemName(it)} ${Object.values(it.name).join(" ")} ${it.id.replace(/_/g, " ")} ${p.name} ${packName(p)}`)),
     ];
     return all.some((s) => {
       const hay = fold(s);
@@ -9520,7 +9516,6 @@ export class Fp3dEditor extends LitElement {
   private renderFurnitureLibrary() {
     const room = this.room;
     const q = this._furnQuery.trim().toLowerCase();
-    const lang = this.hass?.language ?? "en";
     return html`<section>
       <h3>${this.t("furniture_add")}</h3>
       <p class="fp3d-sub">${room ? this.t("furniture_into", { room: room.name }) : this.t("furniture_pick_room")}</p>
@@ -9550,8 +9545,8 @@ export class Fp3dEditor extends LitElement {
         .map((pack) =>
         this.librarySection(
           `pack:${pack.id}`,
-          packName(pack, lang),
-          pack.items.map((it) => ({ type: packType(pack.id, it.id), label: packItemName(it, lang), search: Object.values(it.name).join(" ") })),
+          packName(pack),
+          pack.items.map((it) => ({ type: packType(pack.id, it.id), label: packItemName(it), search: Object.values(it.name).join(" ") })),
           q,
         ),
       )}

@@ -6,7 +6,7 @@ import { BuildingController } from "./building-controller.ts";
 import { loadEditor } from "./load-editor.ts";
 import "./components/room-panel.ts";
 import "./components/view3d.ts";
-import { languageReady, loadLanguage, translate, type I18nKey } from "./i18n.ts";
+import { translate, type I18nKey } from "./i18n.ts";
 import type { Building } from "./model.ts";
 import { controls, tokens } from "./styles.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -178,8 +178,6 @@ export class Floorplan3dPanel extends LitElement {
       this.data.setHass(this.hass);
       this.tt.session?.setLive(this.hass);
     }
-    // a language beyond German and English: its texts are fetched first, then everything renders
-    if (changed.has("hass") && this.hass && !languageReady(this.hass.language)) void loadLanguage(this.hass.language).then(() => this.requestUpdate());
     const b = this.data.building;
     if (b && this._floorId && !b.floors.some((f) => f.id === this._floorId)) {
       this._floorId = null;
@@ -479,7 +477,6 @@ export class Floorplan3dPanel extends LitElement {
   }
 
   protected render() {
-    if (this.hass && !languageReady(this.hass.language)) return nothing;
     this.checkOffers();
     const b = this.data.building;
     const saveState = this.data.saveState;

@@ -156,50 +156,47 @@ export function isElectric(type: string): boolean {
   return ELECTRIC_FURNITURE.has(type) || !!packItem(type)?.electric || !!packItem(type)?.light;
 }
 
-/** Name of a pack item in a language (English, then the first name as fallback). */
-export function packItemName(item: PackItem, language: string): string {
-  const lang = language.split("-")[0];
-  return item.name[lang] ?? item.name.en ?? Object.values(item.name)[0] ?? item.id;
+/** Name of a pack item: Spanish, else English, else the first name it carries. */
+export function packItemName(item: PackItem): string {
+  return item.name.es ?? item.name.en ?? Object.values(item.name)[0] ?? item.id;
 }
 
-
-// English names of our own packs: a pack file carries one (German) name, the furniture inside both (#224)
-const PACK_NAMES_EN: Record<string, string> = {
-  architecture: "Architecture & Fit-out",
-  bath: "Bathroom",
-  bedroom: "Bedroom",
-  cinema: "Home Cinema & Hi-Fi",
-  exclusive: "Exclusive: Smart Fridge",
+// Spanish names of our own packs: a pack file carries one (German) name
+const PACK_NAMES_ES: Record<string, string> = {
+  architecture: "Arquitectura y acabados",
+  bath: "Baño",
+  bedroom: "Dormitorio",
+  cinema: "Cine en casa y Hi-Fi",
+  exclusive: "Exclusivo: frigorífico inteligente",
   fitness: "Fitness",
-  garage: "Garage & Workshop",
-  garden: "Garden & Terrace",
-  kids: "Kids' Room",
-  kitchen: "Kitchen",
-  living: "Living Room",
-  office: "Office & Gaming",
-  pets: "Pets",
-  smarthome: "Smart Home & Tech",
-  stairs: "Stairs & Railings",
-  utility: "Utility & Building Services",
-  vehicles: "Vehicles",
-  starter: "Starter Pack",
-  pro_auto: "Pro: Car Pro",
-  pro_timetravel: "Pro: Time travel",
-  pro_pool: "Pro: Pool Pro",
-  pro_camera: "Pro: Camera Cockpit",
-  pro_energy: "Pro: Energy Pro",
-  pro_screens: "Pro: Live Screens",
-  pro_sound: "Pro: Sound & Cinema",
-  pro_weather: "Pro: Weather Outside",
+  garage: "Garaje y taller",
+  garden: "Jardín y terraza",
+  kids: "Cuarto infantil",
+  kitchen: "Cocina",
+  living: "Salón",
+  office: "Oficina y gaming",
+  pets: "Mascotas",
+  smarthome: "Smart home y tecnología",
+  stairs: "Escaleras y barandillas",
+  utility: "Lavadero e instalaciones",
+  vehicles: "Vehículos",
+  starter: "Pack de inicio",
+  pro_auto: "Pro: Auto Pro",
+  pro_timetravel: "Pro: Viaje en el tiempo",
+  pro_pool: "Pro: Piscina Pro",
+  pro_camera: "Pro: Cabina de cámara",
+  pro_energy: "Pro: Energía Pro",
+  pro_screens: "Pro: Pantallas en directo",
+  pro_sound: "Pro: Sonido y Cine",
+  pro_weather: "Pro: Tiempo exterior",
 };
 
-/** A pack's name in the user's language: our own packs in English outside German, others as they come. */
-export function packName(pack: { id: string; name: string }, language: string): string {
-  if (language.split("-")[0] === "de") return pack.name;
+/** A pack's name: our own packs in Spanish, others as they come. */
+export function packName(pack: { id: string; name: string }): string {
   const key = pack.id.replace(/^mastershort\./, "");
   const sample = key.endsWith("_sample");
-  const en = PACK_NAMES_EN[sample ? key.slice(0, -"_sample".length) : key];
-  return en ? (sample ? `${en} – Sampler` : en) : pack.name;
+  const es = PACK_NAMES_ES[sample ? key.slice(0, -"_sample".length) : key];
+  return es ? (sample ? `${es} – muestra` : es) : pack.name;
 }
 
 /** Height of the bottom of a pack item, a wall light or an LED strip above the floor (0 for other built-in furniture). */
