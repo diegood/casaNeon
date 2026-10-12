@@ -53,3 +53,5 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # issues and topics are only needed for HACS's default store; a custom repository works without them
+          ignore: issues topics
