@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { detectionKind, buildMarkers, stateText } from "./markers.ts";
+import { detectionKind, buildMarkers, setInvertedCovers, stateText } from "./markers.ts";
 import type { Building } from "./model.ts";
 import { emptyBuilding, newFloor } from "./model.ts";
 import type { HassEntity, HomeAssistant } from "./types.ts";
@@ -83,4 +83,17 @@ test("a camera's detection sensors are told apart by what they detect", () => {
   assert.equal(detectionKind(hass, "binary_sensor.einfahrt_car_occupancy"), "car");
   assert.equal(detectionKind(hass, "binary_sensor.x"), "pet");
   assert.equal(detectionKind(hass, "binary_sensor.flur_motion"), "motion");
+});
+
+test("an inverted curtain reads the other way round: position and open/closed", () => {
+  const hass = hassWith([]);
+  setInvertedCovers(new Set(["cover.cortina"]));
+  try {
+    assert.equal(stateText(hass, st("cover.cortina", "open", { current_position: 70 })), "30 %");
+    assert.equal(stateText(hass, st("cover.cortina", "closed")), "Abierto");
+    assert.equal(stateText(hass, st("cover.cortina", "opening", { current_position: 70 })), "Cerrando");
+    assert.equal(stateText(hass, st("cover.otra", "open", { current_position: 70 })), "70 %");
+  } finally {
+    setInvertedCovers(new Set());
+  }
 });

@@ -520,6 +520,8 @@ export interface OpeningEntities {
   shut?: boolean;
   /** The contacts report the other way round (on = closed). */
   contactInvert?: boolean;
+  /** The cover reports open as closed and its position the other way round. */
+  coverInvert?: boolean;
 }
 
 /** Pairs openings with entities in order; with `shared`, a single entity serves all openings. */
@@ -555,6 +557,7 @@ export function openingEntities(hass: HomeAssistant, floors: readonly Floor[]): 
     tiltInvert: !!o.tilt_invert,
     shut: !!o.shut,
     ...(o.contact_invert ? { contactInvert: true } : {}),
+    ...(o.cover_invert ? { coverInvert: true } : {}),
   });
   for (const floor of floors) {
     for (const room of floor.rooms) {
@@ -650,6 +653,8 @@ export function openingState(
     const pos = c.attributes.current_position;
     if (typeof pos === "number") cover = 1 - Math.min(100, Math.max(0, pos)) / 100;
     else cover = c.state === "closed" ? 1 : c.state === "opening" || c.state === "closing" ? 0.5 : 0;
+    // "Invertir el estado": a cover that reports open as closed
+    if (e.coverInvert) cover = 1 - cover;
   } else if (e.cover) cover = 0;
   if (type === "door") {
     // a door with a roller shutter (front door, French window, sliding door): the blind comes down over it
@@ -780,6 +785,14 @@ export function confirmEntities(hass: HomeAssistant, floors: readonly Floor[]): 
       if (e && e !== "none") out.add(e);
     }
   }
+  return out;
+}
+
+/** Covers of openings marked "Invertir el estado" (automatic links included). */
+export function invertedCovers(hass: HomeAssistant, floors: readonly Floor[]): Set<string> {
+  const out = new Set<string>();
+  if (!floors.some((f) => f.openings.some((o) => o.cover_invert))) return out;
+  for (const e of openingEntities(hass, floors).values()) if (e.coverInvert && e.cover) out.add(e.cover);
   return out;
 }
 

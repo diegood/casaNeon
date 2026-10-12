@@ -10,6 +10,7 @@ import { carState, type CarState, roomClimateValue,
   isUnavailable,
   kindOf,
   lightGlow,
+  invertedCovers,
   openingEntities,
   openingState,
   TOGGLE_KINDS,
@@ -92,7 +93,7 @@ import { searchIndex, searchItems, type SearchItem } from "../search.ts";
 import { coverPositionable, lightAbilities } from "./quick-menu.ts";
 import "./quick-menu.ts";
 import { load3d } from "../load3d.ts";
-import { detectionKind, scaleGlow, buildMarkers, cameraMotionSensors, openMoreInfo, stateText, toggleEntity } from "../markers.ts";
+import { detectionKind, scaleGlow, buildMarkers, cameraMotionSensors, openMoreInfo, setInvertedCovers, stateText, toggleEntity } from "../markers.ts";
 import { roofUnderAt, sectionCutsBelow } from "../roof-sections.ts";
 import { centroid, furnitureFootprint, isLamp, LAMP_MODEL, LIFT_SPOTS, outdoorGround, pointInPolygon, poolWaterY, spotDepth, surfaceHeight, type Building, type Furniture, type StartView } from "../model.ts";
 import { poolAreas, poolState, poolWaterGlow, type PoolState } from "../pool.ts";
@@ -718,6 +719,7 @@ export class Fp3dView3d extends LitElement {
     const hass = this.hass;
     if (force || !this.openingLinks || this.linkedRegistry !== hass.entities) {
       this.openingLinks = openingEntities(hass, b.floors);
+      setInvertedCovers(invertedCovers(hass, b.floors));
       this.furnitureLinks = furnitureEntities(hass, b.floors);
       this.linkedRegistry = hass.entities;
       this.findIndex = null;

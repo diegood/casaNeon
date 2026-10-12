@@ -1137,6 +1137,8 @@ const es = {
   cover_position_entity: "Sensor de posición (en directo)",
   cover_position_invert: "El sensor cuenta al revés (0 = abierto)",
   contact_entity: "Contacto",
+  cover_invert: "Invertir el estado",
+  cover_invert_hint: "Para cortinas o persianas que informan abierta cuando están cerradas (o la posición al revés): solo cambia cómo se ven en NeonPlan, los botones siguen igual.",
   sensor_kind: "Tipo de sensor",
   sensor_kind_contact: "Contacto de ventana (abierta/cerrada)",
   sensor_kind_handle: "Sensor de manilla (abierta/abatida/cerrada)",

@@ -13,7 +13,7 @@ test("a lamp switched by a relay takes colour and brightness from its colour ent
   // the bulb unavailable: the relay's own (plain) glow
   assert.deepEqual(lightGlow(relay as never, { ...bulb, state: "unavailable" } as never)!.color, [1, 0.71, 0.28]);
 });
-import { appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
+import { appColor, carLocked, invertedCovers, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
 import type { Floor, Opening, Room } from "./model.ts";
 import { centroid, newFloor, pointInPolygon } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -419,6 +419,20 @@ test("a garage door may follow a switch: on = open, and 'ask first' asks before 
   const floor: Floor = { ...newFloor("f", "F", 0), openings: [opening] };
   assert.ok(confirmEntities(hass, [floor]).has("switch.porton_garage"));
   assert.ok(!confirmEntities(hass, [{ ...floor, openings: [{ ...opening, confirm: false }] }]).has("switch.porton_garage"));
+});
+
+test("'Invertir el estado' turns a curtain's drawing, not its separate position sensor", () => {
+  const st = (entity_id: string, state: string, attributes: Record<string, unknown> = {}) => ({ entity_id, state, attributes });
+  const hass = { states: { "cover.cortina": st("cover.cortina", "open", { current_position: 100 }) } } as unknown as HomeAssistant;
+  const none = { cover: null, contact: null, tilt: null, contact2: null, tilt2: null };
+  assert.equal(openingState(hass, { ...none, cover: "cover.cortina" }).cover, 0);
+  assert.equal(openingState(hass, { ...none, cover: "cover.cortina", coverInvert: true }).cover, 1);
+  hass.states["cover.cortina"] = st("cover.cortina", "closed");
+  assert.equal(openingState(hass, { ...none, cover: "cover.cortina", coverInvert: true }).cover, 0);
+  const opening = { id: "w", room_id: "r", edge: 0, offset: 1, width: 1.2, sill: 0.9, height: 1.3, type: "window", leaves: 1, hinge: "left", cover: "cover.cortina", cover_invert: true } as Opening;
+  const floor: Floor = { ...newFloor("f", "F", 0), openings: [opening] };
+  assert.deepEqual([...invertedCovers(hass, [floor])], ["cover.cortina"]);
+  assert.deepEqual([...invertedCovers(hass, [{ ...floor, openings: [{ ...opening, cover_invert: false }] }])], []);
 });
 
 test("room climate skips device temperatures, honours a chosen sensor and placed sensors", () => {

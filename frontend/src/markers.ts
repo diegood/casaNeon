@@ -11,6 +11,15 @@ import type { DeviceMarker } from "./viewer/viewer3d.ts";
 
 const t = (hass: HomeAssistant | undefined, key: I18nKey) => translate(hass, key);
 
+/** Covers whose openings are marked "Invertir el estado": their text reads the other way round. */
+let invertedCovers: ReadonlySet<string> = new Set();
+
+export function setInvertedCovers(ids: ReadonlySet<string>): void {
+  invertedCovers = ids;
+}
+
+const SWAPPED_COVER_STATE: Record<string, string> = { open: "closed", closed: "open", opening: "closing", closing: "opening" };
+
 /** Short, localised state text for a marker or a panel row. */
 export function stateText(hass: HomeAssistant | undefined, st: HassEntity | undefined): string {
   if (!st || isUnavailable(st)) return t(hass, "state_unavailable");
@@ -22,9 +31,11 @@ export function stateText(hass: HomeAssistant | undefined, st: HassEntity | unde
     case "switch":
     case "fan":
       return t(hass, st.state === "on" ? "state_on" : "state_off");
-    case "cover":
-      if (typeof a.current_position === "number" && st.state !== "opening" && st.state !== "closing") return `${a.current_position} %`;
-      return translateState(hass, st.state);
+    case "cover": {
+      const inverted = invertedCovers.has(st.entity_id);
+      if (typeof a.current_position === "number" && st.state !== "opening" && st.state !== "closing") return `${inverted ? 100 - a.current_position : a.current_position} %`;
+      return translateState(hass, inverted ? (SWAPPED_COVER_STATE[st.state] ?? st.state) : st.state);
+    }
     case "climate": {
       const cur = typeof a.current_temperature === "number" ? `${formatNumber(hass, a.current_temperature, 1)} ${hass ? tempUnit(hass) : "°C"}` : null;
       if (st.state === "off") return cur ? `${cur} · ${t(hass, "state_off")}` : t(hass, "state_off");

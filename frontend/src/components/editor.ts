@@ -8543,6 +8543,10 @@ export class Fp3dEditor extends LitElement {
                     ${this.t("cover_position_invert")}</label
                   >`
                 : nothing}
+              <label class="fp3d-check fp3d-wide" title=${this.t("cover_invert_hint")}
+                ><input type="checkbox" ?disabled=${!admin} .checked=${!!o.cover_invert} @change=${(ev: Event) => this.updateOpening({ cover_invert: (ev.target as HTMLInputElement).checked || undefined })} />
+                ${this.t("cover_invert")}</label
+              >
               <label class="fp3d-check fp3d-wide" title=${this.t("cover_confirm_hint")}
                 ><input type="checkbox" ?disabled=${!admin} .checked=${!!o.confirm} @change=${(ev: Event) => this.updateOpening({ confirm: (ev.target as HTMLInputElement).checked })} />
                 ${this.t("device_confirm")}</label

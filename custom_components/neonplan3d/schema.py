@@ -137,6 +137,8 @@ OPENING_SCHEMA = vol.Schema(
         vol.Optional("position", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # the position sensor counts the other way round (0 = open)
         vol.Optional("position_inverted", default=False): bool,
+        # the blind or curtain reports open as closed (and its position the other way round)
+        vol.Optional("cover_invert", default=False): bool,
         # windows: a sensor with the sash's tilt angle (degrees), the angle that counts as fully tilted,
         # an offset the sensor reports when closed, and the other sign
         vol.Optional("tilt_angle", default=None): _ENTITY_REF,

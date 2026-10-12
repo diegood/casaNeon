@@ -97,6 +97,8 @@ export interface Opening {
   position?: string | null;
   /** The position sensor counts the other way round (0 = open). */
   position_inverted?: boolean;
+  /** The blind or curtain reports open as closed (and its position the other way round): only what is shown turns. */
+  cover_invert?: boolean;
   /** Windows: a sensor with the sash's tilt angle (degrees); the sash tilts in 3D as far as it reports. */
   tilt_angle?: EntityRef;
   /** Angle that counts as fully tilted (default 15°), an offset the sensor reports when closed, and the other sign. */
