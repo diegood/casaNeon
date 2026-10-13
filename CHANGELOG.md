@@ -3,6 +3,12 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.18.1
+
+### Correcciones
+
+- **Tablets con navegador antiguo (Fire 7 con Fully Kiosk y similares):** la vista 3D ya no se queda vacía con el error «Cannot read property 'push' of null». Los WebView anteriores a Chrome 91 tienen un fallo con el encadenamiento opcional; ahora los bundles se generan con código compatible con ellos.
+
 ## 1.18.0
 
 ### Novedades
