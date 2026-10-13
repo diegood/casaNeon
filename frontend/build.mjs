@@ -11,8 +11,10 @@ const common = {
   bundle: true,
   format: "esm",
   // older iPads stay on iOS 15/16: Safari 15 is the oldest with WebGL 2 (three.js needs it); newer syntax such as
-  // static class blocks (Safari 16.4) is turned into older code, otherwise the 3D view fails to load there
-  target: ["safari15", "chrome94", "firefox93", "edge94"],
+  // static class blocks (Safari 16.4) is turned into older code, otherwise the 3D view fails to load there.
+  // Wall tablets such as the Fire 7 (Fully Kiosk) run a Chromium 8x WebView: before Chrome 91, V8 does not
+  // short-circuit `a?.b(...args)` and calls it on null, so optional chaining is lowered for those as well
+  target: ["safari15", "chrome87", "firefox93", "edge94"],
   minify: !watch,
   sourcemap: false,
   legalComments: "none",
