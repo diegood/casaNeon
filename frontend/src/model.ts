@@ -176,6 +176,8 @@ export interface Furniture {
   awning_time?: number | null;
   /** Awning: the cover counts the other way round (100 = in). */
   awning_invert?: boolean;
+  /** Wall switch: the entity of each key, left to right (one to four keys; null = a key without an entity). */
+  switch_keys?: (string | null)[] | null;
   /** Waste bin: what goes in (decides its usual colours and its words in the waste calendar; null = rest). */
   bin_kind?: "rest" | "bio" | "paper" | "plastic" | "glass" | "garden" | "recycling" | "other" | null;
   /** Waste bin: its body colour ("#rrggbb"; null = the usual one of its kind in the country). */
@@ -1158,11 +1160,12 @@ export const FURNITURE_TYPES = [
   "awning",
   "waste_bin",
   "mailbox",
+  "wall_switch",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
 export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
-  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
+  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden", "wall_switch"],
   living: ["sofa", "sofa_l", "sofa_u", "armchair", "stool", "coffee_table", "tv_board", "tv_wall", "sideboard", "shelf", "plant", "rug"],
   dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
@@ -1295,6 +1298,9 @@ export function step(p: Vec2, length: number, dir: Direction): Vec2 {
  * Height of the bottom of a built-in model as drawn (a wall cabinet hangs at 1.45 m, a wall TV is
  * centred at 1.3 m, a radiator stands on short brackets); the mount height replaces it.
  */
+/** A wall switch's bottom edge above the floor (its middle at about 1.1 m). */
+export const SWITCH_Y = 1.05;
+
 export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: string | null }): number {
   switch (f.type) {
     case "home_battery":
@@ -1315,6 +1321,8 @@ export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: strin
     case "mailbox":
       // a wall mailbox and a mailbox bank hang on the wall
       return f.variant === "bank" ? 0.75 : f.variant === "pole" || f.variant === "pillar" || f.variant === "parcel" ? 0 : 1.0;
+    case "wall_switch":
+      return SWITCH_Y;
     case "inverter":
       return 1.1;
     case "wallbox":
@@ -1426,6 +1434,8 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   // a 240 l wheelie bin; a wall mailbox
   waste_bin: [0.58, 0.73, 1.07],
   mailbox: [0.38, 0.14, 0.34],
+  // a single 86 mm plate; more keys make it wider (see switchWidth)
+  wall_switch: [0.086, 0.05, 0.086],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

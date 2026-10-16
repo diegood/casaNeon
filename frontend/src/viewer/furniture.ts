@@ -5,7 +5,8 @@
 
 import { Color } from "three";
 import type { Furniture, Vec2 } from "../model.ts";
-import { builtinBase, stairsULayout, POOL_VALVE_Y } from "../model.ts";
+import { builtinBase, stairsULayout, POOL_VALVE_Y, SWITCH_Y } from "../model.ts";
+import { switchKeys } from "../wall-switch.ts";
 import { mountBase, packItem, packMotion, packMovingPart, packScreen, type PackItem, type PackMotion } from "../packs.ts";
 import { binColors, binShape, householdCountry, mailboxShape, type BinShape, type MailboxShape } from "../household.ts";
 import type { Floor } from "../model.ts";
@@ -1254,6 +1255,32 @@ function gridCabinet(b: Builder, w: number, d: number, h: number): void {
   b.seg(-w * 0.3, h * 0.55, d / 2 + 0.003, w * 0.3, h * 0.55, d / 2 + 0.003, EDGE_FAINT);
 }
 
+/**
+ * Wall switch (from 1.05 m): a thin plate against the wall (the item's back, -z) with its keys side by side, each a
+ * little proud of the plate with a faint seam between them. The keys' LEDs glow in the screen layer (see switchLeds).
+ */
+function wallSwitch(b: Builder, w: number, d: number, h: number, keys: number): void {
+  const y0 = SWITCH_Y;
+  const back = -d / 2;
+  const plate = back + 0.01;
+  b.box(-w / 2, w / 2, y0, y0 + h, back, plate, C.white, C.whiteTop, EDGE_FURN);
+  const kw = w / keys;
+  for (let i = 0; i < keys; i++) {
+    const x0 = -w / 2 + i * kw;
+    b.box(x0 + 0.008, x0 + kw - 0.008, y0 + 0.012, y0 + h - 0.012, plate, plate + 0.006, C.whiteTop, C.whiteTop, EDGE_FAINT);
+  }
+}
+
+/** Where the LED of each key sits, in the item's local coordinates (x across, y up, z its front face). */
+export function switchLeds(f: Pick<Furniture, "w" | "d" | "h" | "switch_keys">): { x: number; y: number; z: number }[] {
+  const w = Math.max(0.05, f.w);
+  const d = Math.max(0.05, f.d);
+  const h = Math.max(0.005, f.h);
+  const n = switchKeys(f).length;
+  const kw = w / n;
+  return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + (i + 0.5) * kw, y: SWITCH_Y + h * 0.2, z: -d / 2 + 0.017 }));
+}
+
 /** Wallbox (from 1.0 m): a compact box with a glowing ring and the charging cable hanging below. */
 function wallbox(b: Builder, w: number, d: number, h: number): void {
   const y0 = 1.0;
@@ -1646,6 +1673,9 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
     case "wallbox":
       wallbox(b, w, d, h);
       return;
+    case "wall_switch":
+      wallSwitch(b, w, d, h, switchKeys(f).length);
+      return; // on the wall, no shadow on the floor
     case "pool_pump":
       poolPump(b, w, d, h);
       break;

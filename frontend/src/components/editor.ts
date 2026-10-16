@@ -20,6 +20,7 @@ import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
+import { MAX_SWITCH_KEYS, SWITCH_KEY_DOMAINS, switchKeys, switchWidth } from "../wall-switch.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
 import { nearestOnOutline, poolFlow, waterColor, type PoolDeviceType } from "../pool-flow.ts";
 import { cameraMotionSensors, detectionKind } from "../markers.ts";
@@ -189,7 +190,7 @@ const WALL_CATS: Record<string, string[]> = {
   hang: ["kitchen_wall", "tv_wall", "shelf", "lamp_wall", "radiator", "ac_unit", "led_strip"],
   tall: ["kitchen_tall", "fridge", "wardrobe", "tall_cabinet", "shelf", "coat_rack"],
   living: ["sofa", "armchair", "bed", "bunk_bed", "bench", "corner_bench", "plant"],
-  light: ["lamp_wall", "lamp_floor", "led_strip", "lamp_table"],
+  light: ["lamp_wall", "lamp_floor", "led_strip", "lamp_table", "wall_switch"],
 };
 /** Hanging pieces (they go into a gap high on the wall). */
 const HANGING = new Set(["kitchen_wall", "tv_wall", "lamp_wall", "shelf", "led_strip", "ac_unit"]);
@@ -248,7 +249,7 @@ function pathLengthOf(p: PoolPipe, nodeAt: (n: string) => { x: number; z: number
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 // furniture without a top to light: no "State from" box
-const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox"]);
+const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch"]);
 
 export class Fp3dEditor extends LitElement {
   static properties = {
@@ -10192,7 +10193,7 @@ export class Fp3dEditor extends LitElement {
             >
           </div>`
         : nothing}
-      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
+      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "wall_switch" ? this.renderWallSwitchForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -10577,6 +10578,38 @@ export class Fp3dEditor extends LitElement {
                       : nothing}`
                 : nothing}
               <p class="fp3d-sub fp3d-wide">${this.t("furn_state_hint")}</p>`;
+  }
+
+  /**
+   * Wall switch: how many keys (the plate grows with them) and the entity each key switches – a light, a switch, a
+   * fan or a cover; "ask first" asks before any key switches.
+   */
+  private renderWallSwitchForm(f: Furniture) {
+    const admin = this.isAdmin;
+    const keys = switchKeys(f);
+    const options = this.entityOptions((id) => SWITCH_KEY_DOMAINS.test(id));
+    const setCount = (n: number) => {
+      const next = Array.from({ length: n }, (_, i) => keys[i] ?? null);
+      this.updateFurniture({ switch_keys: next, w: switchWidth(n) });
+    };
+    return html`<div class="fp3d-form fp3d-links">
+      <label class="fp3d-field fp3d-wide"
+        >${this.t("switch_keys")}
+        <select ?disabled=${!admin} @change=${(e: Event) => setCount(Number((e.target as HTMLSelectElement).value))}>
+          ${Array.from({ length: MAX_SWITCH_KEYS }, (_, i) => i + 1).map((n) => html`<option value=${n} ?selected=${keys.length === n}>${n}</option>`)}
+        </select></label
+      >
+      ${keys.map((k, i) =>
+        this.entitySelect(this.t(keys.length > 1 ? "switch_key_n" : "switch_key", { n: i + 1 }), k, undefined, options, (v) =>
+          this.updateFurniture({ switch_keys: keys.map((x, j) => (j === i ? (v === "none" ? null : v) : x)) }),
+        ),
+      )}
+      <label class="fp3d-check fp3d-wide" title=${this.t("device_confirm_hint")}
+        ><input type="checkbox" .checked=${!!f.confirm} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ confirm: (ev.target as HTMLInputElement).checked })} />
+        ${this.t("device_confirm")}</label
+      >
+      <p class="fp3d-sub fp3d-wide">${this.t("switch_hint")}</p>
+    </div>`;
   }
 
   /** Awning: its fall, the valance, a position sensor, its run time and the other direction (with the cover above). */

@@ -281,6 +281,10 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("service"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("service_min"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=1000))),
         vol.Optional("door_alarm"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0.5, max=120))),
+        # wall switch: the entity each key switches (one to four keys, None = a key without an entity)
+        vol.Optional("switch_keys"): vol.Any(
+            None, vol.All([vol.Any(None, vol.All(str, vol.Length(max=255)))], vol.Length(min=1, max=4))
+        ),
         # LED strip: tilt about its length (degrees) and standing upright
         vol.Optional("tilt", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("upright", default=False): bool,

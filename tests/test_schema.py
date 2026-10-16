@@ -134,3 +134,25 @@ def test_household_fields_are_kept_and_checked() -> None:
     for bad in ({"bin_kind": "nuclear"}, {"bin_color": "blue"}, {"moisture_min": 150}, {"door_alarm": 0}):
         with pytest.raises(vol.Invalid):
             FURNITURE_SCHEMA({**base, **bad})
+
+
+def test_wall_switch_keys() -> None:
+    """A wall switch keeps the entity of each of its one to four keys; more keys are refused."""
+    base = {
+        "id": "s1",
+        "type": "wall_switch",
+        "x": 1,
+        "z": 0.03,
+        "rotation": 0,
+        "w": 0.157,
+        "d": 0.05,
+        "h": 0.086,
+        "variant": None,
+    }
+    out = FURNITURE_SCHEMA({**base, "switch_keys": ["light.salon", None]})
+    assert out["switch_keys"] == ["light.salon", None]
+    assert "switch_keys" not in FURNITURE_SCHEMA(base)
+    with pytest.raises(vol.Invalid):
+        FURNITURE_SCHEMA({**base, "switch_keys": ["light.a", "light.b", "light.c", "light.d", "light.e"]})
+    with pytest.raises(vol.Invalid):
+        FURNITURE_SCHEMA({**base, "switch_keys": []})

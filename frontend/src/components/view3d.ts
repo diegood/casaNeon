@@ -116,7 +116,12 @@ import type { HassEntity, HomeAssistant } from "../types.ts";
 import type { DeviceMarker, FloorplanViewer, FloorStack, RobotInfo, Quality, ScreenState, SoundSource, SurfaceGrab, ViewerStats, WallMode } from "../viewer/viewer3d.ts";
 import { wallLayout } from "../camera-wall.ts";
 import { watchedEntities } from "../watched.ts";
+import { switchKeyOn, switchKeys } from "../wall-switch.ts";
+
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
+
+/** The glow of a wall switch key that is on. */
+const SWITCH_LED: [number, number, number] = [0.35, 0.95, 1];
 
 /** Which HTML markers are shown: none, only what has no 3D object or shows a value, or all. */
 export type MarkerMode = "none" | "important" | "all";
@@ -2308,6 +2313,13 @@ export class Fp3dView3d extends LitElement {
           markers.push(this.lampMarker(hass, floor, f, linked?.entity ?? null));
           continue;
         }
+        // a wall switch: each key switches its own entity when tapped, its LED glows while that is on
+        if (f.type === "wall_switch") {
+          const keys = switchKeys(f);
+          keys.forEach((e, i) => e && targets.set(`${f.id}#${i}`, `ws:${e}`));
+          screens.set(f.id, { color: [0, 0, 0], level: 0, keys: keys.map((e) => (switchKeyOn(hass, e) ? SWITCH_LED : null)) });
+          continue;
+        }
         // a home battery with only its charge, a wallbox with only its status still gets its marker;
         // a parking spot with Auto Pro data gets one even without a presence sensor
         // Pool Pro: the technical room lives with the pool – the pump glows while it runs, the heat pump warm
@@ -3784,6 +3796,13 @@ export class Fp3dView3d extends LitElement {
         this.binInfoTimer = setTimeout(() => (this._binInfo = null), 6000);
       } else if (this.ro) this.showInfo(id, x, y);
       else openMoreInfo(this, id);
+      return;
+    }
+    // a key of a wall switch: it toggles its entity (a cover opens or closes)
+    if (entityId.startsWith("ws:")) {
+      const id = entityId.slice(3);
+      if (this.ro) this.showInfo(id, x, y);
+      else if (!this.confirmSet.has(id) || confirm(translate(this.hass, "confirm_switch", { name: entityName(this.hass, id) }))) void toggleEntity(this.hass, id);
       return;
     }
     if (this.ro) {

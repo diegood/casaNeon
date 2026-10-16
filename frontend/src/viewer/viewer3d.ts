@@ -47,14 +47,15 @@ import {
 } from "three";
 import type { Building, Floor, Furniture, Room, StartView } from "../model.ts";
 import { recolorLamps, SHADE_SENTINEL, shadeFactors } from "./lamp-colors.ts";
-import { centroid, pointInPolygon, openingStyle, setTerrain, WALL_LAMP_Y } from "../model.ts";
+import { builtinBase, centroid, pointInPolygon, openingStyle, setTerrain, WALL_LAMP_Y } from "../model.ts";
 import { buildEarth } from "./earth.ts";
 import { clampIntoRoom } from "../geometry/snap.ts";
 import { roofRider, roofUnderAt, sectionCutsBelow } from "../roof-sections.ts";
 import { buildFloorGeometry, SLAB, stairHoles, type FloorGeometry } from "./build.ts";
 import { OrbitControls, type OrbitView } from "./controls.ts";
 import { makeFoldable, type FoldMasks } from "./fold.ts";
-import { pushAwning, pushCameraModel, pushPackGlow, pushPackLamp, pushPackMotion, screenRect, pushFridgeDoors } from "./furniture.ts";
+import { pushAwning, pushCameraModel, pushPackGlow, pushPackLamp, pushPackMotion, screenRect, pushFridgeDoors, switchLeds } from "./furniture.ts";
+import { switchKeyAt } from "../wall-switch.ts";
 import { pushPipeTube, type PipeTube } from "./pipes.ts";
 // the walk through the house at eye height (lives with the viewer it drives)
 export { FloorMap, WalkCamera, type WalkState } from "./walk.ts";
@@ -252,6 +253,8 @@ export interface ScreenState {
   /** Furniture with a state: glowing faces on top of the item instead of a screen – the whole top, or a half of it. */
   // (see also SoundSource below)
   faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon"; color: [number, number, number]; level: number }[];
+  /** A wall switch: the colour of each key's LED (null = off), left to right. */
+  keys?: ([number, number, number] | null)[];
 }
 
 /** Position of the sun (from sun.sun): degrees above the horizon and clockwise from north. */
@@ -2790,6 +2793,32 @@ export class FloorplanViewer {
       const c = Math.cos(a);
       const s = Math.sin(a);
       const P = (x: number, y: number, z: number) => [f.x + x * c - z * s, y, f.z + x * s + z * c];
+      if (st.keys) {
+        // a wall switch: a small LED on each key that is on, with a soft halo (mirrored: the keys run the other way)
+        const lift = mountBase(fv.floor, f) - builtinBase(f);
+        const mx = f.mirror ? -1 : 1;
+        const dark = new Color(0, 0, 0);
+        switchLeds(f).forEach((led, i) => {
+          const rgb = st.keys![i];
+          if (!rgb) return;
+          const col = new Color(...rgb);
+          const halo = col.clone().multiplyScalar(0.45);
+          const x = led.x * mx;
+          const y = led.y + lift;
+          const r = 0.005;
+          const g = 0.016;
+          const core = [P(x - r, y - r, led.z), P(x + r, y - r, led.z), P(x + r, y + r, led.z), P(x - r, y + r, led.z)];
+          const ring = [P(x - g, y - g, led.z + 0.001), P(x + g, y - g, led.z + 0.001), P(x + g, y + g, led.z + 0.001), P(x - g, y + g, led.z + 0.001)];
+          buf.tri(core[0], core[1], core[2], col);
+          buf.tri(core[0], core[2], core[3], col);
+          for (let k = 0; k < 4; k++) {
+            const j = (k + 1) % 4;
+            buf.tri(core[k], ring[k], ring[j], halo, dark, dark);
+            buf.tri(core[k], ring[j], core[j], halo, dark, halo);
+          }
+        });
+        continue;
+      }
       if (st.faces) {
         // a state on the item itself: a glowing plate on its top (a half of it for a bed's side or a bunk)
         const w = Math.max(0.05, f.w) * (f.mirror ? -1 : 1);
@@ -3253,7 +3282,10 @@ export class FloorplanViewer {
         if (entity) return { entity };
       } else if (hit.object === fv.wallMesh) {
         const id = inRange(fv.geo.furnitureTris, tri);
-        const entity = id ? this.pickFurniture.get(id) : undefined;
+        let entity = id ? this.pickFurniture.get(id) : undefined;
+        // a wall switch: the key under the tap (each key its own entity)
+        const plate = id && !entity ? fv.floor.furniture.find((f) => f.id === id && f.type === "wall_switch") : undefined;
+        if (plate) entity = this.pickFurniture.get(`${plate.id}#${switchKeyAt(plate, hit.point.x, hit.point.z)}`);
         if (entity) return { entity };
         // a wall: the tap stops at it unless it is see-through (cut away, or glass in the floor view)
         if (hit.face && !id) {

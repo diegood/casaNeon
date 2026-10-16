@@ -5,6 +5,7 @@ import type { Furniture, EntityRef, Floor, LampMount, Opening, Placement, RoofWi
 import { centroid, pointInPolygon } from "./model.ts";
 import { isRobotVacuum, packMotion, packScreen } from "./packs.ts";
 import type { HassEntity, HomeAssistant } from "./types.ts";
+import { switchKeys } from "./wall-switch.ts";
 
 export type DeviceKind =
   | "light"
@@ -841,6 +842,8 @@ export function confirmEntities(hass: HomeAssistant, floors: readonly Floor[]): 
       else if (o.type === "garage" && linked?.contact && kindOf(linked.contact) === "switch") out.add(linked.contact);
     }
     for (const f of floor.furniture) {
+      // a wall switch marked "ask first": every key
+      if (f.confirm && f.type === "wall_switch") for (const k of switchKeys(f)) if (k) out.add(k);
       const e = f.confirm ? links.get(f.id)?.entity : null;
       if (e && e !== "none") out.add(e);
     }

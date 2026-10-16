@@ -12,6 +12,7 @@ import { trailSources } from "./trail.ts";
 import type { HomeAssistant } from "./types.ts";
 import { weatherEntity } from "./weather.ts";
 import { householdEntities } from "./household.ts";
+import { switchKeys } from "./wall-switch.ts";
 
 export interface WatchLinks {
   /** Entities of each door and window. */
@@ -48,7 +49,9 @@ export function watchedEntities(hass: HomeAssistant, b: Building, w: WatchLinks)
   const motion = trailSources(hass, b).map((s) => s.entity);
   // Haushalt Pro: the bins' calendars and sensors, the mailboxes' flaps and doors
   const household = hasFeature("household") ? b.floors.flatMap((f) => f.furniture.flatMap(householdEntities)).filter((id) => id !== "none") : [];
+  // wall switches: the entity of every key (their LEDs follow them)
+  const switches = b.floors.flatMap((f) => f.furniture.flatMap((m) => (m.type === "wall_switch" ? switchKeys(m) : [])));
   const weather = weatherEntity(hass, w.weatherEntityId ?? b.settings.weather_entity);
-  const all = [...placed, ...cameraSensors, ...links, ...power, ...furniture, ...states, ...doors, ...robotRooms, ...roofWindowIds, ...solarIds, ...pictureRules, e.grid, e.solar, e.battery, e.battery_soc, e.consumption, e.tariff, ...presence, ...lights, ...heat, ...w.warnings, ...parking, ...motion, ...household, weather, "sun.sun"];
+  const all = [...switches, ...placed, ...cameraSensors, ...links, ...power, ...furniture, ...states, ...doors, ...robotRooms, ...roofWindowIds, ...solarIds, ...pictureRules, e.grid, e.solar, e.battery, e.battery_soc, e.consumption, e.tariff, ...presence, ...lights, ...heat, ...w.warnings, ...parking, ...motion, ...household, weather, "sun.sun"];
   return [...new Set(all.filter((id): id is string => !!id))];
 }
