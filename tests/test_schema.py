@@ -157,3 +157,25 @@ def test_wall_switch_keys() -> None:
         FURNITURE_SCHEMA({**base, "switch_keys": ["light.a", "light.b", "light.c", "light.d", "light.e"]})
     with pytest.raises(vol.Invalid):
         FURNITURE_SCHEMA({**base, "switch_keys": []})
+
+
+def test_wall_socket_outlets() -> None:
+    """A wall socket keeps each outlet's switch and power sensor (both optional); one to four outlets."""
+    base = {
+        "id": "p1",
+        "type": "wall_socket",
+        "x": 1,
+        "z": 0.03,
+        "rotation": 0,
+        "w": 0.157,
+        "d": 0.05,
+        "h": 0.086,
+        "variant": None,
+    }
+    out = FURNITURE_SCHEMA({**base, "socket_outlets": [{"entity": "switch.plug", "power": "sensor.plug_w"}, {}]})
+    assert out["socket_outlets"] == [
+        {"entity": "switch.plug", "power": "sensor.plug_w"},
+        {"entity": None, "power": None},
+    ]
+    with pytest.raises(vol.Invalid):
+        FURNITURE_SCHEMA({**base, "socket_outlets": [{}, {}, {}, {}, {}]})

@@ -180,6 +180,8 @@ export interface Furniture {
   switch_keys?: (string | null)[] | null;
   /** Wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness the ring shows. */
   switch_ring?: EntityRef;
+  /** Wall socket: its outlets, left to right (one to four), each with an optional switch and power sensor. */
+  socket_outlets?: { entity?: string | null; power?: string | null }[] | null;
   /** Waste bin: what goes in (decides its usual colours and its words in the waste calendar; null = rest). */
   bin_kind?: "rest" | "bio" | "paper" | "plastic" | "glass" | "garden" | "recycling" | "other" | null;
   /** Waste bin: its body colour ("#rrggbb"; null = the usual one of its kind in the country). */
@@ -1163,11 +1165,12 @@ export const FURNITURE_TYPES = [
   "waste_bin",
   "mailbox",
   "wall_switch",
+  "wall_socket",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
 export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
-  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden", "wall_switch"],
+  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
   living: ["sofa", "sofa_l", "sofa_u", "armchair", "stool", "coffee_table", "tv_board", "tv_wall", "sideboard", "shelf", "plant", "rug"],
   dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
@@ -1177,6 +1180,7 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   vehicles: ["parking"],
   outdoor: ["awning"],
   household: ["waste_bin", "mailbox"],
+  electric: ["wall_switch", "wall_socket"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1302,6 +1306,8 @@ export function step(p: Vec2, length: number, dir: Direction): Vec2 {
  */
 /** A wall switch's bottom edge above the floor (its middle at about 1.1 m). */
 export const SWITCH_Y = 1.05;
+/** A wall socket's bottom edge above the floor (raise it in its form, e.g. over a worktop). */
+export const SOCKET_Y = 0.3;
 
 export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: string | null }): number {
   switch (f.type) {
@@ -1325,6 +1331,8 @@ export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: strin
       return f.variant === "bank" ? 0.75 : f.variant === "pole" || f.variant === "pillar" || f.variant === "parcel" ? 0 : 1.0;
     case "wall_switch":
       return SWITCH_Y;
+    case "wall_socket":
+      return SOCKET_Y;
     case "inverter":
       return 1.1;
     case "wallbox":
@@ -1438,6 +1446,7 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   mailbox: [0.38, 0.14, 0.34],
   // a single 86 mm plate; more keys make it wider (see switchWidth)
   wall_switch: [0.086, 0.05, 0.086],
+  wall_socket: [0.086, 0.05, 0.086],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

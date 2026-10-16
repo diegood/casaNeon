@@ -20,7 +20,7 @@ import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
-import { MAX_SWITCH_KEYS, SWITCH_KEY_DOMAINS, switchKeys, switchRing, switchWidth } from "../wall-switch.ts";
+import { MAX_SWITCH_KEYS, SOCKET_SWITCH_DOMAINS, socketOutlets, SWITCH_KEY_DOMAINS, switchKeys, switchRing, switchWidth, type SocketOutlet } from "../wall-switch.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
 import { nearestOnOutline, poolFlow, waterColor, type PoolDeviceType } from "../pool-flow.ts";
 import { cameraMotionSensors, detectionKind } from "../markers.ts";
@@ -249,7 +249,7 @@ function pathLengthOf(p: PoolPipe, nodeAt: (n: string) => { x: number; z: number
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 // furniture without a top to light: no "State from" box
-const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch"]);
+const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch", "wall_socket"]);
 
 export class Fp3dEditor extends LitElement {
   static properties = {
@@ -10193,7 +10193,7 @@ export class Fp3dEditor extends LitElement {
             >
           </div>`
         : nothing}
-      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "wall_switch" ? this.renderWallSwitchForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
+      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "wall_switch" ? this.renderWallSwitchForm(f) : f.type === "wall_socket" ? this.renderWallSocketForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -10611,6 +10611,38 @@ export class Fp3dEditor extends LitElement {
         ${this.t("device_confirm")}</label
       >
       <p class="fp3d-sub fp3d-wide">${this.t("switch_hint")}</p>
+    </div>`;
+  }
+
+  /**
+   * Wall socket: how many outlets (square modules, the plate grows with them) and for each an optional switch (a smart
+   * plug: a tap toggles it) and an optional power sensor (it then counts in the energy balance).
+   */
+  private renderWallSocketForm(f: Furniture) {
+    const admin = this.isAdmin;
+    const outlets = socketOutlets(f);
+    const switches = this.entityOptions((id) => SOCKET_SWITCH_DOMAINS.test(id));
+    const power = this.entityOptions((id) => this.isPowerSensor(id));
+    const set = (i: number, patch: SocketOutlet) => this.updateFurniture({ socket_outlets: outlets.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
+    const setCount = (n: number) =>
+      this.updateFurniture({ socket_outlets: Array.from({ length: n }, (_, i) => outlets[i] ?? { entity: null, power: null }), w: switchWidth(n) });
+    return html`<div class="fp3d-form fp3d-links">
+      <label class="fp3d-field fp3d-wide"
+        >${this.t("socket_count")}
+        <select ?disabled=${!admin} @change=${(e: Event) => setCount(Number((e.target as HTMLSelectElement).value))}>
+          ${Array.from({ length: MAX_SWITCH_KEYS }, (_, i) => i + 1).map((n) => html`<option value=${n} ?selected=${outlets.length === n}>${n}</option>`)}
+        </select></label
+      >
+      ${outlets.map(
+        (o, i) => html`${outlets.length > 1 ? html`<h4 class="fp3d-lib-head fp3d-wide">${this.t("socket_n", { n: i + 1 })}</h4>` : nothing}
+          ${this.entitySelect(this.t("socket_switch"), o.entity, undefined, switches, (v) => set(i, { entity: v === "none" ? null : v }))}
+          ${this.entitySelect(this.t("socket_power"), o.power, undefined, power, (v) => set(i, { power: v === "none" ? null : v }))}`,
+      )}
+      <label class="fp3d-check fp3d-wide" title=${this.t("device_confirm_hint")}
+        ><input type="checkbox" .checked=${!!f.confirm} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ confirm: (ev.target as HTMLInputElement).checked })} />
+        ${this.t("device_confirm")}</label
+      >
+      <p class="fp3d-sub fp3d-wide">${this.t("socket_hint")}</p>
     </div>`;
   }
 

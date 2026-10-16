@@ -5,8 +5,8 @@
 
 import { Color } from "three";
 import type { Furniture, Vec2 } from "../model.ts";
-import { builtinBase, stairsULayout, POOL_VALVE_Y, SWITCH_Y } from "../model.ts";
-import { switchKeys } from "../wall-switch.ts";
+import { builtinBase, stairsULayout, POOL_VALVE_Y, SOCKET_Y, SWITCH_Y } from "../model.ts";
+import { plateModules, switchKeys } from "../wall-switch.ts";
 import { mountBase, packItem, packMotion, packMovingPart, packScreen, type PackItem, type PackMotion } from "../packs.ts";
 import { binColors, binShape, householdCountry, mailboxShape, type BinShape, type MailboxShape } from "../household.ts";
 import type { Floor } from "../model.ts";
@@ -1271,14 +1271,37 @@ function wallSwitch(b: Builder, w: number, d: number, h: number, keys: number): 
   }
 }
 
-/** Where the LED of each key sits, in the item's local coordinates (x across, y up, z its front face). */
-export function switchLeds(f: Pick<Furniture, "w" | "d" | "h" | "switch_keys">): { x: number; y: number; z: number }[] {
+/**
+ * Wall socket (from 0.3 m): the same plate in square modules, each with a round socket – a raised ring round a
+ * recessed face with its two pin holes. The small LED of an outlet that is on glows in the screen layer.
+ */
+function wallSocket(b: Builder, w: number, d: number, h: number, outlets: number): void {
+  const y0 = SOCKET_Y;
+  const back = -d / 2;
+  const plate = back + 0.01;
+  b.box(-w / 2, w / 2, y0, y0 + h, back, plate, C.white, C.whiteTop, EDGE_FURN);
+  const mw = w / outlets;
+  const cy = y0 + h / 2;
+  const r = Math.min(mw, h) * 0.3;
+  for (let i = 0; i < outlets; i++) {
+    const cx = -w / 2 + (i + 0.5) * mw;
+    if (i > 0) b.seg(cx - mw / 2, y0 + 0.006, plate + 0.001, cx - mw / 2, y0 + h - 0.006, plate + 0.001, EDGE_FAINT);
+    b.lyingCyl("z", cx, plate + 0.004, cy - r, cy + r, 0.008, r * 2, C.whiteTop, C.whiteTop, 16, EDGE_FAINT);
+    b.lyingCyl("z", cx, plate + 0.006, cy - r * 0.78, cy + r * 0.78, 0.008, r * 1.56, C.white, C.white, 16);
+    for (const dx of [-r * 0.38, r * 0.38]) b.lyingCyl("z", cx + dx, plate + 0.0065, cy - 0.0025, cy + 0.0025, 0.008, 0.005, C.dark, C.dark, 6);
+  }
+}
+
+/** Where the LED of each key or outlet sits, in the item's local coordinates (x across, y up, z its front face). */
+export function switchLeds(f: Pick<Furniture, "type" | "w" | "d" | "h" | "switch_keys" | "socket_outlets">): { x: number; y: number; z: number; r: number }[] {
   const w = Math.max(0.05, f.w);
   const d = Math.max(0.05, f.d);
   const h = Math.max(0.005, f.h);
-  const n = switchKeys(f).length;
+  const n = plateModules(f);
   const kw = w / n;
-  return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + (i + 0.5) * kw, y: SWITCH_Y + h * 0.2, z: -d / 2 + 0.017 }));
+  // a socket's LED is a small dot in the top corner of its module, a key's sits low in the key
+  if (f.type === "wall_socket") return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + (i + 1) * kw - 0.012, y: SOCKET_Y + h - 0.012, z: -d / 2 + 0.011, r: 0.0025 }));
+  return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + (i + 0.5) * kw, y: SWITCH_Y + h * 0.2, z: -d / 2 + 0.017, r: 0.005 }));
 }
 
 /** Wallbox (from 1.0 m): a compact box with a glowing ring and the charging cable hanging below. */
@@ -1676,6 +1699,9 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
     case "wall_switch":
       wallSwitch(b, w, d, h, switchKeys(f).length);
       return; // on the wall, no shadow on the floor
+    case "wall_socket":
+      wallSocket(b, w, d, h, plateModules(f));
+      return;
     case "pool_pump":
       poolPump(b, w, d, h);
       break;

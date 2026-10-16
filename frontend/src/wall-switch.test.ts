@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { HomeAssistant } from "./types.ts";
-import { switchKeyAt, switchKeyOn, switchKeys, switchRing, switchWidth } from "./wall-switch.ts";
+import { plateModules, socketOutlets, switchKeyAt, switchKeyOn, switchKeys, switchRing, switchWidth } from "./wall-switch.ts";
 
 test("a wall switch has one to four keys", () => {
   assert.deepEqual(switchKeys({}), [null]);
@@ -17,7 +17,7 @@ test("more keys make the plate wider", () => {
 });
 
 test("a tap finds its key along the plate, turned and mirrored too", () => {
-  const plate = { x: 2, z: 1, rotation: 0, w: 0.3, mirror: false, switch_keys: ["a", "b", "c"] };
+  const plate = { type: "wall_switch", x: 2, z: 1, rotation: 0, w: 0.3, mirror: false, switch_keys: ["a", "b", "c"] };
   assert.equal(switchKeyAt(plate, 2 - 0.12, 1), 0);
   assert.equal(switchKeyAt(plate, 2, 1), 1);
   assert.equal(switchKeyAt(plate, 2 + 0.12, 1), 2);
@@ -40,4 +40,18 @@ test("a light ring takes its colour from a light, if one is set", () => {
   assert.equal(switchRing({}), null);
   assert.equal(switchRing({ switch_ring: "none" }), null);
   assert.equal(switchRing({ switch_ring: "light.tx_ultimate" }), "light.tx_ultimate");
+});
+
+test("a wall socket has one to four outlets, each with an optional switch and power sensor", () => {
+  assert.deepEqual(socketOutlets({}), [{ entity: null, power: null }]);
+  assert.deepEqual(socketOutlets({ socket_outlets: [{ entity: "switch.plug", power: "none" }, { power: "sensor.plug_w" }] }), [
+    { entity: "switch.plug", power: null },
+    { entity: null, power: "sensor.plug_w" },
+  ]);
+  assert.equal(plateModules({ type: "wall_socket", socket_outlets: [{}, {}, {}] }), 3);
+  assert.equal(plateModules({ type: "wall_switch", switch_keys: ["a", "b"] }), 2);
+  // a tap finds its outlet like a key
+  const socket = { type: "wall_socket", x: 0, z: 0, rotation: 0, w: 0.157, mirror: false, socket_outlets: [{}, {}] };
+  assert.equal(switchKeyAt(socket, -0.05, 0), 0);
+  assert.equal(switchKeyAt(socket, 0.05, 0), 1);
 });

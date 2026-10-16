@@ -285,6 +285,21 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("switch_keys"): vol.Any(
             None, vol.All([vol.Any(None, vol.All(str, vol.Length(max=255)))], vol.Length(min=1, max=4))
         ),
+        # wall socket: its outlets (one to four), each with an optional switch and power sensor
+        vol.Optional("socket_outlets"): vol.Any(
+            None,
+            vol.All(
+                [
+                    vol.Schema(
+                        {
+                            vol.Optional("entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
+                            vol.Optional("power", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
+                        }
+                    )
+                ],
+                vol.Length(min=1, max=4),
+            ),
+        ),
         # wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness it shows
         vol.Optional("switch_ring"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # LED strip: tilt about its length (degrees) and standing upright

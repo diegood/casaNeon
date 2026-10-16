@@ -2826,8 +2826,8 @@ export class FloorplanViewer {
           const halo = col.clone().multiplyScalar(0.45);
           const x = led.x * mx;
           const y = led.y + lift;
-          const r = 0.005;
-          const g = 0.016;
+          const r = led.r;
+          const g = r * 2.6;
           const core = [P(x - r, y - r, led.z), P(x + r, y - r, led.z), P(x + r, y + r, led.z), P(x - r, y + r, led.z)];
           const ring = [P(x - g, y - g, led.z + 0.001), P(x + g, y - g, led.z + 0.001), P(x + g, y + g, led.z + 0.001), P(x - g, y + g, led.z + 0.001)];
           buf.tri(core[0], core[1], core[2], col);
@@ -3304,8 +3304,8 @@ export class FloorplanViewer {
       } else if (hit.object === fv.wallMesh) {
         const id = inRange(fv.geo.furnitureTris, tri);
         let entity = id ? this.pickFurniture.get(id) : undefined;
-        // a wall switch: the key under the tap (each key its own entity)
-        const plate = id && !entity ? fv.floor.furniture.find((f) => f.id === id && f.type === "wall_switch") : undefined;
+        // a wall switch or socket: the key or outlet under the tap (each its own entity)
+        const plate = id && !entity ? fv.floor.furniture.find((f) => f.id === id && (f.type === "wall_switch" || f.type === "wall_socket")) : undefined;
         if (plate) entity = this.pickFurniture.get(`${plate.id}#${switchKeyAt(plate, hit.point.x, hit.point.z)}`);
         if (entity) return { entity };
         // a wall: the tap stops at it unless it is see-through (cut away, or glass in the floor view)

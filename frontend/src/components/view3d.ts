@@ -116,12 +116,14 @@ import type { HassEntity, HomeAssistant } from "../types.ts";
 import type { DeviceMarker, FloorplanViewer, FloorStack, RobotInfo, Quality, ScreenState, SoundSource, SurfaceGrab, ViewerStats, WallMode } from "../viewer/viewer3d.ts";
 import { wallLayout } from "../camera-wall.ts";
 import { watchedEntities } from "../watched.ts";
-import { switchKeyOn, switchKeys, switchRing } from "../wall-switch.ts";
+import { socketOutlets, switchKeyOn, switchKeys, switchRing } from "../wall-switch.ts";
 
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
 
 /** The glow of a wall switch key that is on. */
 const SWITCH_LED: [number, number, number] = [0.35, 0.95, 1];
+/** The small LED of a wall socket's outlet that is on. */
+const SOCKET_LED: [number, number, number] = [1, 0.3, 0.2];
 
 /** Which HTML markers are shown: none, only what has no 3D object or shows a value, or all. */
 export type MarkerMode = "none" | "important" | "all";
@@ -2319,6 +2321,54 @@ export class Fp3dView3d extends LitElement {
           keys.forEach((e, i) => e && targets.set(`${f.id}#${i}`, `ws:${e}`));
           const ring = switchRing(f);
           screens.set(f.id, { color: [0, 0, 0], level: 0, keys: keys.map((e) => (switchKeyOn(hass, e) ? SWITCH_LED : null)), switchRing: ring ? lightGlow(hass.states[ring]) : null });
+          continue;
+        }
+        // a wall socket: an outlet with a switch toggles it when tapped (its small LED shows it is on); one with a power
+        // sensor is a consumer of the energy balance, and the socket's pin shows what all its outlets draw
+        if (f.type === "wall_socket") {
+          const runW = typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 5;
+          let total: number | null = null;
+          let pin: string | null = null;
+          const leds = socketOutlets(f).map((o, i) => {
+            if (o.entity) targets.set(`${f.id}#${i}`, `ws:${o.entity}`);
+            else if (o.power) targets.set(`${f.id}#${i}`, o.power);
+            const w = o.power ? readPower(hass.states[o.power]) : null;
+            if (o.power && w !== null) {
+              total = (total ?? 0) + Math.max(0, w);
+              pin ??= o.power;
+              if (!consumerSensors.has(o.power)) {
+                consumerSensors.add(o.power);
+                consumers.push({ id: o.entity ?? o.power, powerEntity: o.power, floorId: floor.id, x: f.x, z: f.z, power: Math.max(0, w) });
+              }
+            }
+            const on = o.entity ? switchKeyOn(hass, o.entity) : (w ?? 0) > runW;
+            return on ? SOCKET_LED : null;
+          });
+          screens.set(f.id, { color: [0, 0, 0], level: 0, keys: leds });
+          if (pin !== null && total !== null && !taken.has(pin)) {
+            const watts: number = total;
+            taken.add(pin);
+            const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
+            markers.push({
+              id: pin,
+              floorId: floor.id,
+              roomId: room?.id ?? null,
+              x: f.x,
+              z: f.z,
+              y: markerHeight(f) + mountBase(floor, f),
+              icon: mdiIcon(f.icon || "power-socket-eu"),
+              name: f.name || furnitureName(hass, f.type),
+              ownName: f.name || undefined,
+              showName: !!f.show_name,
+              text: formatPower(hass, watts),
+              active: watts > runW,
+              unavailable: false,
+              glow: null,
+              furnitureId: f.id,
+              show: f.marker ?? undefined,
+              fromFurniture: true,
+            });
+          }
           continue;
         }
         // a home battery with only its charge, a wallbox with only its status still gets its marker;
