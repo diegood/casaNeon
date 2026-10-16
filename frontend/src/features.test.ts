@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasFeature, manualUrl, shopUrl, unlockedFeatures } from "./features.ts";
+import { hasFeature, manualUrl, unlockedFeatures } from "./features.ts";
 
 test("every released feature is unlocked without any pack", () => {
   for (const f of ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "fridge_smart"] as const) assert.equal(hasFeature(f), true);
   assert.deepEqual([...unlockedFeatures()].sort(), ["auto_pro", "camera_cockpit", "energy_pro", "fridge_smart", "screens", "sound", "time_travel", "weather"]);
 });
 
-test("time travel has its section in the manual", () => {
-  assert.equal(manualUrl("de", "time_travel"), "https://mastershort.de/neonplan3d/anleitung/pro-erweiterungen/?lang=de#67-zeitreise");
-  assert.equal(manualUrl("en", "time_travel"), "https://mastershort.de/en/neonplan3d/manual/pro-add-ons/?lang=en#67-time-travel");
-});
-
-test("manual and shop links follow the language and point Pro add-ons at their section", () => {
-  assert.equal(manualUrl("de"), "https://mastershort.de/neonplan3d/anleitung/?lang=de");
-  assert.equal(manualUrl("en-GB"), "https://mastershort.de/en/neonplan3d/manual/?lang=en");
-  assert.equal(manualUrl("de", "weather"), "https://mastershort.de/neonplan3d/anleitung/pro-erweiterungen/?lang=de#62-wetter-drau%C3%9Fen");
-  assert.equal(manualUrl("fr", "camera_cockpit"), "https://mastershort.de/en/neonplan3d/manual/pro-add-ons/?lang=en#61-camera-cockpit");
-  assert.equal(shopUrl("de-AT"), "https://mastershort.de/neonplan3d/?lang=de");
-  assert.equal(shopUrl("nl"), "https://mastershort.de/en/neonplan3d/?lang=en");
+test("manual links point Pro add-ons at their section on GitHub", () => {
+  assert.equal(manualUrl(), "https://github.com/diegood/neonplan3d/blob/main/docs/manual.md");
+  assert.equal(manualUrl("time_travel"), "https://github.com/diegood/neonplan3d/blob/main/docs/manual.md#67-time-travel");
+  assert.equal(manualUrl("camera_cockpit"), "https://github.com/diegood/neonplan3d/blob/main/docs/manual.md#61-camera-cockpit");
 });
 
 test("an unreleased add-on stays locked and hidden, even with its pack", async () => {

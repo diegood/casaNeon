@@ -47,7 +47,7 @@ export class TimeTravel {
       },
       (err: unknown) => {
         this.starting = false;
-        console.error("NeonPlan 3D: time travel failed to load", err);
+        console.error("CasaNeon: time travel failed to load", err);
         this.host.requestUpdate();
       },
     );

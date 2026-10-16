@@ -31,7 +31,7 @@ LOADER_FILE = "neonplan3d-loader.js"
 LOADER_URL = f"/local/{LOADER_DIR}/{LOADER_FILE}"
 
 # tries every 5 s for 15 minutes; the first try is awaited, so a dashboard normally waits for the card as before
-_LOADER = """// NeonPlan 3D: loads the dashboard card. Written by the integration; changes here are overwritten.
+_LOADER = """// CasaNeon: loads the dashboard card. Written by the integration; changes here are overwritten.
 // While Home Assistant is still starting, the card's script is not served yet: then it tries again (#461).
 const url = "{url}";
 const tag = "neonplan3d-card";

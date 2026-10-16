@@ -2,12 +2,12 @@
   "config": {
     "step": {
       "user": {
-        "title": "NeonPlan 3D",
+        "title": "CasaNeon",
         "description": "Añade una página en la barra lateral donde dibujas tu casa y la ves en 3D."
       }
     },
     "abort": {
-      "single_instance_allowed": "NeonPlan 3D ya está configurado."
+      "single_instance_allowed": "CasaNeon ya está configurado."
     }
   }
 }

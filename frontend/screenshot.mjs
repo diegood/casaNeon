@@ -230,8 +230,7 @@ const shots = [
   { name: "editor-packs", query: "", width: 1280, height: 1000, editor: true, editorState: { _tool: "furniture", _roomId: "wohnen" }, scrollSide: true },
   { name: "view-packs", query: "", width: 1280, height: 800, editor: true, editorScript: PACK_SCRIPT, then3d: "Wohnzimmer" },
   { name: "editor-packs-plan", query: "", width: 1280, height: 800, editor: true, editorScript: PACK_SCRIPT },
-  { name: "extensions", query: "?shop", width: 1280, height: 1000, click: "✦ Erweiterungen", wait: 800 },
-  { name: "tab-new-offers", query: "?shop", width: 1280, height: 300, wait: 1500 },
+  { name: "extensions", query: "", width: 1280, height: 1000, click: "✦ Extensiones", wait: 800 },
   { name: "extensions-locked", query: "?nopro", width: 1280, height: 1000, click: "✦ Erweiterungen", wait: 800 },
   { name: "card-editor", query: "?card", width: 1400, height: 900 },
   { name: "card-og-dim", query: "?card&floor=og", width: 1400, height: 900 },
@@ -312,9 +311,6 @@ const shots = [
   { name: "editor-sidelight", query: "", width: 1280, height: 900, editor: true, editorState: { _openingId: "o14", _roomId: "flur" }, scrollSide: true },
   { name: "view-mirror", query: "", width: 1280, height: 800, editor: true, editorScript: "e.change((d) => { for (const m of d.floors[0].furniture) if (m.type === 'sofa' || m.type === 'tv_board') m.mirror = true; });", then3d: "Erdgeschoss", camera: { theta: 0.9, phi: 1.15, radius: 6, target: { x: 2.4, y: 0.8, z: 2.2 } } },
   { name: "view-nav-wrap", query: "", width: 760, height: 700, click: "Alle Etagen", viewScript: "v.getRootNode().host._navWrap = true;", wait: 1200 },
-  // the online demo on a phone: a one-time hint what it is made for, with "only the house" (the eye)
-  { name: "demo-phone-hint", query: "?site", width: 390, height: 844, wait: 1500 },
-  { name: "demo-phone-clean", query: "?site", width: 390, height: 844, click: "Nur das Haus zeigen", wait: 1500 },
   { name: "view-clean-phone", query: "", width: 430, height: 860, click: "Erdgeschoss", viewScript: "v.dispatchEvent(new CustomEvent('clean-toggle', { bubbles: true, composed: true }));", wait: 1200 },
   { name: "view-strip-upright", query: "", width: 1280, height: 800, editor: true, editorScript: "e.fit();", then3d: "Erdgeschoss", camera: { theta: 1.3, phi: 1.2, radius: 5, target: { x: 1.2, y: 1, z: 1.4 } } },
   { name: "view-pro-locked", query: "?nopro", width: 1280, height: 800, click: "Erdgeschoss", then: "Wohnzimmer", viewScript: "v.lookThrough('camera.wohnzimmer');" },
@@ -336,14 +332,6 @@ const shots = [
   { name: "view-timetravel-day", query: "?tt=-26h", width: 1280, height: 800, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); s.setRange('7d'); bar._sheet = 'day'; setTimeout(() => (bar._compare = true), 2500);", afterWait: 3500 },
   { name: "view-timetravel-energy", query: "?tt=13:00&flows", width: 1280, height: 800, wait: 1500 },
   { name: "tablet-timetravel-7d", query: "?tt=-20h", width: 800, height: 1280, click: "Tablet", then: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); s.setRange('7d');", afterWait: 3000 },
-  // shop pictures of the time travel add-on (de), framed by tools/shop/pro-image.py
-  { name: "shop-tt-events-de", query: "?tt=10:20", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); bar._sheet = 'events';", afterWait: 1500 },
-  { name: "shop-tt-away-de", query: "?tt=11:30", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); bar._sheet = 'away';", afterWait: 1500 },
-  { name: "shop-tt-day-de", query: "?tt=-26h", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); s.setRange('7d'); bar._sheet = 'day'; setTimeout(() => (bar._compare = true), 2500);", afterWait: 3500 },
-  // shop pictures of the time travel add-on (en), framed by tools/shop/pro-image.py
-  { name: "shop-tt-events-en", query: "?tt=10:20&lang=en", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); bar._sheet = 'events';", afterWait: 1500 },
-  { name: "shop-tt-away-en", query: "?tt=11:30&lang=en", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); bar._sheet = 'away';", afterWait: 1500 },
-  { name: "shop-tt-day-en", query: "?tt=-26h&lang=en", width: 1200, height: 860, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); s.setRange('7d'); bar._sheet = 'day'; setTimeout(() => (bar._compare = true), 2500);", afterWait: 3500 },
   // "fill the screen" reaches the bottom edge, measured from where the card starts (#344)
   { name: "card-fill", query: "?card&fill", width: 1280, height: 800, wait: 1500 },
   { name: "card-timetravel", query: "?card&tt", width: 1400, height: 900, click: "⏪ Zeitreise" },
@@ -355,8 +343,6 @@ const shots = [
   { name: "view-floor-stack-panel", query: "", width: 1280, height: 800, click: "Obergeschoss", then: "Einzeln" },
   { name: "view-room-names-off", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Raumnamen" },
   { name: "empty", query: "?empty", width: 1280, height: 800 },
-  { name: "site-demo", query: "?site&lang=en", width: 1280, height: 800 },
-  { name: "site-demo-phone", query: "?site&lang=de", width: 390, height: 844 },
 ];
 
 const errors = [];

@@ -341,7 +341,7 @@ export class Session implements TimeTravelSession {
         try {
           older = await this.fetchWindow(to - DAY, to);
         } catch (err) {
-          console.warn("NeonPlan 3D: time travel could not load an older day", err);
+          console.warn("CasaNeon: time travel could not load an older day", err);
           break;
         }
         if (!older || this.disposed || !this.timeline) return;

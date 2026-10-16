@@ -1,6 +1,6 @@
 {
   "domain": "neonplan3d",
-  "name": "NeonPlan 3D",
+  "name": "CasaNeon",
   "after_dependencies": ["recorder"],
   "codeowners": ["@diegood"],
   "config_flow": true,

@@ -1,4 +1,4 @@
-"""Constants for NeonPlan 3D."""
+"""Constants for CasaNeon."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ STORAGE_KEY_BUILDING = f"{DOMAIN}.building"
 STORAGE_KEY_IMAGES = f"{DOMAIN}.images"
 STORAGE_KEY_HISTORY = f"{DOMAIN}.history"
 STORAGE_KEY_PACKS = f"{DOMAIN}.packs"
+# the shop connection of earlier versions; removed on load
 STORAGE_KEY_LICENSE = f"{DOMAIN}.license"
 
 # restore points: at most this many, and a new one only after this pause since the last one
@@ -24,6 +25,6 @@ MAIN_BUNDLE = "neonplan3d.js"
 PANEL_URL_PATH = "neonplan3d"
 PANEL_COMPONENT = "neonplan3d-panel"
 PANEL_ICON = "mdi:floor-plan"
-PANEL_TITLE = "NeonPlan 3D"
+PANEL_TITLE = "CasaNeon"
 
 SIGNAL_BUILDING_UPDATED = f"{DOMAIN}_building_updated"

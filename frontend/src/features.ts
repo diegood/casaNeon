@@ -5,11 +5,11 @@
 
 export type Feature = "camera_cockpit" | "weather" | "screens" | "energy_pro" | "sound" | "auto_pro" | "time_travel" | "pool" | "fridge_smart";
 
-/** The add-ons shown on the extensions page (sold in the shop). */
+/** The add-ons shown on the extensions page. */
 export const FEATURES: readonly Feature[] = ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "pool"];
 /**
- * Pro add-ons built but not released yet: they show nowhere (extensions page, teasers) unless they are
- * unlocked (the tester has the pack) or the lab switch is on (localStorage "neonplan3d.lab" = "1").
+ * Pro add-ons built but not released yet: they show nowhere (extensions page, teasers) unless the lab
+ * switch is on (localStorage "neonplan3d.lab" = "1").
  * A release takes a feature off this list.
  */
 export const UNRELEASED: readonly Feature[] = ["pool"];
@@ -35,37 +35,26 @@ export function knownFeature(key: string): boolean {
   return (FEATURES as readonly string[]).includes(key) || (HIDDEN as readonly string[]).includes(key);
 }
 
-/** The shop page where the Pro pack is sold (German; see shopUrl for the user's language). */
-export const PRO_URL = "https://mastershort.de/neonplan3d/";
+/** The manual on GitHub (English). */
+const MANUAL = "https://github.com/diegood/neonplan3d/blob/main/docs/manual.md";
 
-const isGerman = (lang: string | undefined) => (lang ?? navigator.language).toLowerCase().startsWith("de");
-
-/** The NeonPlan 3D page of the shop in the user's language (?lang= makes the site keep that language). */
-export function shopUrl(lang: string | undefined): string {
-  return isGerman(lang) ? "https://mastershort.de/neonplan3d/?lang=de" : "https://mastershort.de/en/neonplan3d/?lang=en";
-}
-
-/** Where each Pro add-on is described in chapter 6 of the manual: German and English slug and anchor. */
-const MANUAL_FEATURE: Record<string, { de: string; en: string }> = {
-  camera_cockpit: { de: "pro-erweiterungen/#61-kamera-cockpit", en: "pro-add-ons/#61-camera-cockpit" },
-  weather: { de: "pro-erweiterungen/#62-wetter-drau%C3%9Fen", en: "pro-add-ons/#62-weather-outside" },
-  screens: { de: "pro-erweiterungen/#63-bildschirme-live", en: "pro-add-ons/#63-live-screens" },
-  energy_pro: { de: "pro-erweiterungen/#64-energie-pro", en: "pro-add-ons/#64-energy-pro" },
-  sound: { de: "pro-erweiterungen/#65-klang-kino", en: "pro-add-ons/#65-sound-cinema" },
-  auto_pro: { de: "pro-erweiterungen/#66-auto-pro", en: "pro-add-ons/#66-auto-pro" },
-  time_travel: { de: "pro-erweiterungen/#67-zeitreise", en: "pro-add-ons/#67-time-travel" },
-  pool: { de: "pro-erweiterungen/#68-pool-pro", en: "pro-add-ons/#68-pool-pro" },
-  extensions: { de: "erweiterungen-shop-moebel-packs/", en: "extensions-shop-furniture-packs/" },
+/** Where each Pro add-on is described in chapter 6 of the manual (GitHub heading anchors). */
+const MANUAL_ANCHOR: Record<string, string> = {
+  camera_cockpit: "61-camera-cockpit",
+  weather: "62-weather-outside",
+  screens: "63-live-screens",
+  energy_pro: "64-energy-pro",
+  sound: "65-sound--cinema",
+  auto_pro: "66-car-pro",
+  time_travel: "67-time-travel",
+  pool: "6-pro-add-ons",
+  extensions: "7-extensions-shop-and-furniture-packs",
 };
 
-/** The online manual in the user's language, optionally at a Pro add-on's section or the extensions chapter. */
-export function manualUrl(lang: string | undefined, topic?: Feature | "extensions"): string {
-  const de = isGerman(lang);
-  const base = de ? "https://mastershort.de/neonplan3d/anleitung/" : "https://mastershort.de/en/neonplan3d/manual/";
-  const target = topic ? MANUAL_FEATURE[topic] : undefined;
-  const path = target ? (de ? target.de : target.en) : "";
-  const [page, anchor] = path.split("#");
-  return `${base}${page}?lang=${de ? "de" : "en"}${anchor ? `#${anchor}` : ""}`;
+/** The manual, optionally at a Pro add-on's section or the extensions chapter. */
+export function manualUrl(topic?: Feature | "extensions"): string {
+  const anchor = topic ? MANUAL_ANCHOR[topic] : undefined;
+  return anchor ? `${MANUAL}#${anchor}` : MANUAL;
 }
 
 /** The unlocked features: all of them, except add-ons not released yet. */

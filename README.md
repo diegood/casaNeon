@@ -1,23 +1,13 @@
-# NeonPlan 3D
+# CasaNeon
 
-**remake by diegood** – draw your home right inside Home Assistant and control it in a neon 3D view: lights glow in their colours, blinds move, doors and windows open, cameras watch, and the TV shows what is playing. No external tools, no cloud, made for wall tablets.
+> [!WARNING]
+> **This is an unofficial fork of [NeonPlan 3D](https://github.com/Mastershort/neonplan3d).** It is not affiliated with or supported by the original author. If you want the official integration, its updates and its support, use the [official repository](https://github.com/Mastershort/neonplan3d).
+>
+> **Esto es un fork no oficial de [NeonPlan 3D](https://github.com/Mastershort/neonplan3d).** No está vinculado ni tiene soporte del autor original. Si quieres la integración oficial, sus actualizaciones y su soporte, ve al [repositorio oficial](https://github.com/Mastershort/neonplan3d).
 
-▶️ **[Try the online demo](https://neonplan3d.mastershort.de/)** – right in your browser, with invented demo data: turn the house, switch lights, open the editor. Nothing to install.
+**Remake by diegood.**
 
 ## Installation
-
-### HACS
-
-[![Open your Home Assistant instance and open the NeonPlan 3D repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=diegood&repository=neonplan3d&category=integration)
-
-1. Click the button above, or in HACS: ⋮ → *Custom repositories* → add `https://github.com/diegood/neonplan3d` as **Integration**.
-2. Install **NeonPlan 3D** and restart Home Assistant.
-3. Add the integration:
-
-   [![Open your Home Assistant instance and start setting up NeonPlan 3D.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=neonplan3d)
-
-   or *Settings → Devices & services → Add integration → NeonPlan 3D*.
-4. Open **NeonPlan 3D** in the sidebar, switch to **Editor** and draw your first floor.
 
 ### Manual
 
@@ -60,7 +50,7 @@ idle_orbit: false       # optional: kiosk – slow camera turn after the idle re
 
 ## Privacy
 
-NeonPlan 3D stores the plan, its pictures and the packs in Home Assistant's `.storage`. It talks to the internet only when you enter a licence key in **Extensions**: then it asks mastershort.de once a day for updates of your packs, sending the key and an anonymous installation fingerprint (a hash).
+CasaNeon stores the plan, its pictures and the packs in Home Assistant's `.storage`. It does not connect to any shop or licence server.
 
 ## Development
 
@@ -80,7 +70,8 @@ npm run screenshot  # renders preview/index.html (invented demo data) with a loc
 
 ## Ideas, questions and bugs
 
+Open an issue in [this repository](https://github.com/diegood/neonplan3d/issues), not in the official one.
 
 ## Licence
 
-MIT – see [LICENSE](LICENSE). Furniture packs and Pro add-ons sold in the shop are not part of this repository.
+MIT – see [LICENSE](LICENSE). Based on NeonPlan 3D, © 2026 Mastershort.

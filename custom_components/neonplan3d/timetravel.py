@@ -192,7 +192,7 @@ async def ws_timetravel_history(
     """The past states of the given entities between two moments (at most about a day)."""
     data = hass.data.get(DOMAIN)
     if data is None:
-        connection.send_error(msg["id"], "not_loaded", "NeonPlan 3D is not set up")
+        connection.send_error(msg["id"], "not_loaded", "CasaNeon is not set up")
         return
     start, end = msg["start_time"], msg["end_time"]
     if not 0 < end - start <= MAX_SPAN:
