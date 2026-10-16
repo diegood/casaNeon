@@ -120,6 +120,18 @@ import { socketOutlets, switchKeyOn, switchKeys, switchRing } from "../wall-swit
 
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
 
+/** A ceiling fan's own fan entity (its light is the item's entity). */
+function fanEntity(f: Furniture): string | null {
+  return f.fan_entity && f.fan_entity !== "none" ? f.fan_entity : null;
+}
+
+/** How fast a fan's blades spin: 0 while off, else its percentage (at least a slow turn), 1 without one. */
+function fanSpeed(st: HassEntity | undefined): number {
+  if (!st || !isActive(st)) return 0;
+  const p = st.attributes.percentage;
+  return typeof p === "number" ? Math.max(0.15, p / 100) : 1;
+}
+
 /** The glow of a wall switch key that is on. */
 const SWITCH_LED: [number, number, number] = [0.35, 0.95, 1];
 /** The small LED of a wall socket's outlet that is on. */
@@ -2313,6 +2325,9 @@ export class Fp3dView3d extends LitElement {
         if (faces.length) screens.set(f.id, { color: faces[0].color, level: faces[0].level, faces });
         if (isLamp(f.type)) {
           markers.push(this.lampMarker(hass, floor, f, linked?.entity ?? null));
+          // a ceiling fan with its light: the blades are a second marker (the fan), tapped apart from the light
+          const fan = f.type === "lamp_ceiling_fan" ? fanEntity(f) : null;
+          if (fan) markers.push(this.lampMarker(hass, floor, f, fan, true));
           continue;
         }
         // a wall switch: each key switches its own entity when tapped, its LED glows while that is on
@@ -2889,7 +2904,7 @@ export class Fp3dView3d extends LitElement {
   }
 
   /** A lamp: its 3D model glows with the linked light and is tapped directly. */
-  private lampMarker(hass: HomeAssistant, floor: Building["floors"][number], f: Furniture, entity: string | null): DeviceMarker & { fromFurniture: boolean } {
+  private lampMarker(hass: HomeAssistant, floor: Building["floors"][number], f: Furniture, entity: string | null, fanBlades = false): DeviceMarker & { fromFurniture: boolean } {
     const st = entity ? hass.states[entity] : undefined;
     const item = packItem(f.type);
     const model = LAMP_MODEL[f.type] ?? item?.light ?? "floor";
@@ -2910,7 +2925,7 @@ export class Fp3dView3d extends LitElement {
     const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
     // under a sloped roof the ceiling is the roof's underside: lamps hung from it follow the slope (#168)
     const ceiling = this.ceilingAt(floor, f.x, f.z);
-    const hung = (item ? item.mount === "ceiling" : ["ceiling", "downlight", "spot", "panel", "pendant"].includes(model)) && f.mount_y == null;
+    const hung = (item ? item.mount === "ceiling" : ["ceiling", "ceiling_fan", "downlight", "spot", "panel", "pendant"].includes(model)) && f.mount_y == null;
     const slopeDrop = hung ? floor.height - ceiling : 0;
     const base = item && hung ? Math.max(0, base0 - slopeDrop) : base0;
     // a spot lowered by hand hangs from its own "ceiling" (under a wall cabinet, #311)
@@ -2923,6 +2938,7 @@ export class Fp3dView3d extends LitElement {
         : base + f.h + 0.2
       : {
       ceiling: H - 0.3,
+      ceiling_fan: H - 0.45,
       downlight: H - 0.25,
       spot: H - 0.35,
       panel: H - 0.25,
@@ -2943,12 +2959,12 @@ export class Fp3dView3d extends LitElement {
       x: f.x,
       z: f.z,
       y,
-      icon: iconSvg("light"),
+      icon: iconSvg(fanBlades ? "fan" : "light"),
       name: f.name || (entity ? entityName(hass, entity) : furnitureName(hass, f.type)),
       text: st ? stateText(hass, st) : "",
       active: st ? isActive(st) : false,
       unavailable: st ? isUnavailable(st) : false,
-      glow: st ? scaleGlow(onlyColor(lightGlow(st, f.color_entity && f.color_entity !== "none" ? hass.states[f.color_entity] : undefined), f.only_color), f.glow_scale) : null,
+      glow: fanBlades ? null : st ? scaleGlow(onlyColor(lightGlow(st, f.color_entity && f.color_entity !== "none" ? hass.states[f.color_entity] : undefined), f.only_color), f.glow_scale) : null,
       lamp: model,
       rotation: f.rotation,
       mirror: !!f.mirror,
@@ -2958,7 +2974,11 @@ export class Fp3dView3d extends LitElement {
       base,
       top,
       pickable: !!entity,
-      furnitureId: f.id,
+      // a ceiling fan's blades are a part of their own (tapped apart from the light)
+      furnitureId: fanBlades ? `${f.id}:fan` : f.id,
+      fanBlades: fanBlades || undefined,
+      fanSpeed: fanBlades ? fanSpeed(st) : undefined,
+      fanStatic: f.type === "lamp_ceiling_fan" && !fanBlades && !fanEntity(f) ? true : undefined,
       pack: item ? f.type : null,
       lightY: item ? (item.mount === "ceiling" ? base : base + f.h * 0.85) : undefined,
       // a running colour effect – not a "mode" some integrations report as their effect (LocalTuya: "white",

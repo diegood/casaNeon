@@ -177,13 +177,14 @@ export function furnitureSymbol(type: string, w: number, d: number): Part[] | ty
       return [rect(-w / 2 + 0.03, -d / 2 + 0.03, w / 2 - 0.03, d / 2 - 0.03, "fp3d-sym-fill")];
     case "lamp_uplight":
     case "lamp_ceiling":
+    case "lamp_ceiling_fan":
     case "lamp_pendant":
     case "lamp_floor":
     case "lamp_table": {
       // a lamp from above: the shade, and short rays for hanging ones
       const r = Math.min(w, d) / 2;
       const out: Part[] = [circle(0, 0, r * 0.9, "fp3d-sym-fill"), circle(0, 0, r * 0.3)];
-      if (type === "lamp_ceiling" || type === "lamp_pendant") {
+      if (type === "lamp_ceiling" || type === "lamp_pendant" || type === "lamp_ceiling_fan") {
         for (let i = 0; i < 8; i++) {
           const a = (i / 8) * Math.PI * 2;
           out.push(line(Math.cos(a) * r * 1.05, Math.sin(a) * r * 1.05, Math.cos(a) * r * 1.35, Math.sin(a) * r * 1.35));

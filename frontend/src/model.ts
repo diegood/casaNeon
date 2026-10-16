@@ -178,6 +178,8 @@ export interface Furniture {
   awning_invert?: boolean;
   /** Wall switch: the entity of each key, left to right (one to four keys; null = a key without an entity). */
   switch_keys?: (string | null)[] | null;
+  /** Ceiling fan with its light: the fan entity (the light is the item's own entity); tapping the blades toggles it. */
+  fan_entity?: EntityRef;
   /** Wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness the ring shows. */
   switch_ring?: EntityRef;
   /** Wall socket: its outlets, left to right (one to four), each with an optional switch and power sensor. */
@@ -1090,6 +1092,7 @@ export function resizeFurniture(f: Furniture, corner: [1 | -1, 1 | -1], p: Vec2,
 
 export const FURNITURE_TYPES = [
   "lamp_ceiling",
+  "lamp_ceiling_fan",
   "lamp_downlight",
   "lamp_spot",
   "lamp_panel",
@@ -1170,7 +1173,7 @@ export const FURNITURE_TYPES = [
 
 /** Furniture library sections (the editor lists them in this order). */
 export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
-  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
+  lights: ["lamp_ceiling", "lamp_ceiling_fan", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
   living: ["sofa", "sofa_l", "sofa_u", "armchair", "stool", "coffee_table", "tv_board", "tv_wall", "sideboard", "shelf", "plant", "rug"],
   dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
@@ -1195,6 +1198,7 @@ export const ENERGY_DEVICES = ["meter", "inverter", "home_battery", "wallbox", "
 /** Lamps: drawn live (they glow with their light) and tapped directly in 3D. */
 export const LAMP_TYPES = new Set<string>([
   "lamp_ceiling",
+  "lamp_ceiling_fan",
   "lamp_downlight",
   "lamp_spot",
   "lamp_panel",
@@ -1217,7 +1221,7 @@ export const WALL_LAMP_Y = 1.75;
  * light (a downstand beam, ceiling beams) start under the ceiling and can be lowered (#287).
  */
 export function canLift(f: Pick<Furniture, "type">): boolean {
-  if (["lamp_ceiling", "lamp_panel", "lamp_pendant", "stairwell", "parking"].includes(f.type) || STAIR_TYPES.has(f.type)) return false;
+  if (["lamp_ceiling", "lamp_ceiling_fan", "lamp_panel", "lamp_pendant", "stairwell", "parking"].includes(f.type) || STAIR_TYPES.has(f.type)) return false;
   const item = packItem(f.type);
   return !(item?.mount === "ceiling" && item.light);
 }
@@ -1431,6 +1435,7 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   stairs_u: [2.1, 2.7, 2.75],
   stool: [0.55, 0.55, 0.42],
   lamp_ceiling: [0.4, 0.4, 0.08],
+  lamp_ceiling_fan: [1.2, 1.2, 0.35],
   lamp_downlight: [0.1, 0.1, 0.02],
   lamp_spot: [0.1, 0.1, 0.14],
   lamp_panel: [0.6, 0.6, 0.03],
@@ -1687,6 +1692,7 @@ export function pointInPolygon(p: Vec2, points: readonly Vec2[]): boolean {
 /** 3D model of each lamp type. */
 export const LAMP_MODEL: Record<string, LampModel> = {
   lamp_ceiling: "ceiling",
+  lamp_ceiling_fan: "ceiling_fan",
   lamp_downlight: "downlight",
   lamp_spot: "spot",
   lamp_panel: "panel",

@@ -177,6 +177,12 @@ export interface DeviceMarker {
   lightY?: number;
   /** A colour effect runs (colour loop …): the colour is animated in 3D. */
   effect?: boolean;
+  /** Ceiling fan: this marker is the blades (their own fan entity), not the hub and shade with the light. */
+  fanBlades?: boolean;
+  /** Ceiling fan blades: 0 (standing) to 1 (full speed) – how fast they spin. */
+  fanSpeed?: number;
+  /** Ceiling fan without a fan entity: the hub draws its blades too, standing still. */
+  fanStatic?: boolean;
   /** Pendant shape: shade (default), globe, cone or drum. */
   variant?: string | null;
   /** Formatted power, e.g. "85 W". */
@@ -201,7 +207,7 @@ export interface TrailSpot {
   age: number;
 }
 
-export type LampModel = "ceiling" | "downlight" | "spot" | "panel" | "pendant" | "floor" | "uplight" | "table" | "wall" | "strip" | "bollard" | "garden";
+export type LampModel = "ceiling" | "ceiling_fan" | "downlight" | "spot" | "panel" | "pendant" | "floor" | "uplight" | "table" | "wall" | "strip" | "bollard" | "garden";
 
 /** Piece of energy cable (floor-local coordinates); the flow runs from a to b. */
 /** A ray from the camera through the pointer, in building coordinates (heights above the ground). */
@@ -331,13 +337,16 @@ const LAMP_SHADE = 0x1d2946;
 /** Lamps that hang from the ceiling (hidden in the cut view). */
 /** LED strips mounted below this height (metres) light upwards instead of down. */
 const LOW_STRIP = 1.0;
-const HANGING = new Set<LampModel>(["ceiling", "downlight", "spot", "panel", "pendant", "strip"]);
+const HANGING = new Set<LampModel>(["ceiling", "ceiling_fan", "downlight", "spot", "panel", "pendant", "strip"]);
 const FLASH_MS = 450;
 const EFFECT_MS = 125;
 /** Turns of the colour wheel per second while a colour effect runs. */
 const EFFECT_SPEED = 0.08;
+/** Radians per second a ceiling fan's blades spin at full speed (fanSpeed 1): about one turn every 1.4 s. */
+const FAN_SPIN_SPEED = (2 * Math.PI) / 1.4;
 const LAMP_SIZE: Record<LampModel, [number, number, number]> = {
   ceiling: [0.4, 0.4, 0.08],
+  ceiling_fan: [1.2, 1.2, 0.35],
   downlight: [0.1, 0.1, 0.02],
   spot: [0.1, 0.1, 0.14],
   panel: [0.6, 0.6, 0.03],
@@ -588,6 +597,10 @@ export class FloorplanViewer {
   private labelInset = 0;
   /** Floors with lamps that run a colour effect, and the floor of every device (for flashes). */
   private effectFloors = new Set<string>();
+  /** Floors with a ceiling fan whose blades spin. */
+  private fanFloors = new Set<string>();
+  /** Spin of the ceiling fans' blades so far (radians at full speed); each fan scales it by its own speed. */
+  private fanAngle = 0;
   private deviceFloor = new Map<string, string>();
   private statsOn = false;
   /** Vehicles standing in parking spots (spot id -> pack item type); they join the floor geometry. */
@@ -835,6 +848,7 @@ export class FloorplanViewer {
     this.devices = devices;
     this.labelsDirty = true;
     this.effectFloors = new Set(devices.filter((d) => d.effect && d.glow).map((d) => d.floorId));
+    this.fanFloors = new Set(devices.filter((d) => d.fanBlades && (d.fanSpeed ?? 0) > 0).map((d) => d.floorId));
     this.deviceFloor = new Map(devices.map((d) => [d.id, d.floorId]));
     const seen = new Set<string>();
     for (const d of devices) {
@@ -1739,6 +1753,7 @@ export class FloorplanViewer {
       const base = d.base ?? 0;
       const kinds: Record<LampModel, [number, LightKind]> = {
         ceiling: [H - 0.12, "ceiling"],
+        ceiling_fan: [H - 0.3, "ceiling"],
         downlight: [H - 0.03, "spot"],
         spot: [H - h, "spot"],
         panel: [H - 0.05, "ceiling"],
@@ -2452,10 +2467,12 @@ export class FloorplanViewer {
       return Math.round(k * 10) / 10;
     };
     const lamps = this.devices.filter((d) => d.floorId === fv.floor.id && (d.lamp || d.model));
+    // a spinning fan's blade angle keeps the shape changing, so it is rebuilt every step
+    const spinOf = (d: DeviceMarker) => (d.fanBlades && d.fanSpeed ? this.fanAngle * d.fanSpeed : 0);
     const shapeSig =
       this.wallMode +
       (this.lowQuality ? "L" : this.highQuality ? "H" : "M") +
-      lamps.map((d) => `${d.id},${d.lamp ?? d.model},${d.variant},${d.x},${d.z},${d.y},${d.rotation ?? 0},${d.roll ?? 0},${d.upright ? 1 : 0},${d.size?.join("/")},${d.base ?? 0},${d.pack ?? ""},${d.mirror ? 1 : 0}`).join(";");
+      lamps.map((d) => `${d.id},${d.lamp ?? d.model},${d.variant},${d.x},${d.z},${d.y},${d.rotation ?? 0},${d.roll ?? 0},${d.upright ? 1 : 0},${d.size?.join("/")},${d.base ?? 0},${d.pack ?? ""},${d.mirror ? 1 : 0},${d.fanStatic ? 1 : 0},${spinOf(d).toFixed(3)}`).join(";");
     const glows = lamps.map((d) => this.glowOf(d));
     const colorSig = lamps.map((d, i) => `${flash(d.id)},${glows[i] ? `${glows[i]!.level.toFixed(3)},${glows[i]!.color.map((c) => c.toFixed(3)).join("/")}` : "off"}`).join(";");
     if (shapeSig !== fv.lampShapeSig || !fv.lampMesh.geometry.getAttribute("position")) {
@@ -2476,7 +2493,7 @@ export class FloorplanViewer {
         // shades get the sentinel colour and are recoloured below
         if (d.model) pushCameraModel(buf, d.model, d.x, d.model === "camera_ceiling" ? H : d.y, d.z, d.rotation ?? 0);
         else if (packed) pushPackLamp(buf, packed, { x: d.x, z: d.z, rotation: d.rotation ?? 0, w: pw, d: pd, h: ph, mirror: d.mirror }, d.base ?? 0, SHADE_SENTINEL);
-        else pushLampModel(buf, { ...d, lamp: d.lamp! }, d.top ?? H, SHADE_SENTINEL);
+        else pushLampModel(buf, { ...d, lamp: d.lamp!, spinAngle: spinOf(d) }, d.top ?? H, SHADE_SENTINEL);
         // keyed by the furniture: two lamps may share one light (one switch for two strips)
         ranges.set(d.furnitureId ?? d.id, { start, end: buf.count });
         if (d.pickable !== false) tris.push({ id: d.id, start, end: buf.count });
@@ -2722,6 +2739,7 @@ export class FloorplanViewer {
       const ang = (d.rotation ?? 0) * DEG;
       const y = {
         ceiling: Ht - 0.07,
+        ceiling_fan: Ht - 0.2,
         downlight: Ht - 0.03,
         spot: Ht - h,
         panel: Ht - 0.03,
@@ -4001,6 +4019,7 @@ export class FloorplanViewer {
     if (this.poolActive) busy.push("pool");
     if (this.solarActive) busy.push("solar");
     if (this.effectTick) busy.push("effect");
+    if (this.fanFloors.size) busy.push("fan");
     if (robotsMoving) busy.push("robot");
     if (orbiting) busy.push("orbit");
     if (this.tintTick) busy.push("tint");
@@ -4018,15 +4037,16 @@ export class FloorplanViewer {
     // everything that keeps drawing (also the energy flow, effects, robots) shows in the frame rate
     this.reportStats(now, busy);
     if (moving) this.invalidate();
-    if (this.effectFloors.size && !this.effectTimer && !document.hidden) {
+    if ((this.effectFloors.size || this.fanFloors.size) && !this.effectTimer && !document.hidden) {
       // colour effects: a few steps per second are enough and keep the tablet idle in between
       const ms = this.lowQuality ? 2 * EFFECT_MS : EFFECT_MS;
       this.effectTimer = setTimeout(() => {
         this.effectTimer = undefined;
         this.effectTime += ms / 1000;
+        this.fanAngle += (ms / 1000) * FAN_SPIN_SPEED;
         this.effectTick = true;
         for (const fv of this.floors) {
-          if (fv.o < 0.02 || !this.effectFloors.has(fv.floor.id)) continue;
+          if (fv.o < 0.02 || !(this.effectFloors.has(fv.floor.id) || this.fanFloors.has(fv.floor.id))) continue;
           this.buildLamps(fv);
           this.buildGlow(fv);
         }
@@ -4528,7 +4548,7 @@ export function createViewer(host: HTMLElement, options?: ViewerOptions): Floorp
 /** Model of a lamp into a buffer (3D view and furniture previews); `H` is the ceiling height. */
 export function pushLampModel(
   buf: GeoBuffer,
-  d: Pick<DeviceMarker, "x" | "z" | "size" | "base" | "rotation" | "variant" | "roll" | "upright"> & { lamp: LampModel },
+  d: Pick<DeviceMarker, "x" | "z" | "size" | "base" | "rotation" | "variant" | "roll" | "upright" | "fanBlades" | "fanStatic"> & { lamp: LampModel; spinAngle?: number },
   H: number,
   shadeCol: number,
 ): void {
@@ -4554,6 +4574,51 @@ export function pushLampModel(
       cyl(r * 0.25, H - 0.04, H, LAMP_BODY, LAMP_BODY, 8);
       cyl(r, H - Math.max(0.04, h) - 0.035, H - 0.04, shadeCol, shadeCol);
       break;
+    case "ceiling_fan": {
+      // a fan with its light (from ProvUK's fork): the canopy, downrod, motor and a tapered shade are the light's part;
+      // the five blades are the fan's own (a marker of their own, tapped apart), spinning while it runs
+      const hubR = Math.max(0.09, r * 0.17);
+      const hubH = 0.1;
+      const hubTop = H - 0.06;
+      const hubBottom = hubTop - hubH;
+      if (d.fanBlades || d.fanStatic) {
+        const y0 = hubBottom + hubH * 0.32;
+        const outer = Math.max(hubR + 0.15, r);
+        const half = Math.max(0.05, hubR * 0.85);
+        for (let i = 0; i < 5; i++) {
+          const a = ang + (d.spinAngle ?? 0) + (i / 5) * Math.PI * 2;
+          const ca2 = Math.cos(a);
+          const sa2 = Math.sin(a);
+          const ix = d.x + ca2 * hubR * 0.9;
+          const iz = d.z + sa2 * hubR * 0.9;
+          const ox = d.x + ca2 * outer;
+          const oz = d.z + sa2 * outer;
+          // counter-clockwise, so the blade's faces point outwards
+          const poly: [number, number][] = [
+            [ix + sa2 * half, iz - ca2 * half],
+            [ox + sa2 * half * 0.55, oz - ca2 * half * 0.55],
+            [ox - sa2 * half * 0.55, oz + ca2 * half * 0.55],
+            [ix - sa2 * half, iz + ca2 * half],
+          ];
+          pushPrism(buf, poly, y0, y0 + 0.014, LAMP_BODY, LAMP_BODY, { aoFrom: 0, bottom: true });
+        }
+      }
+      if (!d.fanBlades) {
+        cyl(Math.max(0.05, hubR * 0.7), H - 0.015, H, LAMP_BODY, LAMP_BODY, 10);
+        cyl(0.02, hubTop, H - 0.015, LAMP_BODY, LAMP_BODY, 6);
+        cyl(hubR, hubBottom, hubTop, LAMP_BODY, LAMP_BODY, 16);
+        // the shade below the motor, tapered in stacked bands
+        const top = hubBottom - 0.002;
+        const depth = Math.max(0.12, h - hubH - 0.08);
+        const topHalf = hubR * 0.55;
+        const bottomHalf = Math.max(topHalf + 0.04, hubR * 1.35);
+        for (let i = 0; i < 6; i++) {
+          const hw = bottomHalf + (topHalf - bottomHalf) * ((i + 0.5) / 6);
+          box(-hw, hw, -hw, hw, top - depth + (depth * i) / 6, top - depth + (depth * (i + 1)) / 6, shadeCol, shadeCol);
+        }
+      }
+      break;
+    }
     case "pendant": {
       const bottom = Math.max(0.4, H - h);
       cyl(0.06, H - 0.02, H, LAMP_BODY, LAMP_BODY, 8);
