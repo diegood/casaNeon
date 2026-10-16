@@ -3,6 +3,21 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.20.0
+
+### Novedades
+
+- **Interruptores de pared** (grupo nuevo **Electricidad**): de 1 a 4 teclas; cada tecla conmuta su luz, interruptor, ventilador o persiana al tocarla en 3D y su LED se enciende mientras está encendida o abierta. «Preguntar antes de accionar» vale para todas las teclas.
+- **Anillo de luz en el interruptor** (p. ej. Sonoff TX Ultimate): elige una luz y el anillo brilla en la pared alrededor de la placa con su color y su brillo.
+- **Enchufes de pared**: de 1 a 4 enchufes en módulos cuadrados. Cada uno puede tener un interruptor (se enciende y apaga al tocarlo; su pequeño LED indica que está encendido) y un medidor de consumo, que entra en el balance de energía; el pin del enchufe muestra los vatios de todos sus enchufes.
+- **Ventilador de techo con luz** (traído del fork de ProvUK): la luz se enciende tocando el motor o la pantalla, el ventilador tocando las aspas, que giran mientras funciona y más rápido cuanto mayor es su velocidad.
+- **Novedades del original hasta la 1.19.2** (detalle en sus secciones, más abajo): toldos, cubos de basura y buzones, **Hogar Pro** (desbloqueado, como todo), cortina motorizada y persiana enrollable con su `cover`, mascotas y el fantasma de Halloween (en Extensiones › Packs divertidos), vista de pared, menú «Mostrar» y las correcciones de la 1.18.2 a la 1.19.2.
+
+### Cambios
+
+- **CasaNeon**: nuevo nombre visible (panel, tarjeta, HACS). Es un fork no oficial de NeonPlan 3D; el dominio y el tipo de tarjeta siguen siendo `neonplan3d`, así que no hay que reconfigurar nada.
+- **Sin conexión con Mastershort**: fuera la tienda, las licencias, los supporters, el boletín, los avisos de regalo, los diagnósticos opcionales y la página de importación de su web. La clave de licencia guardada se borra al arrancar. Ayuda e ideas van a los issues de este repositorio y el manual a `docs/manual.md`.
+
 ## 1.18.1
 
 ### Correcciones
@@ -34,6 +49,10 @@ earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastersho
 ### New
 
 - **Live development page:** `npm run live` serves `preview/live.html` against a real Home Assistant (states, services, history through a local proxy) with the plan from a NeonPlan backup file; settings in the untracked `live.local.json`.
+
+---
+
+Las secciones siguientes, de la 1.19.2 a la 1.17.0, son las del repositorio original (Mastershort/neonplan3d) incorporadas en la 1.20.0; hablan de su tienda y licencias, que este fork no tiene.
 
 ## 1.19.2
 
