@@ -32,6 +32,11 @@ export function switchKeyAt(f: Pick<Furniture, "x" | "z" | "rotation" | "w" | "m
   return Math.max(0, Math.min(n - 1, Math.floor(((local + w / 2) / w) * n)));
 }
 
+/** The light of a switch's ring, if one is set. */
+export function switchRing(f: Pick<Furniture, "switch_ring">): string | null {
+  return f.switch_ring && f.switch_ring !== "none" ? f.switch_ring : null;
+}
+
 /** Whether a key's entity is on: a light, switch or fan "on", a cover open (or opening). */
 export function switchKeyOn(hass: HomeAssistant, entity: string | null): boolean {
   const st = entity ? hass.states[entity]?.state : undefined;

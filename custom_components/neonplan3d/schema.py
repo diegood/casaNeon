@@ -285,6 +285,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("switch_keys"): vol.Any(
             None, vol.All([vol.Any(None, vol.All(str, vol.Length(max=255)))], vol.Length(min=1, max=4))
         ),
+        # wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness it shows
+        vol.Optional("switch_ring"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # LED strip: tilt about its length (degrees) and standing upright
         vol.Optional("tilt", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("upright", default=False): bool,

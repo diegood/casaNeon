@@ -1709,6 +1709,8 @@ const es = {
   switch_keys: "Teclas",
   switch_key: "Entidad de la tecla",
   switch_key_n: "Tecla {n}",
+  switch_ring: "Anillo de luz (color de)",
+  switch_ring_hint: "Para interruptores con luz alrededor (p. ej. Sonoff TX Ultimate): elige la luz que da su color y brillo; el anillo brilla en la pared alrededor de la placa mientras esa luz está encendida.",
   switch_hint: "Cada tecla conmuta su entidad al tocarla en 3D (una persiana se abre o se cierra) y su LED se enciende mientras está encendida o abierta.",
   furn_group_household: "Hogar",
   bin_shape: "Forma",

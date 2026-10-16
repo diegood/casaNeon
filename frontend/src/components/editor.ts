@@ -20,7 +20,7 @@ import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
-import { MAX_SWITCH_KEYS, SWITCH_KEY_DOMAINS, switchKeys, switchWidth } from "../wall-switch.ts";
+import { MAX_SWITCH_KEYS, SWITCH_KEY_DOMAINS, switchKeys, switchRing, switchWidth } from "../wall-switch.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
 import { nearestOnOutline, poolFlow, waterColor, type PoolDeviceType } from "../pool-flow.ts";
 import { cameraMotionSensors, detectionKind } from "../markers.ts";
@@ -10604,6 +10604,8 @@ export class Fp3dEditor extends LitElement {
           this.updateFurniture({ switch_keys: keys.map((x, j) => (j === i ? (v === "none" ? null : v) : x)) }),
         ),
       )}
+      ${this.entitySelect(this.t("switch_ring"), switchRing(f), undefined, this.entityOptions((id) => id.startsWith("light.")), (v) => this.updateFurniture({ switch_ring: v === "none" ? null : v }))}
+      <p class="fp3d-sub fp3d-wide">${this.t("switch_ring_hint")}</p>
       <label class="fp3d-check fp3d-wide" title=${this.t("device_confirm_hint")}
         ><input type="checkbox" .checked=${!!f.confirm} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ confirm: (ev.target as HTMLInputElement).checked })} />
         ${this.t("device_confirm")}</label

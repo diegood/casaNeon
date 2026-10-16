@@ -149,8 +149,9 @@ def test_wall_switch_keys() -> None:
         "h": 0.086,
         "variant": None,
     }
-    out = FURNITURE_SCHEMA({**base, "switch_keys": ["light.salon", None]})
+    out = FURNITURE_SCHEMA({**base, "switch_keys": ["light.salon", None], "switch_ring": "light.tx_ultimate"})
     assert out["switch_keys"] == ["light.salon", None]
+    assert out["switch_ring"] == "light.tx_ultimate"
     assert "switch_keys" not in FURNITURE_SCHEMA(base)
     with pytest.raises(vol.Invalid):
         FURNITURE_SCHEMA({**base, "switch_keys": ["light.a", "light.b", "light.c", "light.d", "light.e"]})

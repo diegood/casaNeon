@@ -116,7 +116,7 @@ import type { HassEntity, HomeAssistant } from "../types.ts";
 import type { DeviceMarker, FloorplanViewer, FloorStack, RobotInfo, Quality, ScreenState, SoundSource, SurfaceGrab, ViewerStats, WallMode } from "../viewer/viewer3d.ts";
 import { wallLayout } from "../camera-wall.ts";
 import { watchedEntities } from "../watched.ts";
-import { switchKeyOn, switchKeys } from "../wall-switch.ts";
+import { switchKeyOn, switchKeys, switchRing } from "../wall-switch.ts";
 
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
 
@@ -2317,7 +2317,8 @@ export class Fp3dView3d extends LitElement {
         if (f.type === "wall_switch") {
           const keys = switchKeys(f);
           keys.forEach((e, i) => e && targets.set(`${f.id}#${i}`, `ws:${e}`));
-          screens.set(f.id, { color: [0, 0, 0], level: 0, keys: keys.map((e) => (switchKeyOn(hass, e) ? SWITCH_LED : null)) });
+          const ring = switchRing(f);
+          screens.set(f.id, { color: [0, 0, 0], level: 0, keys: keys.map((e) => (switchKeyOn(hass, e) ? SWITCH_LED : null)), switchRing: ring ? lightGlow(hass.states[ring]) : null });
           continue;
         }
         // a home battery with only its charge, a wallbox with only its status still gets its marker;

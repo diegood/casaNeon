@@ -178,6 +178,8 @@ export interface Furniture {
   awning_invert?: boolean;
   /** Wall switch: the entity of each key, left to right (one to four keys; null = a key without an entity). */
   switch_keys?: (string | null)[] | null;
+  /** Wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness the ring shows. */
+  switch_ring?: EntityRef;
   /** Waste bin: what goes in (decides its usual colours and its words in the waste calendar; null = rest). */
   bin_kind?: "rest" | "bio" | "paper" | "plastic" | "glass" | "garden" | "recycling" | "other" | null;
   /** Waste bin: its body colour ("#rrggbb"; null = the usual one of its kind in the country). */

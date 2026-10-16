@@ -255,6 +255,8 @@ export interface ScreenState {
   faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon"; color: [number, number, number]; level: number }[];
   /** A wall switch: the colour of each key's LED (null = off), left to right. */
   keys?: ([number, number, number] | null)[];
+  /** A wall switch with a light ring: its colour and brightness (null = off). */
+  switchRing?: { color: [number, number, number]; level: number } | null;
 }
 
 /** Position of the sun (from sun.sun): degrees above the horizon and clockwise from north. */
@@ -2798,6 +2800,25 @@ export class FloorplanViewer {
         const lift = mountBase(fv.floor, f) - builtinBase(f);
         const mx = f.mirror ? -1 : 1;
         const dark = new Color(0, 0, 0);
+        const halo = st.switchRing;
+        if (halo) {
+          // the light ring: a bright seam round the plate and its glow fading out on the wall behind it
+          const w = Math.max(0.05, f.w);
+          const d = Math.max(0.05, f.d);
+          const h = Math.max(0.005, f.h);
+          const y0 = builtinBase(f) + lift;
+          const z = -d / 2 + 0.002;
+          const col = new Color(...halo.color.map((v) => Math.min(1, v * (0.3 + 0.45 * halo.level))) as [number, number, number]);
+          const g = 0.02 + 0.02 * halo.level;
+          const e = 0.004;
+          const inner = [P(-w / 2 - e, y0 - e, z), P(w / 2 + e, y0 - e, z), P(w / 2 + e, y0 + h + e, z), P(-w / 2 - e, y0 + h + e, z)];
+          const outer = [P(-w / 2 - g, y0 - g, z), P(w / 2 + g, y0 - g, z), P(w / 2 + g, y0 + h + g, z), P(-w / 2 - g, y0 + h + g, z)];
+          for (let k = 0; k < 4; k++) {
+            const j = (k + 1) % 4;
+            buf.tri(inner[k], outer[k], outer[j], col, dark, dark);
+            buf.tri(inner[k], outer[j], inner[j], col, dark, col);
+          }
+        }
         switchLeds(f).forEach((led, i) => {
           const rgb = st.keys![i];
           if (!rgb) return;

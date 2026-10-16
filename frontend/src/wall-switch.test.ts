@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { HomeAssistant } from "./types.ts";
-import { switchKeyAt, switchKeyOn, switchKeys, switchWidth } from "./wall-switch.ts";
+import { switchKeyAt, switchKeyOn, switchKeys, switchRing, switchWidth } from "./wall-switch.ts";
 
 test("a wall switch has one to four keys", () => {
   assert.deepEqual(switchKeys({}), [null]);
@@ -34,4 +34,10 @@ test("a key's LED glows while its entity is on or its cover open", () => {
   assert.equal(switchKeyOn(hass, "cover.b"), true);
   assert.equal(switchKeyOn(hass, "switch.c"), false);
   assert.equal(switchKeyOn(hass, null), false);
+});
+
+test("a light ring takes its colour from a light, if one is set", () => {
+  assert.equal(switchRing({}), null);
+  assert.equal(switchRing({ switch_ring: "none" }), null);
+  assert.equal(switchRing({ switch_ring: "light.tx_ultimate" }), "light.tx_ultimate");
 });
