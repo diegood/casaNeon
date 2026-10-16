@@ -634,7 +634,20 @@ export function flowSegments({ building, consumers, summary, battery, fieldPower
     for (const f of fields) {
       const power = fieldPower.get(f.id) ?? 0;
       const named = f.string ? strings.find((x) => x.id === f.string)?.inverter : null;
-      let inv = named ? (inverters.find((x) => x.id === named) ?? null) : null;
+      // a string may also end at a battery with its own solar input (a power station such as an EcoFlow, D410)
+      const station = named ? (batteries.find((x) => x.id === named) ?? null) : null;
+      let inv = named && !station ? (inverters.find((x) => x.id === named) ?? null) : null;
+      if (station) {
+        const via = onInverter.get(station.id);
+        if (via) fieldsOf.set(via.id, (fieldsOf.get(via.id) ?? 0) + power);
+        const batY = station.variant === "wall" ? 0.5 + station.h : 0.9;
+        const hand = laid(`solar:${f.id}`);
+        const start = hand ? fieldStart(building, f) : null;
+        const floor = building.floors.find((x) => x.id === station.floorId);
+        if (hand && start && floor) out.push(...tag(absolutePolyline(building, manualPoints(building, hand, start, [station.x, floor.elevation + batY, station.z]), power, "solar", floor), `solar:${f.id}`));
+        else out.push(...tag(solarRoute(building, f, power, station, batY), `solar:${f.id}`));
+        continue;
+      }
       if (!inv && inverters.length) {
         const face = fieldFace(building, f, faces);
         const c = face ? fieldCenter(face, f) : [f.u, f.v];
@@ -953,14 +966,19 @@ export function solarDayFromStats(rows: Record<string, StatRow[]>, now = new Dat
   midnight.setHours(0, 0, 0, 0);
   const slots = Math.max(1, Math.floor((now.getTime() - midnight.getTime()) / 300000) + 1);
   const curve = new Array<number>(slots).fill(0);
+  let last = -1;
   for (const list of Object.values(rows)) {
     for (const r of list) {
       const start = typeof r.start === "number" ? r.start : Date.parse(r.start);
       const i = Math.floor((start - midnight.getTime()) / 300000);
       if (i < 0 || i >= slots || typeof r.mean !== "number") continue;
       curve[i] += Math.max(0, r.mean);
+      last = Math.max(last, i);
     }
   }
+  // the recorder writes a five-minute mean only after its slot: the last few minutes have none yet, so the curve
+  // ends at the newest mean instead of dropping to zero there (#527); a longer gap stays a gap
+  curve.length = Math.max(last + 1, slots - 3, 1);
   const kwh = curve.reduce((s, w) => s + (w * 5) / 60 / 1000, 0);
   return { kwh, peak: Math.max(0, ...curve), curve };
 }

@@ -47,6 +47,8 @@ const PACK_SCRIPT = `
   e.setDoc(structuredClone(e._doc));
 `;
 
+// switches the lab on (cleared again before every shot) and opens the editor's last section, the opt-in reports
+
 // a farmhouse like a user's: a two-storey house, a long barn whose front slope sweeps down lower
 // (catslide), and a lean-to with a pent roof in front of the barn; roof sections at their own heights
 const ATTIC_SCRIPT = "e.useRoofSections(); setTimeout(() => { const secs = e._doc.settings.roof.sections; const big = [...secs].sort((p, q) => Math.abs((q.x1 - q.x0) * (q.z1 - q.z0)) - Math.abs((p.x1 - p.x0) * (p.z1 - p.z0)))[0]; e._tool = 'roof'; e._roofId = big.id; e.updateRoofSection({ base: 3.7, eave_a: 3.7, eave_b: 3.7, pitch_a: 40, pitch_b: 40 }); }, 600);";
@@ -86,6 +88,32 @@ const PACK_MOUNT_SCRIPT = `
   e.setDoc(structuredClone(e._doc));
 `;
 
+// household: every bin and mailbox shape in and around the garage, the bins on the invented waste calendar, the
+// wall mailbox with "post" (Haushalt Pro, unlocked on a local preview only)
+const HOUSEHOLD_SCRIPT = `
+  const f = e._doc.floors[0];
+  e._floorId = f.id;
+  const put = (type, x, z, rotation, extra) => { e.addFurniture(type); Object.assign(e._doc.floors[0].furniture.at(-1), { x, z, rotation }, extra); };
+  const S = { bin120: [0.48, 0.55, 0.93], bin240: [0.58, 0.73, 1.07], bin1100: [1.37, 1.07, 1.45], multi: [0.6, 0.75, 1.07], bag: [0.42, 0.32, 0.62], caddy: [0.3, 0.26, 0.32], underground: [1, 1, 1.15] };
+  const bin = (v, kind, x, z) => put('waste_bin', x, z, 180, { variant: v === 'bin240' ? null : v, w: S[v][0], d: S[v][1], h: S[v][2], bin_kind: kind, bin_source: 'calendar.abfallkalender' });
+  bin('bin240', 'rest', 10.5, 6.2); bin('bin240', 'paper', 11.2, 6.2); bin('bin120', 'bio', 11.85, 6.25); bin('multi', 'plastic', 12.5, 6.2); bin('bag', 'plastic', 13.1, 6.3); bin('caddy', 'bio', 13.5, 6.3);
+  bin('bin1100', 'rest', 11.0, 8.0); bin('underground', 'glass', 12.8, 8.0);
+  put('mailbox', 13.5, 4.4, 270, { entity: 'input_boolean.post_da' });
+  put('mailbox', 10.4, 9.6, 180, { variant: 'pole', w: 0.24, d: 0.5, h: 1.15 });
+  put('mailbox', 11.4, 9.6, 180, { variant: 'pillar', w: 0.42, d: 0.36, h: 1.3 });
+  put('mailbox', 12.4, 9.6, 180, { variant: 'parcel', w: 0.6, d: 0.55, h: 1.1 });
+  put('mailbox', 13.5, 9.6, 180, { variant: 'bank', w: 0.95, d: 0.3, h: 0.7 });
+  // the plant is thirsty, the washer tells its time left, the fridge's water filter is due
+  for (const m of e._doc.floors.flatMap((x) => x.furniture)) {
+    if (m.type === 'plant') m.moisture = 'sensor.monstera_feuchte';
+    if (m.type === 'washer') m.remaining = 'sensor.waschmaschine_restzeit';
+    if (m.type === 'fridge') m.service = 'binary_sensor.kuehlschrank_filter';
+  }
+  // tomorrow's bins glow all day (whatever time the shot is taken)
+  e._doc.settings.household = { bin_from: 0, bin_until: 12 };
+  e.setDoc(structuredClone(e._doc));
+`;
+
 const shots = [
   { name: "view-house", query: "?fp3d_stats", width: 1280, height: 800 },
   { name: "promo-house", query: "", width: 1280, height: 800 },
@@ -113,6 +141,7 @@ const shots = [
   { name: "editor-opening", query: "", width: 1280, height: 800, editor: true, editorState: { _openingId: "o2", _roomId: "wohnen" } },
   { name: "editor-camera-wedge", query: "", width: 1280, height: 800, editor: true, editorState: { _floorId: "eg", _deviceId: "camera.wohnzimmer", _roomId: "wohnen", _tool: "select" } },
   { name: "editor-picture-rules", query: "", width: 1280, height: 900, editor: true, editorScript: "const f = e._doc.floors[0].furniture.find((m) => m.pictures); e._roomId = 'wohnen'; e._furnitureId = f.id; e.renderRoot.querySelector('aside').scrollTop = 900;" },
+  // the opt-in reports (unreleased: only with the lab switch) and the exact JSON they send
   { name: "editor-library", query: "", width: 1280, height: 900, editor: true, editorScript: "e._roomId = 'wohnen'; e._furnQuery = 'sofa';" },
   { name: "editor-split-3d", query: "", width: 1400, height: 900, editor: true, editorScript: "e._split = true; e._furnitureId = 'm2';" },
   { name: "editor-free-wall", query: "", width: 1280, height: 800, editor: true, editorState: { _floorId: "og", _tool: "select" } },
@@ -343,6 +372,9 @@ const shots = [
   { name: "view-floor-stack-panel", query: "", width: 1280, height: 800, click: "Obergeschoss", then: "Einzeln" },
   { name: "view-room-names-off", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Raumnamen" },
   { name: "empty", query: "?empty", width: 1280, height: 800 },
+  { name: "view-household", query: "", width: 1600, height: 1000, editor: true, editorScript: HOUSEHOLD_SCRIPT, then3d: "Erdgeschoss", camera: { target: { x: 12, y: 0.6, z: 7.8 }, radius: 7, phi: 0.95 }, afterWait: 1500 },
+  { name: "view-household-card", query: "", width: 1280, height: 800, editor: true, editorScript: HOUSEHOLD_SCRIPT, then3d: "Erdgeschoss", afterWait: 1500 },
+  { name: "editor-household-bin", query: "", width: 1280, height: 1100, editor: true, editorScript: HOUSEHOLD_SCRIPT + " setTimeout(() => { e._roomId = 'garage'; e._furnitureId = e._doc.floors[0].furniture.find((m) => m.type === 'waste_bin' && m.bin_kind === 'paper').id; }, 500);", scrollSide: true, afterWait: 900 },
 ];
 
 const errors = [];
@@ -364,8 +396,10 @@ for (const shot of shots.filter((s) => !only || only.includes(s.name))) {
   const clickText = async (text) => {
     await page.evaluate((t) => {
       const find = (root) => {
-        // exact text, or the first part of a row button ("Flur" in "Flur 12,8 m²")
+        // exact text, or the first part of a row button ("Flur" in "Flur 12,8 m²"), or a tab with a badge behind its
+        // name ("✦ Erweiterungen" with "2 bereit")
         for (const el of root.querySelectorAll("button")) if (el.textContent.trim() === t || el.firstElementChild?.textContent.trim() === t) return el;
+        for (const el of root.querySelectorAll("button")) if (el.textContent.trim().startsWith(t)) return el;
         for (const el of root.querySelectorAll("*")) if (el.shadowRoot) {
           const hit = find(el.shadowRoot);
           if (hit) return hit;

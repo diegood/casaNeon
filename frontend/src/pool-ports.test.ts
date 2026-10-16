@@ -31,3 +31,11 @@ test("holes: the outside of a wall hole lies behind the wall, of a floor hole be
   assert.deepEqual(r3(jointPortAt(wall, "outside")), [1, 0.4, -0.25]);
   assert.deepEqual(r3(jointPortAt({ id: "f", kind: "floor", x: 1, z: 1, y: 0 }, "outside")), [1, -0.3, 1]);
 });
+
+test("a heat pump's connections at the right (default), the left or the back", () => {
+  const hp = { type: "pool_heat_pump", x: 0, z: 0, w: 1, d: 0.4, h: 0.8, rotation: 0 };
+  assert.ok(portAt(hp, "in")!.x > 0.5);
+  assert.ok(portAt({ ...hp, variant: "left" }, "in")!.x < -0.5);
+  const back = portAt({ ...hp, variant: "back" }, "out")!;
+  assert.ok(back.z < -0.2 && Math.abs(back.x) < 0.5);
+});

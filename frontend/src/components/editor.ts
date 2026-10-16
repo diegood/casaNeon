@@ -13,13 +13,15 @@ import { closeGaps, straightenEdges, suggestedThickness } from "../geometry/gaps
 import { clampIntoRoom, keepInRoom, sharedEdge, snapToWall } from "../geometry/snap.ts";
 import { cornerPoint, nearestOnPath, onWall, pipePath, type P3 } from "../geometry/runs.ts";
 import { connectionsAt, laidPipe, planConnection, poolNodeAt, runLead, runsOnWall, splitPipe, type Connection, type ConnectVia, type WallRun } from "../pool-runs.ts";
-import { devicePorts, FILTER_VALVES, jointPorts, nodePart, poolPortFlow, portFlow, splitNode } from "../pool-ports.ts";
+import { devicePorts, FILTER_VALVES, jointPortAt, jointPorts, nodePart, poolPortFlow, portFlow, splitNode, type PortName } from "../pool-ports.ts";
+import { autoPort, feedDone, nodeFlow, orientPipe, sketchIssues } from "../pool-sketch.ts";
 import { holeInRoom } from "../geometry/holes.ts";
 import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
-import { hasFeature, manualUrl, released } from "../features.ts";
+import { hasFeature, labOn, manualUrl, released } from "../features.ts";
+import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
-import { nearestOnOutline } from "../pool-flow.ts";
+import { nearestOnOutline, poolFlow, waterColor, type PoolDeviceType } from "../pool-flow.ts";
 import { cameraMotionSensors, detectionKind } from "../markers.ts";
 import { deviceSensors, energySummary, flowSegments, gridPoint, powerSensorFor, proposeEnergySensors, type EnergyPrefs, type FlowSegment, proposeMeters } from "../energy.ts";
 import { CLIMATE_ATTRS, isStatusSensor, robotRoomSensor, TOGGLE_KINDS } from "../devices.ts";
@@ -32,6 +34,8 @@ import { type CarLinks, type Background, OUTDOOR_TOP, sidelightLayout, DEFAULT_W
   normalizeBuilding,
   furnitureFootprint,
   type FreeWall,
+  poolDepth,
+  poolSunken,
   poolHeight,
   poolShapePoints,
   POOL_DEVICES,
@@ -112,6 +116,8 @@ import {
   type OpeningStyle,
   type ScreenPicture,
   STAIR_TYPES,
+  setTerrain,
+  groundLevel,
 } from "../model.ts";
 import { controls, tokens } from "../styles.ts";
 import "./entity-picker.ts";
@@ -120,7 +126,7 @@ import { fetchBackup, restoreBackup, type BackupFile } from "../api.ts";
 import { load3d } from "../load3d.ts";
 import type { WallMode } from "../viewer/viewer3d.ts";
 import { furnitureName } from "../furniture-names.ts";
-import { furnitureSize, isElectric, isPackType, mountBase, packDisplay, packItem, packItemName, packName, packType, setPacks, type FurniturePack } from "../packs.ts";
+import { furnitureSize, isElectric, isPackType, isRobotVacuum, mountBase, packDisplay, packItem, packItemName, packMotion, packName, packType, setPacks, type FurniturePack } from "../packs.ts";
 
 /** Items that can be fixed against moving. */
 type FixKind = "room" | "opening" | "furniture" | "device" | "wall" | "outdoor";
@@ -136,6 +142,8 @@ type Drag =
   | { kind: "device"; entityId: string; start: Vec2; startScreen: [number, number]; base: Building; moved: boolean }
   | { kind: "opening"; id: string; startScreen: [number, number]; base: Building; moved: boolean }
   | { kind: "furniture"; id: string; start: Vec2; startScreen: [number, number]; base: Building; moved: boolean }
+  | { kind: "furnset"; ids: string[]; start: Vec2; startScreen: [number, number]; base: Building; moved: boolean }
+  | { kind: "marquee"; start: Vec2; end: Vec2; add: boolean }
   | { kind: "rotate"; id: string; base: Building; moved: boolean }
   | { kind: "aim"; entityId: string; base: Building; moved: boolean }
   | { kind: "resize"; id: string; corner: [1 | -1, 1 | -1]; base: Building; moved: boolean }
@@ -169,11 +177,26 @@ interface Guides {
 }
 
 /** Drags that change the document live (restored when cancelled, recorded in the history when done). */
-const EDIT_DRAGS = new Set(["vertex", "room", "device", "opening", "furniture", "rotate", "resize", "outdoor", "roofmove", "roofcorner", "roofvertex", "outvertex", "outbox", "pipept", "poolport", "pooldev", "pooljoint", "solarmove", "solarturn", "cablept", "holopt", "bgmove", "bgscale", "bgrotate"]);
+const EDIT_DRAGS = new Set(["vertex", "room", "device", "opening", "furniture", "furnset", "rotate", "resize", "outdoor", "roofmove", "roofcorner", "roofvertex", "outvertex", "outbox", "pipept", "poolport", "pooldev", "pooljoint", "solarmove", "solarturn", "cablept", "holopt", "bgmove", "bgscale", "bgrotate"]);
 
 const HISTORY = 100;
 /** Entities a garage door can follow as its open/closed state and switch with a tap. */
 const GATE_SWITCH = /^(switch|input_boolean)\./;
+
+/** Wall view side bar: what stands or hangs at a wall, by kind. */
+const WALL_CATS: Record<string, string[]> = {
+  base: ["kitchen", "sink", "stove", "dishwasher", "sideboard", "dresser", "tv_board", "nightstand", "washbasin", "washer", "dryer", "worktop", "desk"],
+  hang: ["kitchen_wall", "tv_wall", "shelf", "lamp_wall", "radiator", "ac_unit", "led_strip"],
+  tall: ["kitchen_tall", "fridge", "wardrobe", "tall_cabinet", "shelf", "coat_rack"],
+  living: ["sofa", "armchair", "bed", "bunk_bed", "bench", "corner_bench", "plant"],
+  light: ["lamp_wall", "lamp_floor", "led_strip", "lamp_table"],
+};
+/** Hanging pieces (they go into a gap high on the wall). */
+const HANGING = new Set(["kitchen_wall", "tv_wall", "lamp_wall", "shelf", "led_strip", "ac_unit"]);
+/** Cabinets built to measure: in a gap they take its width. */
+const WALL_FIT = new Set(["kitchen", "kitchen_wall", "kitchen_tall", "sideboard", "dresser", "tv_board", "worktop", "wardrobe", "tall_cabinet", "shelf", "desk"]);
+/** The narrowest a fitted piece may become (a 29 cm desk is no desk). */
+const WALL_FIT_MIN: Record<string, number> = { kitchen: 0.15, kitchen_wall: 0.2, kitchen_tall: 0.3, sideboard: 0.4, dresser: 0.4, tv_board: 0.6, worktop: 0.1, wardrobe: 0.4, tall_cabinet: 0.3, shelf: 0.25, desk: 0.6 };
 const SNAP_PX = 10;
 const round = (v: number) => Math.round(v * 1000) / 1000;
 
@@ -225,7 +248,7 @@ function pathLengthOf(p: PoolPipe, nodeAt: (n: string) => { x: number; z: number
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 // furniture without a top to light: no "State from" box
-const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point"]);
+const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox"]);
 
 export class Fp3dEditor extends LitElement {
   static properties = {
@@ -249,12 +272,16 @@ export class Fp3dEditor extends LitElement {
     _backupBusy: { state: true },
     _wall3d: { state: true },
     _sidePinned: { state: true },
+    _sideMin: { state: true },
     _sideOpen: { state: true },
     _floorId: { state: true },
     _roomId: { state: true },
     _vertex: { state: true },
     _openingId: { state: true },
     _furnitureId: { state: true },
+    _multi: { state: true },
+    _single: { state: true },
+    _multiMode: { state: true },
     _deviceId: { state: true },
     _deviceQuery: { state: true },
     _devSource: { state: true },
@@ -275,9 +302,17 @@ export class Fp3dEditor extends LitElement {
     _edgeHi: { state: true },
     _wallView: { state: true },
     _wallSel: { state: true },
+    _wallMulti: { state: true },
+    _wallSingle: { state: true },
+    _wallGap: { state: true },
+    _wallCat: { state: true },
+    _wallQuery: { state: true },
+    _wallFrame: { state: true },
     _wallPicTick: { state: true },
     _wallPick: { state: true },
     _runMode: { state: true },
+    _techMode: { state: true },
+    _feedKind: { state: true },
     _runDraft: { state: true },
     _runSel: { state: true },
     _conn: { state: true },
@@ -294,6 +329,9 @@ export class Fp3dEditor extends LitElement {
     _packages: { state: true },
     _rectSize: { state: true },
     _tool: { state: true },
+    _toolMenu: { state: true },
+    _toolOpen: { state: true },
+    _viewMenu: { state: true },
     _draft: { state: true },
     _outdoorFree: { state: true },
     _outdoorType: { state: true },
@@ -331,12 +369,28 @@ export class Fp3dEditor extends LitElement {
   private declare _wall3d: WallMode;
   /** Sidebar beside the 3D pane: pinned open always, or folded to a strip while nothing is selected. */
   private declare _sidePinned: boolean;
+  /** The sidebar folded to a narrow strip beside the plan (more room to move furniture); remembered per browser. */
+  private declare _sideMin: boolean;
   private declare _sideOpen: boolean;
   private declare _floorId: string | null;
   private declare _roomId: string | null;
   private declare _vertex: number | null;
   private declare _openingId: string | null;
   private declare _furnitureId: string | null;
+  /** Several furniture items selected together (shift-click, a frame); empty = the usual single selection. */
+  private declare _multi: string[];
+  /** One part of a furniture block is edited on its own (double-click), not the whole block. */
+  private declare _single: boolean;
+  /** Touch: taps add items to the selection, a drag on empty ground draws a frame. */
+  private declare _multiMode: boolean;
+  /** The last tap on a furniture item, for the double-tap into a block. */
+  private lastFurnTap: { id: string; t: number } | null = null;
+  /** Whether Shift is held (the 3D views report taps without their keys). */
+  private shiftHeld = false;
+  private readonly onShift = (e: KeyboardEvent) => (this.shiftHeld = e.shiftKey);
+  /** Library pictures for the wall view's side bar (type -> image). */
+  private kitPics = new Map<string, string>();
+  private kitPicsAsked = new Set<string>();
   private declare _deviceId: string | null;
   private declare _deviceQuery: string;
   /** Which devices the room form lists: its own area, other areas, or entities without an area. */
@@ -374,11 +428,38 @@ export class Fp3dEditor extends LitElement {
   /** The wall view: a room's wall seen from the front (what stands and hangs on it), and the piece chosen in it. */
   private declare _wallView: { roomId: string; edge: number } | null;
   private declare _wallSel: string | null;
+  /** Wall view: several pieces chosen together (shift-click, a frame); empty = the usual single choice. */
+  private declare _wallMulti: string[];
+  /** Wall view: one part of a block moved on its own ("Nur dieses Teil"). */
+  private declare _wallSingle: boolean;
+  /** Wall view: the free stretch of wall tapped (from s0 to s1 along the wall; low = standing pieces, else hanging). */
+  private declare _wallGap: { s0: number; s1: number; low: boolean } | null;
+  /** Wall view side bar: the category shown and the search text. */
+  private declare _wallCat: string | null;
+  private declare _wallQuery: string;
+  /** Wall view: the frame being drawn (view coordinates). */
+  private declare _wallFrame: { x0: number; y0: number; x1: number; y1: number } | null;
   private declare _wallPicTick: number;
   /** The toolbar's wall view button is on: the next tap on a wall in the plan opens it. */
   private declare _wallPick: boolean;
   /** Pool Pro in the wall view: laying a pipe, or placing a ball valve or sight glass on one. */
-  private declare _runMode: "draw" | "valve" | "sight" | "hole_wall" | "hole_floor" | "tee" | "y" | null;
+  private declare _runMode: "draw" | "valve" | "sight" | "hole_wall" | "hole_floor" | "tee" | "y" | "feed" | "erase" | null;
+  /** Pool Pro, "Technik zeichnen": the wall view draws the technical room (devices, lines from outside, pipes). */
+  private declare _techMode: boolean;
+  /** The pool line being brought in ("skimmer", "drain", "inlet", "waste"): the next tap on the wall places it. */
+  private declare _feedKind: string | null;
+  /** Where a press in the drawing went down (a drag from there draws a pipe to where it is let go). */
+  private techPress: { s: number; y: number } | null = null;
+  /** The zoomed part of the 2D wall view (svg units), per wall; null: the whole wall. */
+  private wvZoom: { key: string; k: number; x0: number; y0: number } | null = null;
+  /** Touch points on the 2D wall view, and a two-finger zoom under way. */
+  private wvTouch = new Map<number, { x: number; y: number }>();
+  private wvPinch: { d: number; mx: number; my: number; k: number; x0: number; y0: number } | null = null;
+  /** A touch while drawing waits for its release (a second finger makes it a zoom instead of a point). */
+  private wvTap: { s: number; y: number } | null = null;
+  private wvScale = 1;
+  /** The wall about to be picked opens straight in "Technik zeichnen" (asked from the pool tool). */
+  private techPick = false;
   /** Pool Pro: the part whose card is open ("dev:<id>", "joint:<id>", "port:<id>") and its pool. */
   private declare _card: { pool: string; part: string } | null;
   /** The card's open connection being joined: its target and stops. */
@@ -407,7 +488,9 @@ export class Fp3dEditor extends LitElement {
   /** The height handle over the chosen piece in the 3D wall view (screen position, height text), and a lift in progress. */
   private liftRaf = 0;
   private lift: { id: string; y: number; startY: number; perPx: number; base: Building; top: number; moved: boolean } | null = null;
-  private wallDrag: { id: string; x: number; y: number; base: Building; s0: number; y0: number; lift: boolean; moved: boolean } | null = null;
+  /** Wall view: a size handle being dragged (side l/r = width along the wall, t/b = top or bottom edge). */
+  private wallResize: { id: string; side: "l" | "r" | "t" | "b"; x0: number; x1: number; y0: number; y1: number; base: Building; moved: boolean } | null = null;
+  private wallDrag: { id: string; ids?: string[]; w?: number; x: number; y: number; base: Building; s0: number; y0: number; lift: boolean; moved: boolean } | null = null;
   /** Front pictures of the pieces in the wall view, by type, size and turn (null: none to draw); asked for once. */
   private wallPics = new Map<string, { url: string; x0: number; x1: number; y0: number; y1: number } | null>();
   private wallPicsAsked = new Set<string>();
@@ -446,6 +529,11 @@ export class Fp3dEditor extends LitElement {
   private declare _rectSize: [number, number];
   private declare _spots: { type: FurnitureType; rows: number; cols: number; entity: string | null } | null;
   private declare _tool: Tool;
+  /** The toolbar menu open (its group), and which tool's choices are unfolded in it. */
+  private declare _toolMenu: string | null;
+  private declare _toolOpen: Tool | null;
+  /** The view menu of the toolbar (fit, 3D beside, wall view, lock) is open. */
+  private declare _viewMenu: boolean;
   private declare _draft: Vec2[];
   /** Outdoor tool: corner by corner like a free-form room instead of a dragged rectangle (#97). */
   private declare _outdoorFree: boolean;
@@ -486,6 +574,9 @@ export class Fp3dEditor extends LitElement {
     this._vertex = null;
     this._openingId = null;
     this._furnitureId = null;
+    this._multi = [];
+    this._single = false;
+    this._multiMode = false;
     this._deviceId = null;
     this._deviceQuery = "";
     this._devSource = "area";
@@ -511,7 +602,15 @@ export class Fp3dEditor extends LitElement {
     this._wallId = null;
     this._edgeHi = null;
     this._wallView = null;
+    this._techMode = false;
+    this._feedKind = null;
     this._wallSel = null;
+    this._wallMulti = [];
+    this._wallSingle = false;
+    this._wallGap = null;
+    this._wallCat = null;
+    this._wallQuery = "";
+    this._wallFrame = null;
     this._wallPicTick = 0;
     this._wallPick = false;
     this._runMode = null;
@@ -575,11 +674,21 @@ export class Fp3dEditor extends LitElement {
       // no storage
     }
     this._sidePinned = pinned;
+    let min = false;
+    try {
+      min = localStorage.getItem("neonplan3d.sideMin") === "1";
+    } catch {
+      // no storage
+    }
+    this._sideMin = min;
     this._preview = null;
     this._measureLen = 3;
     this._packages = false;
     this._rectSize = [4, 3];
     this._tool = "select";
+    this._toolMenu = null;
+    this._toolOpen = null;
+    this._viewMenu = false;
     this._draft = [];
     this._outdoorFree = false;
     this._outdoorType = "lawn";
@@ -605,17 +714,20 @@ export class Fp3dEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("keydown", this.onKey);
+    window.addEventListener("keyup", this.onShift);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("keydown", this.onKey);
+    window.removeEventListener("keyup", this.onShift);
     this.resizeObserver?.disconnect();
   }
 
   protected willUpdate(changed: PropertyValues): void {
     // this bundle keeps its own pack registry – and its own language table, so it fetches the language itself
     if (changed.has("packs")) setPacks(this.packs ?? []);
+    if (changed.has("_doc")) setTerrain(this._doc);
     // the 3D pane and the wall view's 3D both show the draft (otherwise a piece moved in the wall view jumps back)
     if (changed.has("_doc") && (this._split || this._wallView)) this.queue3d();
     if ((changed.has("_split") && this._split) || (changed.has("_wallView") && this._wallView)) this._doc3d = this._doc;
@@ -688,6 +800,20 @@ export class Fp3dEditor extends LitElement {
   private onFurnitureMoved3d(e: CustomEvent<{ id: string; x: number; z: number }>): void {
     const { id, x, z } = e.detail;
     const wall = this._doc.settings.wall_interior;
+    // a part of a block (or of a multi selection) takes the others along by the same step
+    const sel = this._wallView ? this.wallSelection() : this._furnitureId ? this.selection() : [];
+    const together = sel.includes(id) && sel.length > 1 ? sel : [];
+    if (together.length) {
+      const f = this.floor?.furniture.find((m) => m.id === id);
+      if (!f || together.some((x2) => this.isFixedItem("furniture", x2))) return;
+      const dx = round(x - f.x);
+      const dz = round(z - f.z);
+      const ids = new Set(together);
+      this.change((_, floor) => {
+        for (const m of floor.furniture) if (ids.has(m.id)) Object.assign(m, { x: round(m.x + dx), z: round(m.z + dz) });
+      });
+      return;
+    }
     this.change((doc) => {
       for (const floor of doc.floors) {
         const f = floor.furniture.find((m) => m.id === id);
@@ -1042,6 +1168,7 @@ export class Fp3dEditor extends LitElement {
 
   private fit(): void {
     const pts = this.floor?.rooms.flatMap((r) => r.points) ?? [];
+    if (this._tool === "outdoor" || this._tool === "pool") for (const a of this.floor?.outdoor ?? []) pts.push(...a.points);
     // the roof tool shows the roof sections too, which reach past the rooms
     if (this._tool === "roof") for (const s of this._doc.settings.roof.sections ?? []) pts.push([s.x0, s.z0], [s.x1, s.z1]);
     const b = pts.length ? bounds(pts) : { x0: 0, z0: 0, x1: 10, z1: 8 };
@@ -1183,6 +1310,7 @@ export class Fp3dEditor extends LitElement {
     else if (d.kind === "device" || d.kind === "aim") target = ["device", d.entityId];
     else if (d.kind === "opening") target = ["opening", d.id];
     else if (d.kind === "furniture" || d.kind === "rotate" || d.kind === "resize") target = ["furniture", d.id];
+    else if (d.kind === "furnset") target = ["furniture", d.ids.find((id) => this.isFixedItem("furniture", id)) ?? d.ids[0]];
     else if (d.kind === "wallmove") target = ["wall", d.id];
     else if (d.kind === "outdoor") target = ["outdoor", d.id];
     if (!target || !this.isFixedItem(...target)) return;
@@ -1205,6 +1333,8 @@ export class Fp3dEditor extends LitElement {
     }
     if (this.pointers.size > 2) return;
     if (e.button === 1 || e.button === 2 || !this.floor) {
+      // the right button: dragged it moves the plan, a click without moving opens the item's menu (D518)
+      if (e.button === 2) this.rightPress = { at: local, target: e.target as Element, moved: false };
       this.drag = { kind: "pan", last: local };
       return;
     }
@@ -1285,8 +1415,8 @@ export class Fp3dEditor extends LitElement {
           const i = pt.lastIndexOf(":");
           const id = pt.slice(0, i);
           const index = Number(pt.slice(i + 1));
-          // a double click takes the point out (two points stay at least)
-          if (e.detail >= 2) {
+          // a double click takes the point out (one point stays at least)
+          if (this.doubleTap(e, `cable:${pt}`)) {
             this.change((d) => {
               const c = d.settings.roof.cables?.find((x) => x.id === id);
               if (c && c.points.length > 1) c.points.splice(index, 1);
@@ -1426,6 +1556,15 @@ export class Fp3dEditor extends LitElement {
       if (!this.placeOpening(this._openingPreset, local)) this.drag = { kind: "pan", last: local };
       return;
     }
+    if (this.isAdmin && (this._tool === "select" || this._tool === "furniture") && (e.shiftKey || this._multiMode)) {
+      // several furniture items: shift-click (or the multi mode on touch) adds or removes one, a drag draws a frame
+      const fEl = target.closest("[data-furniture]");
+      if (fEl) {
+        this.toggleMulti(fEl.getAttribute("data-furniture")!);
+        this.drag = null;
+      } else this.drag = { kind: "marquee", start: world, end: world, add: true };
+      return;
+    }
     const deviceEl = target.closest("[data-device]");
     if (deviceEl && this.isAdmin) {
       this.drag = { kind: "device", entityId: deviceEl.getAttribute("data-device")!, start: world, startScreen: local, base: this._doc, moved: false };
@@ -1457,8 +1596,23 @@ export class Fp3dEditor extends LitElement {
     const furnitureEl = target.closest("[data-furniture]");
     if (furnitureEl && !target.closest("[data-vertex], [data-mid]")) {
       const id = furnitureEl.getAttribute("data-furniture")!;
-      this.selectItem("furniture", id);
-      this.drag = this.isAdmin ? { kind: "furniture", id, start: world, startScreen: local, base: this._doc, moved: false } : { kind: "pan", last: local };
+      const now = Date.now();
+      const twice = this.lastFurnTap?.id === id && now - this.lastFurnTap.t < 400;
+      this.lastFurnTap = { id, t: now };
+      const f = this.floor.furniture.find((m) => m.id === id);
+      if (twice && f?.group) {
+        // a double tap into a block: this one part alone
+        this.selectItem("furniture", id);
+        this._single = true;
+      } else if (!this.selection().includes(id) || this._single) {
+        this.selectItem("furniture", id);
+      }
+      const set = this.selection();
+      this.drag = !this.isAdmin
+        ? { kind: "pan", last: local }
+        : set.length > 1
+          ? { kind: "furnset", ids: set, start: world, startScreen: local, base: this._doc, moved: false }
+          : { kind: "furniture", id, start: world, startScreen: local, base: this._doc, moved: false };
       return;
     }
     const vertexEl = target.closest("[data-vertex]");
@@ -1548,6 +1702,10 @@ export class Fp3dEditor extends LitElement {
   }
 
   private onPointerMove(e: PointerEvent): void {
+    if (this.rightPress && !this.rightPress.moved) {
+      const p = this.localPoint(e);
+      if (Math.hypot(p[0] - this.rightPress.at[0], p[1] - this.rightPress.at[1]) > 5) this.rightPress.moved = true;
+    }
     if (this.pressStart) {
       const p = this.localPoint(e);
       if (Math.hypot(p[0] - this.pressStart[0], p[1] - this.pressStart[1]) > 8) {
@@ -1999,6 +2157,27 @@ export class Fp3dEditor extends LitElement {
         this.change((_, floor) => Object.assign(floor.furniture.find((q) => q.id === drag.id)!, { x, z, rotation }), drag.base, false);
         break;
       }
+      case "furnset": {
+        // the whole selection by the same step (on the grid; Alt: by the centimetre), no wall snap – it keeps its shape
+        if (!drag.moved && Math.hypot(local[0] - drag.startScreen[0], local[1] - drag.startScreen[1]) < 5) return;
+        drag.moved = true;
+        const g = e.altKey ? 0.01 : this._doc.settings.grid;
+        const dx = round(Math.round((world[0] - drag.start[0]) / g) * g);
+        const dz = round(Math.round((world[1] - drag.start[1]) / g) * g);
+        const ids = new Set(drag.ids);
+        this.change(
+          (_, floor) => {
+            for (const m of floor.furniture) if (ids.has(m.id)) Object.assign(m, { x: round(m.x + dx), z: round(m.z + dz) });
+          },
+          drag.base,
+          false,
+        );
+        break;
+      }
+      case "marquee":
+        drag.end = world;
+        this.requestUpdate();
+        break;
       case "outdoor": {
         if (!drag.moved && Math.hypot(local[0] - drag.startScreen[0], local[1] - drag.startScreen[1]) < 5) return;
         drag.moved = true;
@@ -2065,6 +2244,13 @@ export class Fp3dEditor extends LitElement {
   }
 
   private onPointerUp(e: PointerEvent): void {
+    const right = this.rightPress;
+    this.rightPress = null;
+    if (right && e.button === 2) {
+      // the browser's contextmenu event (before or after this) stays quiet; a click without moving opens the menu
+      this.rightUp = performance.now();
+      if (!right.moved && e.type !== "pointercancel" && (this._tool === "select" || this._tool === "furniture")) this.openContext(right.target, right.at);
+    }
     clearTimeout(this.pressTimer);
     this.pressStart = null;
     this.fixedPan = false;
@@ -2111,8 +2297,17 @@ export class Fp3dEditor extends LitElement {
         if (this._tool === "measure") this._draft = [this.snap(this.toWorld(...local), undefined, e.altKey)];
         else this.addDraftPoint(this.snap(this.toWorld(...local), undefined, e.altKey), local);
         break;
+      case "marquee": {
+        // everything whose centre lies in the frame joins the selection
+        const [x0, x1] = [Math.min(drag.start[0], drag.end[0]), Math.max(drag.start[0], drag.end[0])];
+        const [z0, z1] = [Math.min(drag.start[1], drag.end[1]), Math.max(drag.start[1], drag.end[1])];
+        const hit = (this.floor?.furniture ?? []).filter((m) => m.x >= x0 && m.x <= x1 && m.z >= z0 && m.z <= z1).map((m) => m.id);
+        if (hit.length) this.setMulti([...new Set([...this.selection(), ...this.withGroups(hit)])]);
+        break;
+      }
       case "opening":
       case "furniture":
+      case "furnset":
       case "rotate":
       case "aim":
       case "resize":
@@ -2423,7 +2618,7 @@ export class Fp3dEditor extends LitElement {
     };
     this.change((_, floor) => floor.furniture.push(item));
     this.selectItem("furniture", item.id);
-    this._tool = "select";
+    // the tool stays: the next one is placed right away (Esc or "Select" ends it)
   }
 
   private addOutdoor(points: Vec2[]): void {
@@ -2440,8 +2635,7 @@ export class Fp3dEditor extends LitElement {
     if (type === "pool" && hasFeature("pool")) area.pool = {};
     this.change((_, floor) => floor.outdoor.push(area));
     this.selectItem("outdoor", area.id);
-    // the pool tool stays: ports, devices and pipes come next
-    if (this._tool !== "pool") this._tool = "select";
+    // the tool stays: the next area (or the pool's ports and pipes) right away; Esc or "Select" ends it
   }
 
   private get outdoorArea(): OutdoorArea | undefined {
@@ -2456,6 +2650,10 @@ export class Fp3dEditor extends LitElement {
   private deleteOutdoor(): void {
     const id = this._outdoorId;
     if (!id || !this.isAdmin || !this.confirmFixedDelete("outdoor", id)) return;
+    // a pool with its pipes is a lot of work: ask first
+    const a = this.floor?.outdoor.find((o) => o.id === id);
+    const pipes = a?.pool?.pipes?.length ?? 0;
+    if (a?.type === "pool" && pipes && !confirm(this.t("pool_delete_confirm", { n: pipes }))) return;
     this.change((_, floor) => (floor.outdoor = floor.outdoor.filter((o) => o.id !== id)));
     this._outdoorId = null;
   }
@@ -2477,16 +2675,20 @@ export class Fp3dEditor extends LitElement {
     );
     this._roomId = id;
     this._vertex = null;
-    this._tool = "select";
+    // the tool stays: one room after the other (Esc or "Select" ends it)
   }
 
   // ------------------------------------------------------------------ keyboard
 
   private readonly onKey = (e: KeyboardEvent) => {
+    this.shiftHeld = e.shiftKey;
     const path = e.composedPath();
     if (path.some((el) => el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
     if (!this.isConnected || !this.offsetParent) return;
     const mod = e.ctrlKey || e.metaKey;
+    // the wall view has its own keys: Delete there must never reach what is chosen in the plan behind it
+    // (it took the whole pool with every pipe); only undo and redo still work from here
+    if (this._wallView && !(mod && ["z", "y"].includes(e.key.toLowerCase()))) return;
     if (mod && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) this.redo();
@@ -2496,7 +2698,8 @@ export class Fp3dEditor extends LitElement {
       this.redo();
     } else if (mod && e.key.toLowerCase() === "d") {
       e.preventDefault();
-      this.duplicateRoom();
+      if (this._furnitureId) this.duplicateFurniture();
+      else this.duplicateRoom();
     } else if (e.key === "Delete" || (e.key === "Backspace" && (this._tool === "select" || this._tool === "furniture"))) {
       if (this._deviceId) this.deleteItem("device", this._deviceId);
       else if (this._outdoorId) this.deleteOutdoor();
@@ -2507,6 +2710,8 @@ export class Fp3dEditor extends LitElement {
       else this.deleteRoom();
     } else if (e.key.toLowerCase() === "l" && !mod && this._tool === "roof" && this.roofSection && !this._doc.settings.lock_plan) {
       this.updateRoofSection({ locked: !this.roofSection.locked });
+    } else if (e.key.toLowerCase() === "l" && !mod && this._furnitureId && this.selection().length > 1) {
+      this.lockSelection(!this.selection().every((id) => this.isFixedItem("furniture", id)));
     } else if (e.key.toLowerCase() === "l" && !mod && (this._furnitureId || this._deviceId)) {
       const s = this.selectedFix!;
       this.toggleFixed(s.kind, s.id);
@@ -2548,11 +2753,19 @@ export class Fp3dEditor extends LitElement {
     const floor = this.floor;
     if (!floor || !this.isAdmin) return false;
     const fix = this.selectedFix;
-    if (fix && this.isFixedItem(fix.kind, fix.id)) {
+    const set = this._furnitureId ? this.selection() : [];
+    if ((fix && this.isFixedItem(fix.kind, fix.id)) || set.some((id) => this.isFixedItem("furniture", id))) {
       this._fixedHint = true;
       return true;
     }
     const mv = (p: Vec2): Vec2 => [round(p[0] + dx), round(p[1] + dz)];
+    if (set.length > 1) {
+      const ids = new Set(set);
+      this.change((_, f) => {
+        for (const m of f.furniture) if (ids.has(m.id)) [m.x, m.z] = mv([m.x, m.z]);
+      });
+      return true;
+    }
     if (this._deviceId) {
       const id = this._deviceId;
       if (!floor.placements.some((p) => p.entity_id === id)) return false;
@@ -2984,7 +3197,7 @@ export class Fp3dEditor extends LitElement {
             >${this.t("solar_face")}
             <select ?disabled=${!admin} @change=${(e: Event) => {
               const next = faces.find((x) => x.key === (e.target as HTMLSelectElement).value);
-              if (next) set({ ...proposeWindow(next, w.id), w: w.w, h: w.h, cover: w.cover, contact: w.contact, tilt: w.tilt, window: w.window, name: w.name });
+              if (next) set({ ...proposeWindow(next, w.id), w: w.w, h: w.h, cover: w.cover, contact: w.contact, tilt: w.tilt, window: w.window, name: w.name, float: w.float });
             }}>
               ${faces.map((x) => html`<option value=${x.key} ?selected=${x.key === w.face}>${this.faceLabel(x)}</option>`)}
             </select></label
@@ -3002,6 +3215,11 @@ export class Fp3dEditor extends LitElement {
             <input .value=${w.name ?? ""} ?disabled=${!admin} maxlength="64" @change=${(e: Event) => set({ name: (e.target as HTMLInputElement).value.trim() || null })}
           /></label>
         </div>
+        <label class="fp3d-check"
+          ><input type="checkbox" ?disabled=${!admin} .checked=${!!w.float} @change=${(e: Event) => set({ float: (e.target as HTMLInputElement).checked || undefined })} />
+          ${this.t("roof_window_float")}</label
+        >
+        <p class="fp3d-sub">${this.t("roof_window_float_hint")}</p>
         <p class="fp3d-sub">${this.t("roof_window_motor_hint")}</p>
         <p class="fp3d-sub">${this.t("roof_window_hint")}</p>
         ${admin ? html`<div class="fp3d-actions"><button class="fp3d-btn fp3d-danger" @click=${() => this.deleteRoofWindow()}>${this.t("delete")}</button></div>` : nothing}
@@ -3509,13 +3727,16 @@ export class Fp3dEditor extends LitElement {
             if (!st) return this.entitySelect(this.t("solar_entity"), f.entity ?? null, undefined, power, (v) => set({ entity: v === "none" ? null : v }));
             // each inverter by its own name, else its entity's name, numbered across the house only as a last resort (#213)
             const linked = this.hass ? furnitureEntities(this.hass, this._doc.floors) : null;
-            const inverters = this._doc.floors
-              .flatMap((fl) => fl.furniture.filter((m) => m.type === "inverter").map((m) => ({ m, fl })))
-              .map(({ m, fl }, i) => {
-                const entity = linked?.get(m.id)?.entity;
-                const own = m.name?.trim() || (entity && this.hass ? entityName(this.hass, entity) : "");
-                return { id: m.id, label: `${own || `${this.t("furn_inverter")} ${i + 1}`} · ${fl.name}` };
-              });
+            // the inverters, and the batteries with a solar input of their own (a power station, D410)
+            const named = (type: "inverter" | "home_battery") =>
+              this._doc.floors
+                .flatMap((fl) => fl.furniture.filter((m) => m.type === type).map((m) => ({ m, fl })))
+                .map(({ m, fl }, i) => {
+                  const entity = linked?.get(m.id)?.entity;
+                  const own = m.name?.trim() || (entity && this.hass ? entityName(this.hass, entity) : "");
+                  return { id: m.id, label: `${own || `${this.t(`furn_${type}`)} ${i + 1}`} · ${fl.name}` };
+                });
+            const inverters = [...named("inverter"), ...named("home_battery")];
             return html`<label class="fp3d-field fp3d-wide"
                 >${this.t("solar_string_name")}
                 <input type="text" ?disabled=${!admin} .value=${st.name} @change=${(e: Event) => this.updateSolarString({ name: (e.target as HTMLInputElement).value.trim() || st.name })}
@@ -4010,6 +4231,8 @@ export class Fp3dEditor extends LitElement {
 
   private onContextMenu(e: MouseEvent): void {
     e.preventDefault();
+    // a mouse's right button is handled on its release (drag = move the plan); this is a long press on a tablet
+    if (this.rightPress || performance.now() - this.rightUp < 600) return;
     if (this._tool !== "select" && this._tool !== "furniture") return;
     this.drag = null;
     this.openContext(e.target as Element, this.localPoint(e as PointerEvent));
@@ -4118,6 +4341,8 @@ export class Fp3dEditor extends LitElement {
     this._roomId = kind === "room" ? id : this._roomId;
     this._openingId = kind === "opening" ? id : null;
     this._furnitureId = kind === "furniture" ? id : null;
+    this._multi = [];
+    this._single = false;
     this._deviceId = kind === "device" ? id : null;
     if (kind === "device" && id) {
       const pl = this.floor?.placements.find((x) => x.entity_id === id);
@@ -4202,7 +4427,7 @@ export class Fp3dEditor extends LitElement {
       tilt: null,
     };
     this.change((_, f) => f.openings.push(opening));
-    this._tool = "select";
+    // the tool stays: six doors and windows in a row without going back to the menu (Esc or "Select" ends it)
     this.selectItem("opening", opening.id);
     return true;
   }
@@ -4246,6 +4471,17 @@ export class Fp3dEditor extends LitElement {
     /></label>`;
   }
 
+  /**
+   * The built-in types offered in a furniture item's type list: what the library offers (#530 – devices of the energy
+   * tool, Pool Pro parts not released yet and the stairwell are no furniture to switch to), plus the item's own type.
+   */
+  private typeChoices(current: string): string[] {
+    const shown = new Set<string>(Object.values(FURNITURE_GROUPS).flat());
+    // the smart fridge: its own pack, or Haushalt Pro
+    if (hasFeature("fridge_smart") || hasFeature("household")) shown.add("fridge_smart");
+    return FURNITURE_TYPES.filter((t) => shown.has(t) || t === current);
+  }
+
   /** Furniture that can stand for a placed device of this kind (a speaker for a media player, a lamp for a light …). */
   private furnitureFor(entityId: string): { type: string; label: string }[] {
     const kind = kindOf(entityId);
@@ -4256,8 +4492,8 @@ export class Fp3dEditor extends LitElement {
     const speakerish = /speaker|sound|subwoofer|receiver|smart_|display|tv|media|turntable|projector|console/;
     const fits = (t: string): boolean => {
       if (kind === "light") return isLamp(t);
-      if (kind === "climate") return t === "radiator";
-      if (entityId.startsWith("vacuum.")) return t === "robot_vacuum" || (isPackType(t) && t.endsWith(":robot_vacuum"));
+      if (kind === "climate") return t === "radiator" || t === "ac_unit";
+      if (entityId.startsWith("vacuum.")) return isRobotVacuum(t);
       if (kind === "media") return hasScreen(t) || (isElectric(t) && speakerish.test(t));
       return isElectric(t) && !isLamp(t);
     };
@@ -4367,12 +4603,24 @@ export class Fp3dEditor extends LitElement {
   private rotateFurniture(delta: number): void {
     const f = this.furnitureItem;
     if (!f || !this.isAdmin) return;
+    const set = this.selection();
+    if (set.length > 1) return this.rotateSelection(delta);
     this.updateFurniture({ rotation: (((f.rotation + delta) % 360) + 360) % 360 });
   }
 
   private deleteFurniture(): void {
     const id = this._furnitureId;
-    if (!id || !this.isAdmin || !this.confirmFixedDelete("furniture", id)) return;
+    if (!id || !this.isAdmin) return;
+    const set = this.selection();
+    if (set.length > 1) {
+      const fixed = set.some((x) => this.isFixedItem("furniture", x));
+      if (!confirm(this.t(fixed ? "block_delete_fixed" : "block_delete", { n: set.length }))) return;
+      const ids = new Set(set);
+      this.change((_, floor) => (floor.furniture = floor.furniture.filter((f) => !ids.has(f.id))));
+      this.selectItem("room", this._roomId);
+      return;
+    }
+    if (!this.confirmFixedDelete("furniture", id)) return;
     this.change((_, floor) => (floor.furniture = floor.furniture.filter((f) => f.id !== id)));
     this._furnitureId = null;
   }
@@ -4380,9 +4628,112 @@ export class Fp3dEditor extends LitElement {
   private duplicateFurniture(): void {
     const f = this.furnitureItem;
     if (!f || !this.isAdmin) return;
-    const copy = { ...structuredClone(f), id: uid("furniture"), x: round(f.x + 0.3), z: round(f.z + 0.3) };
+    const set = this.selection();
+    if (set.length > 1) {
+      // the copy of a block is a block of its own
+      const items = this.floor!.furniture.filter((m) => set.includes(m.id));
+      const blocks = new Map<string, string>();
+      const copies = items.map((m) => ({ ...structuredClone(m), id: uid("furniture"), x: round(m.x + 0.3), z: round(m.z + 0.3), group: m.group ? (blocks.get(m.group) ?? blocks.set(m.group, uid("block")).get(m.group)!) : null, locked: null }));
+      this.change((_, floor) => floor.furniture.push(...copies));
+      this.setMulti(copies.map((c) => c.id));
+      return;
+    }
+    const copy = { ...structuredClone(f), id: uid("furniture"), x: round(f.x + 0.3), z: round(f.z + 0.3), group: this._single ? f.group : null };
     this.change((_, floor) => floor.furniture.push(copy));
     this.selectItem("furniture", copy.id);
+  }
+
+  // ------------------------------------------------------------------ furniture blocks and multi selection
+
+  /** The furniture moved together: the multi selection, else the selected item's block (unless one part is edited alone), else the item. */
+  private selection(): string[] {
+    if (this._multi.length) return this._multi;
+    const f = this.furnitureItem;
+    if (!f) return [];
+    if (f.group && !this._single) return (this.floor?.furniture ?? []).filter((m) => m.group === f.group).map((m) => m.id);
+    return [f.id];
+  }
+
+  /** Ids with every other part of their blocks. */
+  private withGroups(ids: string[]): string[] {
+    const groups = new Set((this.floor?.furniture ?? []).filter((m) => ids.includes(m.id) && m.group).map((m) => m.group));
+    return [...new Set([...ids, ...(this.floor?.furniture ?? []).filter((m) => m.group && groups.has(m.group)).map((m) => m.id)])];
+  }
+
+  private setMulti(ids: string[]): void {
+    if (!ids.length) return this.selectItem("room", this._roomId);
+    this.selectItem("furniture", ids[0]);
+    // one item (or exactly one block) needs no multi selection
+    const block = this.selection();
+    if (ids.length > 1 && !(ids.length === block.length && ids.every((id) => block.includes(id)))) this._multi = ids;
+  }
+
+  /** Shift-click: an item (with its block) joins the selection or leaves it. */
+  private toggleMulti(id: string): void {
+    const cur = this._furnitureId ? this.selection() : [];
+    const part = this.withGroups([id]);
+    const next = cur.includes(id) ? cur.filter((x) => !part.includes(x)) : [...new Set([...cur, ...part])];
+    this.setMulti(next);
+  }
+
+  /** The selection's centre (middle of its items' extent). */
+  private selectionCentre(ids: string[]): Vec2 {
+    const items = (this.floor?.furniture ?? []).filter((m) => ids.includes(m.id));
+    const xs = items.map((m) => m.x);
+    const zs = items.map((m) => m.z);
+    return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
+  }
+
+  /** Turns the whole selection about its centre (positions and each item's own turn). */
+  private rotateSelection(delta: number): void {
+    const set = this.selection();
+    if (set.some((id) => this.isFixedItem("furniture", id))) {
+      this._fixedHint = true;
+      return;
+    }
+    const [cx, cz] = this.selectionCentre(set);
+    const a = (delta * Math.PI) / 180;
+    const c = Math.round(Math.cos(a) * 1e6) / 1e6;
+    const s = Math.round(Math.sin(a) * 1e6) / 1e6;
+    const ids = new Set(set);
+    this.change((_, floor) => {
+      for (const m of floor.furniture) {
+        if (!ids.has(m.id)) continue;
+        const dx = m.x - cx;
+        const dz = m.z - cz;
+        // the plan turns clockwise for a positive angle (x right, z down)
+        Object.assign(m, { x: round(cx + dx * c - dz * s), z: round(cz + dx * s + dz * c), rotation: (((m.rotation + delta) % 360) + 360) % 360 });
+      }
+    });
+  }
+
+  /** "Als Block zusammenfassen": the selection becomes one block. */
+  private groupSelection(): void {
+    const ids = new Set(this.selection());
+    if (ids.size < 2) return;
+    const gid = uid("block");
+    this.change((_, floor) => {
+      for (const m of floor.furniture) if (ids.has(m.id)) m.group = gid;
+    });
+    this._multi = [];
+    this._single = false;
+  }
+
+  /** "Block auflösen": every part on its own again (the parts stay selected). */
+  private ungroupSelection(): void {
+    const set = this.selection();
+    const ids = new Set(set);
+    this.change((_, floor) => {
+      for (const m of floor.furniture) if (ids.has(m.id)) m.group = null;
+    });
+    if (set.length > 1) this._multi = set;
+  }
+
+  private lockSelection(on: boolean): void {
+    const ids = new Set(this.selection());
+    this.change((_, floor) => {
+      for (const m of floor.furniture) if (ids.has(m.id)) m.locked = on || null;
+    });
   }
 
   /** Place entities in the selected room; an entity already placed elsewhere moves here. */
@@ -4675,6 +5026,226 @@ export class Fp3dEditor extends LitElement {
 
   // ------------------------------------------------------------------ rendering
 
+  /** Work on another floor (from the floor menu of the toolbar). */
+  private selectFloor(id: string): void {
+    this._floorId = id;
+    this._roomId = null;
+    this._vertex = null;
+    this._draft = [];
+    this.fit();
+  }
+
+  /**
+   * The floor worked on, always at hand at the left of the toolbar whatever the tool: a menu with every floor (top
+   * floor first), "New floor" (from a Home Assistant floor or empty) and the floor's settings in the sidebar.
+   */
+  private renderFloorMenu() {
+    const floors = this._doc.floors;
+    const floor = this.floor;
+    const admin = this.isAdmin;
+    const open = this._toolMenu === "floor";
+    const close = () => ((this._toolMenu = null), (this._floorMenu = false));
+    return html`<div class="fp3d-seg fp3d-seg-menu">
+      <div class="fp3d-menu-wrap">
+        <button aria-haspopup="menu" aria-expanded=${open} @click=${() => ((this._toolMenu = open ? null : "floor"), (this._floorMenu = false), (this._viewMenu = false))}>
+          <span class="fp3d-menu-label">${this.t("floor_label")}</span> ${floor?.name ?? this.t("floors")} <span class="fp3d-caret">▾</span>
+        </button>
+        ${open
+          ? html`<div class="fp3d-menu-veil" @click=${close}></div>
+              <div class="fp3d-menu" role="menu">
+                ${[...floors].reverse().map(
+                  (f) => html`<button role="menuitem" class="fp3d-menu-item ${f.id === this._floorId ? "fp3d-menu-on" : ""}" @click=${() => (close(), this.selectFloor(f.id))}>
+                    ${f.name}<span class="fp3d-menu-more">${f.id === this._floorId ? "✓" : ""}</span>
+                  </button>`,
+                )}
+                ${admin
+                  ? html`<div class="fp3d-menu-sep"></div>
+                      <button
+                        role="menuitem"
+                        class="fp3d-menu-item"
+                        aria-expanded=${this.freeHaFloors.length ? this._floorMenu : nothing}
+                        @click=${() => (this.freeHaFloors.length ? (this._floorMenu = !this._floorMenu) : (close(), this.addFloor()))}
+                      >
+                        ${this.t("add_floor")}${this.freeHaFloors.length ? html`<span class="fp3d-menu-more">${this._floorMenu ? "▾" : "▸"}</span>` : nothing}
+                      </button>
+                      ${this._floorMenu
+                        ? html`<div class="fp3d-menu-sub">
+                            ${this.freeHaFloors.map((f) => html`<button class="fp3d-chip" @click=${() => (close(), this.addFloor(f))}>${f.name}</button>`)}
+                            <button class="fp3d-chip" @click=${() => (close(), this.addFloor())}>${this.t("floor_empty")}</button>
+                          </div>`
+                        : nothing}
+                      ${floor
+                        ? html`<button
+                            role="menuitem"
+                            class="fp3d-menu-item"
+                            @click=${() => {
+                              close();
+                              // the floor's settings are the sidebar's first page: "Select", nothing chosen
+                              this.setTool("select");
+                              this.selectItem("room", null);
+                              this._sideOpen = true;
+                            }}
+                          >
+                            ${this.t("floor_settings")}
+                          </button>`
+                        : nothing}`
+                  : nothing}
+              </div>`
+          : nothing}
+      </div>
+    </div>`;
+  }
+
+  /** Switch to a tool (from the tool menu): a fresh drawing, the sidebar for it. */
+  private setTool(tool: Tool): void {
+    const floor = this.floor;
+    this._tool = tool;
+    this._draft = [];
+    this._cursor = null;
+    this._pipeMode = false;
+    this._pipeDraft = null;
+    // the pool tool works on a pool: the selected one, else the first of the floor
+    if (tool === "pool" && this.outdoorArea?.type !== "pool") {
+      const first = floor?.outdoor.find((x) => x.type === "pool");
+      if (first) this.selectItem("outdoor", first.id);
+    }
+    // another tool: its sidebar (library, presets, details) unfolds again, even if it was collapsed for the last one
+    this.setSideFolded(false);
+  }
+
+  /**
+   * The toolbar, tidied up: "Select" stays a button; the drawing tools sit in menus by what they are for – "Build"
+   * (room, wall, door & window, floor opening, roof), "Outside" (areas, pool) – with "Furniture" and "Energy" as
+   * buttons of their own. Tools with choices (room, outdoor, pool) unfold them in the menu; a group's button names the
+   * tool in use. Undo and redo stay, the view switches (fit, 3D beside, wall view, lock) are in a view menu.
+   */
+  private renderToolBar(floor: Floor | undefined) {
+    const admin = this.isAdmin;
+    const off = !floor || !admin;
+    type Choice = { label: string; on: boolean; pick: () => void };
+    type Entry = { tool: Tool; label: string; choices?: () => Choice[] };
+    const outdoorTypes = OUTDOOR_TYPES.filter((t) => t !== "pool");
+    const room: Entry = {
+      tool: "rect",
+      label: this.t("tool_room"),
+      choices: () => [
+        { label: this.t("tool_rect"), on: this._tool === "rect", pick: () => this.setTool("rect") },
+        { label: this.t("tool_polygon"), on: this._tool === "polygon", pick: () => this.setTool("polygon") },
+        { label: this.t("tool_measure"), on: this._tool === "measure", pick: () => this.setTool("measure") },
+      ],
+    };
+    const outdoor: Entry = {
+      tool: "outdoor",
+      label: this.t("tool_outdoor"),
+      choices: () => [
+        ...outdoorTypes.map((t) => ({
+          label: this.t(`out_${t}` as I18nKey),
+          on: this._tool === "outdoor" && (this._outdoorType ?? "lawn") === t,
+          pick: () => {
+            this.setTool("outdoor");
+            this._outdoorType = t;
+          },
+        })),
+        { label: this.t("outdoor_shape_rect"), on: this._tool === "outdoor" && !this._outdoorFree, pick: () => (this.setTool("outdoor"), (this._outdoorFree = false)) },
+        { label: this.t("outdoor_shape_free"), on: this._tool === "outdoor" && this._outdoorFree, pick: () => (this.setTool("outdoor"), (this._outdoorFree = true)) },
+      ],
+    };
+    const pool: Entry = {
+      tool: "pool",
+      label: this.t("tool_pool"),
+      choices: () => [
+        ...(["rect", "round", "oval", "free"] as const).map((k) => ({
+          label: this.t(`pool_shape_${k}` as I18nKey),
+          on: this._tool === "pool" && !this._pipeMode && (this._poolShape ?? "rect") === k,
+          pick: () => {
+            this.setTool("pool");
+            this._poolShape = k;
+            this._outdoorFree = k === "free";
+          },
+        })),
+        ...(released("pool") ? [{ label: this.t("pool_pipe_draw"), on: this._tool === "pool" && !!this._pipeMode, pick: () => (this.setTool("pool"), (this._pipeMode = true)) }] : []),
+      ],
+    };
+    const groups: { id: string; label: string; entries: Entry[] }[] = [
+      {
+        id: "build",
+        label: this.t("tool_group_build"),
+        entries: [room, { tool: "wall", label: this.t("tool_wall") }, { tool: "opening", label: this.t("tool_opening") }, { tool: "hole", label: this.t("tool_hole") }, { tool: "roof", label: this.t("tool_roof") }],
+      },
+      { id: "outside", label: this.t("tool_group_outside"), entries: [outdoor, pool] },
+    ];
+    const inEntry = (e: Entry) => e.tool === this._tool || (e === room && (this._tool === "polygon" || this._tool === "measure"));
+    // what a group's button says while one of its tools is in use: the tool, and its shape or kind
+    const detail = (e: Entry) =>
+      e === pool ? (this._pipeMode ? this.t("pool_pipe_draw") : this.t(`pool_shape_${this._poolShape ?? "rect"}` as I18nKey)) : e === outdoor ? this.t(`out_${this._outdoorType ?? "lawn"}` as I18nKey) : e === room ? this.t(`tool_${this._tool}` as I18nKey) : "";
+    const close = () => ((this._toolMenu = null), (this._toolOpen = null));
+    const plain = (tool: Tool, label: string) =>
+      html`<button aria-pressed=${this._tool === tool} ?disabled=${off} @click=${() => (close(), this.setTool(tool))}>${label}</button>`;
+    return html`<div class="fp3d-seg fp3d-seg-menu" role="group">
+        <button aria-pressed=${this._tool === "select"} ?disabled=${!floor} @click=${() => (close(), this.setTool("select"))}>${this.t("tool_select")}</button>
+        ${groups.map((g) => {
+          const active = g.entries.find(inEntry);
+          const open = this._toolMenu === g.id;
+          const text = active ? `${active.label}${detail(active) ? `: ${detail(active)}` : ""}` : g.label;
+          return html`<div class="fp3d-menu-wrap">
+            <button aria-pressed=${!!active} aria-haspopup="menu" aria-expanded=${open} ?disabled=${off} @click=${() => ((this._toolMenu = open ? null : g.id), (this._toolOpen = null), (this._viewMenu = false))}>
+              ${text} <span class="fp3d-caret">▾</span>
+            </button>
+            ${open
+              ? html`<div class="fp3d-menu-veil" @click=${close}></div>
+                  <div class="fp3d-menu" role="menu">
+                    ${g.entries.map((x) => {
+                      const choices = x.choices?.() ?? [];
+                      const unfolded = this._toolOpen === x.tool;
+                      return html`<button
+                          role="menuitem"
+                          class="fp3d-menu-item ${inEntry(x) ? "fp3d-menu-on" : ""}"
+                          aria-expanded=${choices.length ? unfolded : nothing}
+                          @click=${() => {
+                            if (choices.length) this._toolOpen = unfolded ? null : x.tool;
+                            else {
+                              this.setTool(x.tool);
+                              close();
+                            }
+                          }}
+                        >
+                          ${x.label}${choices.length ? html`<span class="fp3d-menu-more">${unfolded ? "▾" : "▸"}</span>` : nothing}
+                        </button>
+                        ${unfolded
+                          ? html`<div class="fp3d-menu-sub">
+                              ${choices.map(
+                                (c) =>
+                                  html`<button
+                                    class="fp3d-chip ${c.on ? "fp3d-menu-on" : ""}"
+                                    @click=${() => {
+                                      c.pick();
+                                      this._draft = [];
+                                      close();
+                                    }}
+                                  >
+                                    ${c.label}
+                                  </button>`,
+                              )}
+                            </div>`
+                          : nothing}`;
+                    })}
+                  </div>`
+              : nothing}
+          </div>`;
+        })}
+        ${plain("furniture", this.t("tool_furniture"))} ${plain("energy", this.t("tool_energy"))}
+      </div>
+      <div class="fp3d-seg fp3d-seg-menu">
+        <button class="fp3d-undo" ?disabled=${!this._canUndo} @click=${() => this.undo()} title=${`${this.t("undo")} (Ctrl+Z)`} aria-label=${this.t("undo")}>↶</button>
+        <button class="fp3d-undo" ?disabled=${!this._canRedo} @click=${() => this.redo()} title=${`${this.t("redo")} (Ctrl+Y)`} aria-label=${this.t("redo")}>↷</button>
+      </div>
+      <div class="fp3d-seg fp3d-seg-menu">
+        <button aria-pressed=${this._split} title=${this.t("split_3d_hint")} @click=${() => (close(), this.toggleSplit())}>${this.t("split_3d")}</button>
+        <button aria-pressed=${this._wallPick} title=${this.t("wall_view_open")} @click=${(e: Event) => (close(), this.toggleWallPick(e.currentTarget as HTMLElement))}>${this.t("wall_view")}</button>
+        <button title=${this.t("fit_hint")} @click=${() => (close(), this.fit())}>${this.t("fit")}</button>
+      </div>`;
+  }
+
   protected render(): TemplateResult {
     const floor = this.floor;
     const walls = floor ? generateWalls(floor.rooms, { exterior: this._doc.settings.wall_exterior, interior: this._doc.settings.wall_interior }, floor.walls ?? []) : null;
@@ -4684,87 +5255,7 @@ export class Fp3dEditor extends LitElement {
         <div class="fp3d-main">
           <div class="fp3d-toolbar">
             ${this._wallPick ? html`<div class="fp3d-pick-tip" style=${`left:${this.wallPickTip[0]}px;top:${this.wallPickTip[1]}px`} @click=${() => (this._wallPick = false)}>${this.t("hint_wall_pick")}</div>` : nothing}
-            <div class="fp3d-seg" role="group" aria-label=${this.t("tool_select")}>
-              ${(["select", "rect", "polygon", "wall", "opening", "furniture", "outdoor", "pool", "hole", "roof", "energy"] as Tool[]).map(
-                (tool) => html`<button
-                  aria-pressed=${this._tool === tool}
-                  ?disabled=${!floor || (!this.isAdmin && tool !== "select")}
-                  @click=${() => {
-                    this._tool = tool;
-                    this._draft = [];
-                    this._cursor = null;
-                    this._pipeMode = false;
-                    this._pipeDraft = null;
-                    // the pool tool works on a pool: the selected one, else the first of the floor
-                    if (tool === "pool" && this.outdoorArea?.type !== "pool") {
-                      const first = floor?.outdoor.find((x) => x.type === "pool");
-                      if (first) this.selectItem("outdoor", first.id);
-                    }
-                    // a tool needs the sidebar (library, presets): open it beside the 3D pane
-                    this._sideOpen = tool !== "select";
-                  }}
-                >
-                  ${this.t(`tool_${tool}` as I18nKey)}
-                </button>`,
-              )}
-            </div>
-            <div class="fp3d-seg">
-              <button ?disabled=${!this._canUndo} @click=${() => this.undo()} title="Ctrl+Z">${this.t("undo")}</button>
-              <button ?disabled=${!this._canRedo} @click=${() => this.redo()} title="Ctrl+Y">${this.t("redo")}</button>
-              <button @click=${() => this.fit()}>${this.t("fit")}</button>
-              <button aria-pressed=${this._split} title=${this.t("split_3d_hint")} @click=${() => this.toggleSplit()}>${this.t("split_3d")}</button>
-              <button aria-pressed=${this._wallPick} title=${this.t("wall_view_open")} @click=${(e: Event) => this.toggleWallPick(e.currentTarget as HTMLElement)}>▦ ${this.t("wall_view")}</button>
-              ${this.isAdmin ? html`<button aria-pressed=${!!this._doc.settings.lock_plan} title=${this.t("lock_plan_hint")} @click=${() => this.toggleLockPlan()}>${this.t("lock_plan")}</button>` : nothing}
-            </div>
-            ${this._tool === "pool"
-              ? html`<div class="fp3d-seg" role="group" aria-label=${this.t("pool_shape")}>
-                    ${(["rect", "round", "oval", "free"] as const).map(
-                      (k) =>
-                        html`<button
-                          aria-pressed=${!this._pipeMode && (this._poolShape ?? "rect") === k}
-                          @click=${() => ((this._poolShape = k), (this._outdoorFree = k === "free"), (this._pipeMode = false), (this._pipeDraft = null), (this._draft = []))}
-                        >
-                          ${k === "rect" ? "▭" : k === "round" ? "◯" : k === "oval" ? "⬭" : "✎"} ${this.t(`pool_shape_${k}` as I18nKey)}
-                        </button>`,
-                    )}
-                  </div>
-                  ${released("pool")
-                    ? html`<div class="fp3d-seg" role="group">
-                        <button aria-pressed=${!!this._pipeMode} title=${this.t("pool_pipe_draw_hint")} @click=${() => ((this._pipeMode = !this._pipeMode), (this._pipeDraft = null), (this._draft = []))}>〰 ${this.t("pool_pipe_draw")}</button>
-                      </div>`
-                    : nothing}`
-              : nothing}
-            ${this._tool === "outdoor"
-              ? html`<label class="fp3d-outdoor-type" title=${this.t("outdoor_draw_type_hint")}
-                    >${this.t("outdoor_draw_type")}
-                    <select
-                      @change=${(e: Event) => {
-                        this._outdoorType = (e.target as HTMLSelectElement).value as OutdoorType;
-                        // a pool starts as a rectangle; free form stays free for the other types
-                        if (this._outdoorType === "pool") this._outdoorFree = this._poolShape === "free";
-                        this._draft = [];
-                      }}
-                    >
-                      ${OUTDOOR_TYPES.filter((t) => t !== "pool").map((t) => html`<option value=${t} ?selected=${t === (this._outdoorType ?? "lawn")}>${this.t(`out_${t}` as I18nKey)}</option>`)}
-                    </select></label
-                  >
-                  ${false
-                    ? html`<div class="fp3d-seg" role="group" aria-label=${this.t("pool_shape")}>
-                        ${(["rect", "round", "oval", "free"] as const).map(
-                          (k) =>
-                            html`<button
-                              aria-pressed=${(this._poolShape ?? "rect") === k}
-                              @click=${() => ((this._poolShape = k), (this._outdoorFree = k === "free"), (this._draft = []))}
-                            >
-                              ${k === "rect" ? "▭" : k === "round" ? "◯" : k === "oval" ? "⬭" : "✎"} ${this.t(`pool_shape_${k}` as I18nKey)}
-                            </button>`,
-                        )}
-                      </div>`
-                    : html`<div class="fp3d-seg" role="group" aria-label=${this.t("tool_outdoor")}>
-                        <button aria-pressed=${!this._outdoorFree} @click=${() => ((this._outdoorFree = false), (this._draft = []))}>▭ ${this.t("outdoor_shape_rect")}</button>
-                        <button aria-pressed=${this._outdoorFree} @click=${() => ((this._outdoorFree = true), (this._draft = []))}>✎ ${this.t("outdoor_shape_free")}</button>
-                      </div>`}`
-              : nothing}
+            ${this.renderFloorMenu()} ${this.renderToolBar(floor)}
             ${walls?.warnings.length ? html`<span class="fp3d-warn">${this.t("overlap_warning")}</span>` : nothing}
           </div>
           <div class="fp3d-stage-pair ${this._split ? "fp3d-split" : ""}" style=${this._split && !this.narrow ? `--fp3d-split:${Math.round(this._splitRatio * 100)}%` : ""}>
@@ -5290,7 +5781,72 @@ export class Fp3dEditor extends LitElement {
   private openWallView(roomId: string, edge: number, select: string | null = null): void {
     this._wallView = { roomId, edge };
     this._wallSel = select;
+    this._wallMulti = [];
+    this._wallSingle = false;
+    this._wallGap = null;
+    this._wallFrame = null;
     this.wallDrag = null;
+  }
+
+  /** The pieces the wall view moves together: the multi choice, else the chosen piece's block (unless one part alone), else the piece. */
+  private wallSelection(): string[] {
+    if (this._wallMulti.length) return this._wallMulti;
+    const f = this._wallSel ? this.floor?.furniture.find((m) => m.id === this._wallSel) : undefined;
+    if (!f) return [];
+    if (f.group && !this._wallSingle) return (this.floor?.furniture ?? []).filter((m) => m.group === f.group).map((m) => m.id);
+    return [f.id];
+  }
+
+  /** Wall view: a piece (with its block) joins the choice or leaves it. */
+  private wallToggle(id: string): void {
+    const cur = this.wallSelection();
+    const part = this.withGroups([id]);
+    const next = cur.includes(id) ? cur.filter((x) => !part.includes(x)) : [...new Set([...cur, ...part])];
+    this.wallChoose(next, id);
+  }
+
+  /** Wall view: choose these pieces (one, one block, or several). */
+  private wallChoose(ids: string[], lead: string | null = ids[0] ?? null): void {
+    this._wallSingle = false;
+    this._wallSel = ids.length ? (lead && ids.includes(lead) ? lead : ids[0]) : null;
+    this._wallMulti = [];
+    const block = this.wallSelection();
+    if (ids.length > 1 && !(ids.length === block.length && ids.every((x) => block.includes(x)))) this._wallMulti = ids;
+    this._wallGap = null;
+  }
+
+  /** Several pieces in the wall view moved together: along the wall by ds and up or down by dy. */
+  private moveSetOnWall(frame: WallFrame, ids: string[], ds: number, dy: number | null, base: Building = this._doc, history = true): void {
+    const set = new Set(ids);
+    this.change(
+      (_, floor) => {
+        for (const m of floor.furniture) {
+          if (!set.has(m.id)) continue;
+          Object.assign(m, slideAlong(frame, m, ds));
+          if (dy !== null && canLift(m)) m.mount_y = Math.round(Math.min(MAX_MOUNT_Y, Math.max(0, mountBase(floor, m) + dy)) * 1000) / 1000;
+        }
+      },
+      base,
+      history,
+    );
+  }
+
+  /** The free stretch of wall around s (metres along the wall) at height y: between the nearest pieces and openings left and right. */
+  private wallGapAt(frame: WallFrame, floor: Floor, room: Room, s: number, y: number): { s0: number; s1: number; low: boolean } | null {
+    const low = y < 1.2;
+    const L = frame.length;
+    const busy = [
+      ...furnitureOnWall(frame, floor, room)
+        .filter((i) => (low ? i.y0 < 1.0 : i.y1 > 1.2))
+        .map((i) => [i.s0, i.s1]),
+      ...openingsOnWall(frame, floor)
+        .filter((o) => (low ? o.y0 < 0.9 : o.y1 > 1.2))
+        .map((o) => [o.s0, o.s1]),
+    ];
+    if (busy.some(([a, b]) => s > a && s < b)) return null;
+    const s0 = Math.max(0, ...busy.filter(([, b]) => b <= s).map(([, b]) => b));
+    const s1 = Math.min(L, ...busy.filter(([a]) => a >= s).map(([a]) => a));
+    return s1 - s0 >= 0.1 ? { s0: Math.round(s0 * 1000) / 1000, s1: Math.round(s1 * 1000) / 1000, low } : null;
   }
 
   /** The wall a piece of furniture stands or hangs at: the nearest edge of the room it is in. */
@@ -5506,10 +6062,34 @@ export class Fp3dEditor extends LitElement {
       if (!room) return;
       this._wallPick = false;
       this.openRoomWalls(room);
+      if (this.techPick) this.enterTech();
       return;
     }
     this._wallPick = false;
     this.openWallView((best as { room: Room }).room.id, (best as { edge: number }).edge);
+    if (this.techPick) this.enterTech();
+  }
+
+  /** The 3D wall view's building while drawing the technical room: only the pool devices of all furniture. */
+  private techDoc3d(): Building {
+    const b = this._doc3d;
+    if (this.techDocCache?.src === b) return this.techDocCache.doc;
+    const doc = { ...b, floors: b.floors.map((f) => ({ ...f, furniture: f.furniture.filter((m) => (POOL_DEVICES as readonly string[]).includes(m.type)) })) };
+    this.techDocCache = { src: b, doc };
+    return doc;
+  }
+  private techDocCache: { src: Building; doc: Building } | null = null;
+
+  /** "Technik zeichnen" on: only the wall, the pool devices and the pipes; the pen in the hand. */
+  private enterTech(): void {
+    this.techPick = false;
+    this._techMode = true;
+    this._wallSel = null;
+    this._wallMulti = [];
+    this._runSel = null;
+    this._runDraft = null;
+    this._feedKind = null;
+    this._runMode = "draw";
   }
 
   /** Turns a piece in the wall view; turned against a wall it is pushed back into the room. */
@@ -5542,6 +6122,44 @@ export class Fp3dEditor extends LitElement {
         if (!m) return;
         Object.assign(m, slideAlong(frame, m, ds));
         if (y0 !== null) m.mount_y = Math.round(Math.min(MAX_MOUNT_Y, Math.max(0, y0)) * 1000) / 1000;
+      },
+      base,
+      history,
+    );
+  }
+
+  /** Which of a piece's own sizes runs along the wall (w facing it, d standing sideways), null when it stands at a slant. */
+  private alongAxis(frame: WallFrame, f: Furniture): "w" | "d" | null {
+    const a = (this.wallTurn(frame, f) * Math.PI) / 180;
+    if (Math.abs(Math.sin(a)) < 0.05) return "w";
+    if (Math.abs(Math.cos(a)) < 0.05) return "d";
+    return null;
+  }
+
+  /**
+   * A piece's size in the wall view: its stretch along the wall (s0..s1, metres along the wall) and its bottom and
+   * top (metres above the floor); null keeps that side. The other sides stay where they are.
+   */
+  private resizeOnWall(frame: WallFrame, id: string, s0: number | null, s1: number | null, y0: number | null, y1: number | null, base: Building = this._doc, history = true): void {
+    this.change(
+      (_, floor) => {
+        const m = floor.furniture.find((x) => x.id === id);
+        if (!m) return;
+        const axis = this.alongAxis(frame, m);
+        if (s0 !== null && s1 !== null && axis && s1 - s0 >= 0.05) {
+          const c = furnitureFootprint(m).map((q) => toWall(frame, q).s);
+          const mid = (Math.min(...c) + Math.max(...c)) / 2;
+          m[axis] = round(s1 - s0);
+          Object.assign(m, slideAlong(frame, m, (s0 + s1) / 2 - mid));
+        }
+        if (y0 !== null || y1 !== null) {
+          const bottom = mountBase(floor, m);
+          const nb = y0 ?? bottom;
+          const nt = y1 ?? bottom + m.h;
+          if (nt - nb < 0.03) return;
+          m.h = round(nt - nb);
+          if (y0 !== null && canLift(m)) m.mount_y = round(Math.max(0, nb));
+        }
       },
       base,
       history,
@@ -5584,7 +6202,10 @@ export class Fp3dEditor extends LitElement {
     const frame = roomEdgeFrame(room, v.edge);
     const L = frame.length;
     const H = Math.max(floor.height, room.ceiling_height ?? 0);
-    const items = furnitureOnWall(frame, floor, room);
+    // drawing the technical room: the other furniture stays out of the way (kitchen, cabinets …)
+    const items = this._techMode
+      ? furnitureOnWall(frame, floor, room, 1.6).filter((i) => (POOL_DEVICES as readonly string[]).includes(floor.furniture.find((f) => f.id === i.id)?.type ?? ""))
+      : furnitureOnWall(frame, floor, room);
     const holes = openingsOnWall(frame, floor);
     // drawing in metres: x from the left as seen from inside the room, y down from the ceiling
     const X = (s: number) => (frame.rightward ? s : L - s);
@@ -5602,6 +6223,11 @@ export class Fp3dEditor extends LitElement {
         })())
       : null;
     const lift = !!selF && canLift(selF);
+    // several pieces (a block, a multi choice): moved together, framed in orange
+    const wset = this.wallSelection();
+    const many = wset.length > 1;
+    const setItems = items.filter((i) => wset.includes(i.id));
+    const setSpan = setItems.length ? { s0: Math.min(...setItems.map((i) => i.s0)), s1: Math.max(...setItems.map((i) => i.s1)), y0: Math.min(...setItems.map((i) => i.y0)), y1: Math.max(...setItems.map((i) => i.y1)) } : null;
     const text = (t: number) => this.m(t, 2);
     const svgPoint = (e: PointerEvent) => {
       const el = (e.currentTarget as Element).closest("svg") as SVGSVGElement;
@@ -5611,19 +6237,81 @@ export class Fp3dEditor extends LitElement {
       return pt.matrixTransform(el.getScreenCTM()!.inverse());
     };
     // edges to snap to while dragging: the wall's ends and the sides of the other pieces and openings
-    const snaps = (id: string) => [0, L, ...items.filter((i) => i.id !== id).flatMap((i) => [i.s0, i.s1]), ...holes.flatMap((o) => [o.s0, o.s1])];
+    const snaps = (ids: string[]) => [0, L, ...items.filter((i) => !ids.includes(i.id)).flatMap((i) => [i.s0, i.s1]), ...holes.flatMap((o) => [o.s0, o.s1])];
     const down = (e: PointerEvent, id: string) => {
       if (!admin) return;
+      if (rc && this._runMode) {
+        this.techPress = rc.pt(e);
+        this.runDown(e, rc);
+        return;
+      }
       e.stopPropagation();
-      const it = items.find((i) => i.id === id)!;
-      const m = floor.furniture.find((x) => x.id === id);
+      this._runSel = null;
+      // shift (or "Mehrere auswählen" on a tablet): the piece joins the choice or leaves it
+      if (e.shiftKey || this._multiMode) {
+        this.wallToggle(id);
+        return;
+      }
+      if (!this.wallSelection().includes(id) || this._wallSingle) this.wallChoose([id]);
+      const ids = this.wallSelection();
       const p = svgPoint(e);
       (e.currentTarget as Element).closest("svg")!.setPointerCapture(e.pointerId);
+      const own = items.filter((i) => ids.includes(i.id));
+      if (ids.length > 1 && ids.some((x) => this.isFixedItem("furniture", x))) return;
+      if (ids.length > 1 && own.length) {
+        const s0 = Math.min(...own.map((i) => i.s0));
+        this.wallDrag = { id, ids, w: Math.max(...own.map((i) => i.s1)) - s0, x: p.x, y: p.y, base: this._doc, s0, y0: 0, lift: own.every((i) => { const m = floor.furniture.find((x) => x.id === i.id); return !!m && canLift(m); }), moved: false };
+        return;
+      }
+      const it = items.find((i) => i.id === id)!;
+      const m = floor.furniture.find((x) => x.id === id);
       this.wallDrag = { id, x: p.x, y: p.y, base: this._doc, s0: it.s0, y0: it.y0, lift: !!m && canLift(m), moved: false };
-      this._wallSel = id;
-      this._runSel = null;
+    };
+    // the bare wall: a tap finds the free stretch there (the side bar then offers what fits), shift + drag draws a frame
+    const wallDown = (e: PointerEvent) => {
+      if (!admin || this._runMode) return;
+      const p = svgPoint(e);
+      if (e.shiftKey || this._multiMode) {
+        (e.currentTarget as Element).closest("svg")!.setPointerCapture(e.pointerId);
+        this._wallFrame = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        return;
+      }
+      this._wallSel = null;
+      this._wallMulti = [];
+      this._wallSingle = false;
+      const sAt = frame.rightward ? p.x : L - p.x;
+      this._wallGap = sAt >= 0 && sAt <= L && p.y >= 0 && p.y <= H ? this.wallGapAt(frame, floor, room, sAt, H - p.y) : null;
     };
     const move = (e: PointerEvent) => {
+      const rz = this.wallResize;
+      if (rz) {
+        const p = svgPoint(e);
+        rz.moved = true;
+        // edges snap to the neighbours, the wall's ends, doors and windows (Alt: freely), by the centimetre
+        const edgesX = snaps([rz.id]).map((q) => X(q));
+        const snapX = (v: number) => {
+          v = Math.round(v * 100) / 100;
+          if (!e.altKey) for (const q of edgesX) if (Math.abs(v - q) < 0.04) return q;
+          return v;
+        };
+        if (rz.side === "l" || rz.side === "r") {
+          const x0 = rz.side === "l" ? Math.min(snapX(p.x), rz.x1 - 0.1) : rz.x0;
+          const x1 = rz.side === "r" ? Math.max(snapX(p.x), rz.x0 + 0.1) : rz.x1;
+          const [s0, s1] = frame.rightward ? [x0, x1] : [L - x1, L - x0];
+          this.resizeOnWall(frame, rz.id, s0, s1, null, null, rz.base, false);
+        } else {
+          const y = Math.round((H - p.y) * 100) / 100;
+          if (rz.side === "t") this.resizeOnWall(frame, rz.id, null, null, null, Math.max(rz.y0 + 0.05, Math.min(H, y)), rz.base, false);
+          else this.resizeOnWall(frame, rz.id, null, null, Math.max(0, Math.min(rz.y1 - 0.05, y)), null, rz.base, false);
+        }
+        return;
+      }
+      const fr = this._wallFrame;
+      if (fr) {
+        const p = svgPoint(e);
+        this._wallFrame = { ...fr, x1: p.x, y1: p.y };
+        return;
+      }
       const d = this.wallDrag;
       if (!d) return;
       const p = svgPoint(e);
@@ -5632,20 +6320,47 @@ export class Fp3dEditor extends LitElement {
       if (!d.moved && Math.hypot(dxView, dy) < 0.02) return;
       d.moved = true;
       const it = items.find((i) => i.id === d.id);
-      const w = it ? it.s1 - it.s0 : 0;
+      const w = d.ids ? (d.w ?? 0) : it ? it.s1 - it.s0 : 0;
       let s0 = d.s0 + (frame.rightward ? dxView : -dxView);
       s0 = Math.round(s0 * 100) / 100;
-      // a side within 4 cm of an edge snaps to it (Alt moves freely)
+      // a side within 4 cm of an edge snaps to it (Alt moves freely); a block snaps with its outer sides
       if (!e.altKey) {
-        for (const edge of snaps(d.id)) {
+        for (const edge of snaps(d.ids ?? [d.id])) {
           if (Math.abs(s0 - edge) < 0.04) s0 = edge;
           else if (Math.abs(s0 + w - edge) < 0.04) s0 = edge - w;
         }
+      }
+      if (d.ids) {
+        this.moveSetOnWall(frame, d.ids, s0 - d.s0, d.lift ? Math.round(dy * 100) / 100 : null, d.base, false);
+        return;
       }
       const y0 = d.lift ? Math.round((d.y0 + dy) * 100) / 100 : null;
       this.moveOnWall(frame, d.id, s0 - d.s0, y0, d.base, false);
     };
     const up = () => {
+      const rz = this.wallResize;
+      if (rz) {
+        this.wallResize = null;
+        if (rz.moved) this.pushHistory(rz.base);
+        return;
+      }
+      const fr = this._wallFrame;
+      if (fr) {
+        // every piece whose middle lies in the frame joins the choice
+        this._wallFrame = null;
+        const [x0, x1] = [Math.min(fr.x0, fr.x1), Math.max(fr.x0, fr.x1)];
+        const [y0, y1] = [Math.min(fr.y0, fr.y1), Math.max(fr.y0, fr.y1)];
+        const hit = items
+          .filter((i) => {
+            const [x, w] = span(i.s0, i.s1);
+            const cx = x + w / 2;
+            const cy = Y((i.y0 + i.y1) / 2);
+            return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+          })
+          .map((i) => i.id);
+        if (hit.length) this.wallChoose([...new Set([...this.wallSelection(), ...this.withGroups(hit)])]);
+        return;
+      }
       const d = this.wallDrag;
       this.wallDrag = null;
       if (d?.moved) this.pushHistory(d.base);
@@ -5662,6 +6377,18 @@ export class Fp3dEditor extends LitElement {
         this._wallView = null;
         return;
       }
+      if ((e.key === "Delete" || e.key === "Backspace") && admin && rc && this._runSel && !wset.length && !(e.target as HTMLElement).closest("input, select, textarea")) {
+        e.preventDefault();
+        const id = this._runSel.pipe;
+        this.changePool(rc.pool.id, (l) => (l.pipes = (l.pipes ?? []).filter((y) => y.id !== id)));
+        this._runSel = null;
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && admin && wset.length && !(e.target as HTMLElement).closest("input, select, textarea")) {
+        e.preventDefault();
+        this.deleteOnWall(wset);
+        return;
+      }
       if (!sel && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
         go(e.key === "ArrowLeft" ? leftEdge : rightEdge);
@@ -5674,11 +6401,14 @@ export class Fp3dEditor extends LitElement {
       const right = e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0;
       const ds = frame.rightward ? right : -right;
       const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+      if (many) return this.moveSetOnWall(frame, wset, ds, dy || null);
       this.moveOnWall(frame, sel.id, ds, lift && dy ? sel.y0 + dy : null);
     };
     // the chosen piece: its distances to the wall's ends and to the floor
-    const dims = sel
+    const dimOf = many && setSpan ? setSpan : sel;
+    const dims = dimOf
       ? (() => {
+          const sel = dimOf;
           const [x, w] = span(sel.s0, sel.s1);
           const yb = Y(sel.y0);
           const dimY = Math.min(H + 0.25, Y(0) + 0.25);
@@ -5696,7 +6426,52 @@ export class Fp3dEditor extends LitElement {
     const go = (edge: number) => this.openWallView(room.id, edge);
     void this._wallPicTick;
     void this.askWallPics(frame, items.map((i) => floor.furniture.find((m) => m.id === i.id)).filter((m): m is Furniture => !!m));
-    const fs = Math.max(0.09, Math.min(0.16, L / 40));
+    // zoom: the part of the wall shown (the whole wall plus a margin at k = 1)
+    const zkey = `${room.id}:${v.edge}`;
+    const z = this.wvZoom?.key === zkey ? this.wvZoom : null;
+    const W0 = L + 1;
+    const H0 = H + 0.9;
+    const clampZ = (k: number, x0: number, y0: number) => {
+      const kk = Math.min(8, Math.max(1, k));
+      const w = W0 / kk;
+      const h = H0 / kk;
+      return { k: kk, w, h, x0: Math.min(-0.5 + W0 - w, Math.max(-0.5, x0)), y0: Math.min(-0.35 + H0 - h, Math.max(-0.35, y0)) };
+    };
+    const vb = clampZ(z?.k ?? 1, z?.x0 ?? -0.5, z?.y0 ?? -0.35);
+    const setZoom = (k: number, x0: number, y0: number) => {
+      const c = clampZ(k, x0, y0);
+      this.wvZoom = c.k <= 1.001 ? null : { key: zkey, k: c.k, x0: c.x0, y0: c.y0 };
+      this.requestUpdate();
+    };
+    // the point (svg units) under the pointer stays where it is
+    const zoomAt = (px: number, py: number, k: number) => {
+      const kk = Math.min(8, Math.max(1, k));
+      setZoom(kk, px - ((px - vb.x0) * vb.k) / kk, py - ((py - vb.y0) * vb.k) / kk);
+    };
+    const pinchMove = (el: SVGSVGElement) => {
+      const pz = this.wvPinch!;
+      const [a, b] = [...this.wvTouch.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const r = el.getBoundingClientRect();
+      // screen pixels per svg unit at the start (the view keeps its aspect: the smaller scale fits)
+      const W = W0 / pz.k;
+      const Hh = H0 / pz.k;
+      const scale = Math.min(r.width / W, r.height / Hh);
+      const ox = r.left + (r.width - W * scale) / 2;
+      const oy = r.top + (r.height - Hh * scale) / 2;
+      const sx = pz.x0 + (pz.mx - ox) / scale;
+      const sy = pz.y0 + (pz.my - oy) / scale;
+      const k = Math.min(8, Math.max(1, (pz.k * d) / Math.max(1, pz.d)));
+      const s2 = scale * (k / pz.k);
+      const ox2 = r.left + (r.width - (W0 / k) * s2) / 2;
+      const oy2 = r.top + (r.height - (H0 / k) * s2) / 2;
+      setZoom(k, sx - (mx - ox2) / s2, sy - (my - oy2) / s2);
+    };
+    // labels, markers and fittings grow slower than the wall when zoomed
+    this.wvScale = 1 / Math.sqrt(vb.k);
+    const fs = Math.max(0.09, Math.min(0.16, L / 40)) * this.wvScale;
     // Pool Pro: the pipes on this wall
     const pool = this.canLayRuns ? this.runPool : undefined;
     const rc: RunCtx | null = (this.runCtx3d = pool
@@ -5723,7 +6498,17 @@ export class Fp3dEditor extends LitElement {
           <b>${this.t("wall_view")} · ${room.name} · ${this.t("wall_n", { a: v.edge + 1, b: ((v.edge + 1) % n) + 1 })} · ${this.m(L, 2)}</b>
           <button class="fp3d-btn" title=${`${this.t("wall_next")}: ${wallName(rightEdge)}`} @click=${() => go(rightEdge)}>›</button>
           <span class="fp3d-wv-grow"></span>
-          ${rc && admin
+          ${admin && hasFeature("pool") && released("pool") && this.runPool
+            ? html`<button class="fp3d-btn ${this._techMode ? "fp3d-primary" : ""}" title=${this.t("tech_mode_hint")} @click=${() => {
+                if (this._techMode) {
+                  this._techMode = false;
+                  this._runDraft = null;
+                  this._feedKind = null;
+                  this._runMode = null;
+                } else this.enterTech();
+              }}>🛠 ${this.t("tech_mode")}</button>`
+            : nothing}
+          ${rc && admin && !this._techMode
             ? html`<button class="fp3d-btn ${this._runMode === "draw" ? "fp3d-primary" : ""}" @click=${() => {
                 this._wallSel = null;
                 this._runSel = null;
@@ -5742,13 +6527,26 @@ export class Fp3dEditor extends LitElement {
         <div class="fp3d-wv-stage">
           <button class="fp3d-wv-side fp3d-wv-left" title=${`${this.t("wall_prev")}: ${wallName(leftEdge)}`} @click=${() => go(leftEdge)}>‹<small>${wallName(leftEdge)}</small></button>
           <button class="fp3d-wv-side fp3d-wv-right" title=${`${this.t("wall_next")}: ${wallName(rightEdge)}`} @click=${() => go(rightEdge)}>›<small>${wallName(rightEdge)}</small></button>
+          ${this._wallView3d
+            ? nothing
+            : html`<div class="fp3d-wv-zoom" title=${this.t("wall_zoom_hint")}>
+                <button class="fp3d-btn" aria-label="+" @click=${() => zoomAt(vb.x0 + vb.w / 2, vb.y0 + vb.h / 2, vb.k * 1.6)}>＋</button>
+                <button class="fp3d-btn" aria-label="−" ?disabled=${vb.k <= 1.001} @click=${() => zoomAt(vb.x0 + vb.w / 2, vb.y0 + vb.h / 2, vb.k / 1.6)}>−</button>
+                <button class="fp3d-btn" title=${this.t("wall_zoom_all")} ?disabled=${vb.k <= 1.001} @click=${() => setZoom(1, -0.5, -0.35)}>⤢</button>
+                ${vb.k > 1.001
+                  ? html`<button class="fp3d-btn" aria-label="←" @click=${() => setZoom(vb.k, vb.x0 - vb.w * 0.3, vb.y0)}>←</button>
+                      <button class="fp3d-btn" aria-label="→" @click=${() => setZoom(vb.k, vb.x0 + vb.w * 0.3, vb.y0)}>→</button>
+                      <button class="fp3d-btn" aria-label="↑" @click=${() => setZoom(vb.k, vb.x0, vb.y0 - vb.h * 0.3)}>↑</button>
+                      <button class="fp3d-btn" aria-label="↓" @click=${() => setZoom(vb.k, vb.x0, vb.y0 + vb.h * 0.3)}>↓</button>`
+                  : nothing}
+              </div>`}
         ${this._wallView3d
           ? html`<fp3d-view3d
               .walkable=${false}
               class="fp3d-wv-3d"
               ${ref((el) => el && this.setupWall3d(el as HTMLElement, room, v.edge))}
               .hass=${this.hass}
-              .building=${this._doc3d}
+              .building=${this._techMode ? this.techDoc3d() : this._doc3d}
               .floorId=${this._floorId}
               .roomId=${null}
               .wallMode=${"auto"}
@@ -5763,6 +6561,7 @@ export class Fp3dEditor extends LitElement {
               ?furnish=${admin}
               .furnishTypes=${null}
               .selectedFurniture=${this._wallSel}
+              .selectedSet=${wset}
               .quality=${"auto"}
               .floorThumbs=${false}
               .roomLabels=${false}
@@ -5771,21 +6570,68 @@ export class Fp3dEditor extends LitElement {
               .alerts=${false}
               .scenes=${false}
               .central=${false}
-              @furniture-select=${(e: CustomEvent<{ id: string | null }>) => (this._wallSel = e.detail.id)}
+              @furniture-select=${(e: CustomEvent<{ id: string | null }>) => {
+                const id = e.detail.id;
+                // shift (or "Mehrere auswählen"): the piece joins the choice; a piece of the chosen set keeps the set
+                if (id && (this.shiftHeld || this._multiMode)) this.wallToggle(id);
+                else if (!id) this.wallChoose([]);
+                else if (!this.wallSelection().includes(id) || this._wallSingle) this.wallChoose([id]);
+                else this._wallSel = id;
+              }}
               @furniture-move=${this.onFurnitureMoved3d}
             ></fp3d-view3d>
             <div class="fp3d-wv-lift" hidden title=${this.t("wall_view_lift")} @pointerdown=${(e: PointerEvent) => this.liftDown(e)} @pointermove=${(e: PointerEvent) => this.liftMove(e)} @pointerup=${() => this.liftUp()} @pointercancel=${() => this.liftUp()}>
               <span>↕</span><b></b>
             </div>`
           : html`<svg
-          class="fp3d-wv-svg ${this._runMode ? "fp3d-wv-drawing" : ""}"
-          viewBox="${-0.5} ${-0.35} ${L + 1} ${H + 0.9}"
+          class="fp3d-wv-svg ${this._runMode ? "fp3d-wv-drawing" : ""} ${this._runMode === "valve" || this._runMode === "sight" ? "fp3d-wv-fitmode" : ""} ${this._runMode === "erase" ? "fp3d-wv-fitmode fp3d-wv-erase" : ""}"
+          viewBox="${vb.x0} ${vb.y0} ${vb.w} ${vb.h}"
           preserveAspectRatio="xMidYMid meet"
+          @wheel=${(e: WheelEvent) => {
+            e.preventDefault();
+            const el = e.currentTarget as SVGSVGElement;
+            const pt = el.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const q = pt.matrixTransform(el.getScreenCTM()!.inverse());
+            zoomAt(q.x, q.y, vb.k * Math.exp(-e.deltaY * 0.0015));
+          }}
           @pointerdown=${(e: PointerEvent) => {
-            if (rc && this._runMode) this.runDown(e, rc);
-            else if (this._runSel) this._runSel = null;
+            if (e.pointerType === "touch") {
+              this.wvTouch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+              if (this.wvTouch.size === 2) {
+                // a second finger: zoom and pan instead of what the first one began
+                const [a, b] = [...this.wvTouch.values()];
+                this.wvPinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, k: vb.k, x0: vb.x0, y0: vb.y0 };
+                this.wvTap = null;
+                this.techPress = null;
+                up();
+                this.runPointUp();
+                this.fitDrag = null;
+                this.jointDrag = null;
+                return;
+              }
+              if (this.wvPinch) return;
+              if (rc && this._runMode && this.isAdmin) {
+                e.stopPropagation();
+                const q = rc.pt(e);
+                this.wvTap = q;
+                this.techPress = q;
+                return;
+              }
+            }
+            if (rc && this._runMode) {
+              this.techPress = rc.pt(e);
+              this.runDown(e, rc);
+            } else if (this._runSel) this._runSel = null;
+            else wallDown(e);
           }}
           @pointermove=${(e: PointerEvent) => {
+            if (this.wvTouch.has(e.pointerId)) this.wvTouch.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (this.wvPinch) {
+              if (this.wvTouch.size === 2) pinchMove(e.currentTarget as SVGSVGElement);
+              return;
+            }
             move(e);
             if (rc && this.jointDrag) this.jointMove(e, rc);
             else if (rc && this.fitDrag) this.fittingMove(e, rc);
@@ -5796,7 +6642,21 @@ export class Fp3dEditor extends LitElement {
               this.requestUpdate();
             }
           }}
-          @pointerup=${() => {
+          @pointerup=${(e: PointerEvent) => {
+            this.wvTouch.delete(e.pointerId);
+            if (this.wvPinch) {
+              if (!this.wvTouch.size) this.wvPinch = null;
+              return;
+            }
+            const tap = this.wvTap;
+            this.wvTap = null;
+            if (tap && rc && this._runMode) this.runAt(rc, tap.s, tap.y, false, 1, null);
+            const press = this.techPress;
+            this.techPress = null;
+            if (rc && this._techMode && this._runMode === "draw" && this._runDraft && press) {
+              const q = rc.pt(e);
+              if (Math.hypot(q.s - press.s, q.y - press.y) > 0.12) this.runAt(rc, q.s, q.y, e.altKey, 1, null);
+            }
             up();
             this.runPointUp();
             this.fittingUp(rc);
@@ -5805,7 +6665,11 @@ export class Fp3dEditor extends LitElement {
             if (jd?.moved) this.pushHistory(jd.base);
             else if (jd && rc) this.openCard(rc.pool.id, `joint:${jd.id}`);
           }}
-          @pointercancel=${() => {
+          @pointercancel=${(e: PointerEvent) => {
+            this.wvTouch.delete(e.pointerId);
+            if (!this.wvTouch.size) this.wvPinch = null;
+            this.wvTap = null;
+            this.techPress = null;
             up();
             this.runPointUp();
             this.fitDrag = null;
@@ -5828,7 +6692,14 @@ export class Fp3dEditor extends LitElement {
             const h = it.y1 - it.y0;
             const pic = this.wallPics.get(this.wallPicKey(frame, m));
             const xc = X(toWall(frame, [m.x, m.z]).s);
-            return svg`<g class="fp3d-wv-item ${pic ? "fp3d-wv-pic" : ""} ${it.id === this._wallSel ? "fp3d-wv-sel" : ""}" @pointerdown=${(e: PointerEvent) => down(e, it.id)} @dblclick=${() => {
+            return svg`<g class="fp3d-wv-item ${pic ? "fp3d-wv-pic" : ""} ${it.id === this._wallSel || wset.includes(it.id) ? "fp3d-wv-sel" : ""}" @pointerdown=${(e: PointerEvent) => down(e, it.id)} @dblclick=${() => {
+              // a part of a block: this part alone; a single piece: open it in the plan
+              const m2 = floor.furniture.find((q) => q.id === it.id);
+              if (m2?.group && !this._wallSingle) {
+                this.wallChoose([it.id]);
+                this._wallSingle = true;
+                return;
+              }
               this._wallView = null;
               this.selectItem("furniture", it.id);
             }}>
@@ -5838,17 +6709,67 @@ export class Fp3dEditor extends LitElement {
             </g>`;
           })}
           ${dims}
+          ${sel && selF && !many && admin && !selF.locked && items.some((i) => i.id === sel.id)
+            ? (() => {
+                const [x, w] = span(sel.s0, sel.s1);
+                const yt = Y(sel.y1);
+                const yb = Y(sel.y0);
+                const hs = fs * 0.75;
+                const along = this.alongAxis(frame, selF);
+                const grab = (side: "l" | "r" | "t" | "b") => (e: PointerEvent) => {
+                  e.stopPropagation();
+                  (e.currentTarget as Element).closest("svg")!.setPointerCapture(e.pointerId);
+                  this.wallResize = { id: sel.id, side, x0: x, x1: x + w, y0: sel.y0, y1: sel.y1, base: this._doc, moved: false };
+                };
+                return svg`<g class="fp3d-wv-handles">
+                  ${along
+                    ? svg`<rect class="fp3d-wv-handle fp3d-wv-ew" x=${x - hs / 2} y=${(yt + yb) / 2 - hs} width=${hs} height=${hs * 2} rx=${hs / 3} @pointerdown=${grab("l")} />
+                        <rect class="fp3d-wv-handle fp3d-wv-ew" x=${x + w - hs / 2} y=${(yt + yb) / 2 - hs} width=${hs} height=${hs * 2} rx=${hs / 3} @pointerdown=${grab("r")} />`
+                    : nothing}
+                  <rect class="fp3d-wv-handle fp3d-wv-ns" x=${x + w / 2 - hs} y=${yt - hs / 2} width=${hs * 2} height=${hs} rx=${hs / 3} @pointerdown=${grab("t")} />
+                  ${sel.y0 > 0.05 && canLift(selF) ? svg`<rect class="fp3d-wv-handle fp3d-wv-ns" x=${x + w / 2 - hs} y=${yb - hs / 2} width=${hs * 2} height=${hs} rx=${hs / 3} @pointerdown=${grab("b")} />` : nothing}
+                  <text class="fp3d-wv-size" x=${x + w / 2} y=${yt - hs * 0.9} style="font-size:${fs * 0.85}px">${text(sel.s1 - sel.s0)} × ${text(sel.y1 - sel.y0)}</text>
+                </g>`;
+              })()
+            : nothing}
+          ${many && setSpan
+            ? (() => {
+                const [x, w] = span(setSpan.s0, setSpan.s1);
+                const block = !this._wallMulti.length;
+                return svg`<g class=${`fp3d-wv-setframe${block ? " fp3d-wv-setblock" : ""}`}><rect x=${x - 0.03} y=${Y(setSpan.y1) - 0.03} width=${w + 0.06} height=${setSpan.y1 - setSpan.y0 + 0.06} /><text x=${x} y=${Y(setSpan.y1) - 0.07} style="font-size:${fs * 0.85}px">${block ? `▣ ${this.t("block_title")} · ${wset.length}` : this.t("multi_title", { n: wset.length })}</text></g>`;
+              })()
+            : nothing}
+          ${this._wallGap
+            ? (() => {
+                const g = this._wallGap;
+                const [x, w] = span(g.s0, g.s1);
+                const top = g.low ? Math.min(H, 0.9) : Math.min(H, 2.2);
+                const bottom = g.low ? 0 : 1.3;
+                return svg`<g class="fp3d-wv-gap"><rect x=${x} y=${Y(top)} width=${w} height=${top - bottom} /><text x=${x + w / 2} y=${Y((top + bottom) / 2)} style="font-size:${fs}px">${text(w)}</text></g>`;
+              })()
+            : nothing}
+          ${this._wallFrame ? svg`<rect class="fp3d-wv-marquee" x=${Math.min(this._wallFrame.x0, this._wallFrame.x1)} y=${Math.min(this._wallFrame.y0, this._wallFrame.y1)} width=${Math.abs(this._wallFrame.x1 - this._wallFrame.x0)} height=${Math.abs(this._wallFrame.y1 - this._wallFrame.y0)} />` : nothing}
           <line class="fp3d-wv-floor" x1="-0.3" x2=${L + 0.3} y1=${H} y2=${H} />
           ${rc ? this.renderRuns(rc, X, Y) : nothing}
         </svg>`}
         </div>
         </div>
         <div class="fp3d-wv-foot">
-          ${rc && (this._runMode || (this._runSel && !sel))
+          ${rc && this._techMode && !this._runDraft && !this._runSel && !sel && (this._runMode === "draw" || this._runMode === "feed")
+            ? html`<span class="fp3d-muted">${this.t(this._runMode === "feed" ? "tech_feed_place" : "tech_start")}</span> ${this.renderTechIssues(rc)}`
+            : rc && (this._runMode || (this._runSel && !sel))
             ? this.renderRunFoot(rc)
+            : many && admin
+            ? this.renderWallSetFoot(frame, wset, setSpan, span)
             : sel && selF
             ? html`<b>${selF.name || furnitureName(this.hass, selF.type)}</b>
                 ${this.fixButton("furniture", sel.id)}
+                ${selF.group && admin
+                  ? html`<button class="fp3d-btn" title=${this.t("block_select")} @click=${() => {
+                      this._wallSingle = false;
+                      this.requestUpdate();
+                    }}>▣ ${this.t("wv_block_all")}</button>`
+                  : nothing}
                 ${rc && (POOL_DEVICES as readonly string[]).includes(selF.type)
                   ? html`<button class="fp3d-btn fp3d-primary" @click=${() => this.openCard(rc.pool.id, `dev:${selF.id}`)}>${this.t("card_open")}</button>`
                   : nothing}
@@ -5858,6 +6779,15 @@ export class Fp3dEditor extends LitElement {
                   this.moveOnWall(frame, sel.id, frame.rightward ? ds : -ds, null);
                 }, 0.01, 0)}
                 ${this.len(this.t("wall_view_depth"), Math.round(Math.max(0, sel.d) * 1000) / 1000, (val) => this.moveFromWall(frame, sel.id, val - sel.d), 0.01, 0)}
+                ${admin && !selF.locked && this.alongAxis(frame, selF)
+                  ? this.len(this.t("width"), Math.round((sel.s1 - sel.s0) * 1000) / 1000, (val) => {
+                      // typed: the left side (as seen) stays, the right one moves
+                      const v = Math.max(0.05, val);
+                      if (frame.rightward) this.resizeOnWall(frame, sel.id, sel.s0, sel.s0 + v, null, null);
+                      else this.resizeOnWall(frame, sel.id, sel.s1 - v, sel.s1, null, null);
+                    }, 0.01, 0.05)
+                  : nothing}
+                ${admin && !selF.locked ? this.len(this.t("height_m"), Math.round((sel.y1 - sel.y0) * 1000) / 1000, (val) => this.resizeOnWall(frame, sel.id, null, null, null, sel.y0 + Math.max(0.03, val)), 0.01, 0.03) : nothing}
                 ${lift ? this.len(this.t("mount_height"), Math.round(sel.y0 * 1000) / 1000, (val) => this.moveOnWall(frame, sel.id, 0, val), 0.01, 0) : html`<span class="fp3d-muted">${this.t("wall_view_floor")}</span>`}
                 ${admin && !selF.locked
                   ? html`<span class="fp3d-wv-turn">
@@ -5869,11 +6799,81 @@ export class Fp3dEditor extends LitElement {
                 <button class="fp3d-btn" @click=${() => {
                   this._wallView = null;
                   this.selectItem("furniture", sel.id);
-                }}>${this.t("wall_view_form")}</button>`
+                }}>${this.t("wall_view_form")}</button>
+                ${admin ? html`<button class="fp3d-btn fp3d-danger" @click=${() => this.deleteOnWall([sel.id])}>${this.t("delete")}</button>` : nothing}`
             : html`<span class="fp3d-muted">${this._wallView3d ? this.t("wall_view_hint_3d") : items.length ? this.t("wall_view_hint") : this.t("wall_view_empty")}</span>`}
+          ${admin && !this._techMode ? this.renderMultiToggle() : nothing}
         </div>
       </div>
     </div>`;
+  }
+
+  /** The wall view's bottom bar for several pieces: join or break up, the whole block or this part, distance, fix, delete. */
+  private renderWallSetFoot(frame: WallFrame, ids: string[], sp: { s0: number; s1: number; y0: number; y1: number } | null, span: (a: number, b: number) => readonly [number, number]) {
+    const block = !this._wallMulti.length;
+    const fixed = ids.every((id) => this.isFixedItem("furniture", id));
+    const some = !fixed && ids.some((id) => this.isFixedItem("furniture", id));
+    return html`<b>${block ? `▣ ${this.t("block_title")}` : this.t("multi_title", { n: ids.length })}</b>
+      ${some ? html`<span class="fp3d-wv-fixnote">${this.t("block_some_fixed")}</span>` : nothing}
+      ${block
+        ? html`<div class="fp3d-seg" role="group">
+              <button aria-pressed="true">${this.t("wv_block_all")}</button>
+              <button aria-pressed="false" @click=${() => (this._wallSingle = true)}>${this.t("wv_block_one")}</button>
+            </div>
+            <button class="fp3d-btn" @click=${() => {
+              const sel = this._wallSel;
+              this._wallMulti = ids;
+              this.ungroupSelectionOf(ids);
+              this._wallSel = sel;
+            }}>${this.t("block_break")}</button>`
+        : html`<button class="fp3d-btn fp3d-primary" @click=${() => {
+            this.groupIds(ids);
+            this._wallMulti = [];
+          }}>▣ ${this.t("block_make")}</button>`}
+      ${sp
+        ? this.len(this.t("wall_view_left"), Math.round(span(sp.s0, sp.s1)[0] * 1000) / 1000, (val) => {
+            const ds = val - span(sp.s0, sp.s1)[0];
+            this.moveSetOnWall(frame, ids, frame.rightward ? ds : -ds, null);
+          }, 0.01, 0)
+        : nothing}
+      <button class="fp3d-btn ${some ? "fp3d-primary" : ""}" @click=${() => {
+        const set = new Set(ids);
+        // partly fixed: everything loose; else all fixed or all loose
+        const lock = !fixed && !some;
+        this.change((_, floor) => {
+          for (const m of floor.furniture) if (set.has(m.id)) m.locked = lock || null;
+        });
+      }}>${fixed ? `🔓 ${this.t("unfix")}` : some ? `🔓 ${this.t("unfix_all")}` : `🔒 ${this.t("fix")}`}</button>
+      <button class="fp3d-btn fp3d-danger" @click=${() => this.deleteOnWall(ids)}>${this.t("delete")}</button>`;
+  }
+
+  /** Deletes the chosen pieces of the wall view (several or a fixed one only after asking). */
+  private deleteOnWall(ids: string[]): void {
+    if (!ids.length || !this.isAdmin) return;
+    if (ids.length > 1) {
+      if (!confirm(this.t(ids.some((id) => this.isFixedItem("furniture", id)) ? "block_delete_fixed" : "block_delete", { n: ids.length }))) return;
+    } else if (!this.confirmFixedDelete("furniture", ids[0])) return;
+    const set = new Set(ids);
+    this.change((_, floor) => (floor.furniture = floor.furniture.filter((m) => !set.has(m.id))));
+    this._wallSel = null;
+    this._wallMulti = [];
+    this._wallSingle = false;
+  }
+
+  /** Joins these pieces into one block. */
+  private groupIds(ids: string[]): void {
+    const set = new Set(ids);
+    const gid = uid("block");
+    this.change((_, floor) => {
+      for (const m of floor.furniture) if (set.has(m.id)) m.group = gid;
+    });
+  }
+
+  private ungroupSelectionOf(ids: string[]): void {
+    const set = new Set(ids);
+    this.change((_, floor) => {
+      for (const m of floor.furniture) if (set.has(m.id)) m.group = null;
+    });
   }
 
   // ------------------------------------------------------------------ pipes on walls (Pool Pro)
@@ -5885,6 +6885,9 @@ export class Fp3dEditor extends LitElement {
   private addOnWall(type: string, frame: WallFrame, room: Room): void {
     const floor = this.floor;
     if (!floor || !this.isAdmin) return;
+    this.rememberWallType(type);
+    const gap = this._wallGap;
+    if (gap) return this.addIntoGap(type, frame, room, gap);
     const [w, d, h] = furnitureSize(type);
     const taken = [
       ...furnitureOnWall(frame, floor, room).map((i) => [i.s0, i.s1]),
@@ -5908,10 +6911,138 @@ export class Fp3dEditor extends LitElement {
     this._wallSel = item.id;
   }
 
+  /** A piece into the tapped stretch of wall: at its left end, as wide as the gap when the piece is a cabinet that can be (and is too wide). */
+  private addIntoGap(type: string, frame: WallFrame, room: Room, gap: { s0: number; s1: number; low: boolean }): void {
+    const floor = this.floor!;
+    const gw = gap.s1 - gap.s0;
+    let [w, d, h] = furnitureSize(type);
+    if (WALL_FIT.has(type) && (w > gw + 0.005 || gw - w < 0.1)) w = Math.round(gw * 1000) / 1000;
+    const face = sharedEdge(floor, room.id, frame.a, frame.b) ? this._doc.settings.wall_interior / 2 : 0;
+    const sMid = gap.s0 + Math.min(w, gw) / 2;
+    const [x, z] = fromWall(frame, sMid, face + d / 2 + 0.01);
+    const rotation = Math.round((((Math.atan2(-frame.n[0], frame.n[1]) * 180) / Math.PI) % 360 + 360) % 360);
+    const item: Furniture = { id: uid("furniture"), type, x: round(x), z: round(z), rotation, w, d, h, variant: null };
+    this.change((_, f) => f.furniture.push(item));
+    this._wallGap = null;
+    this._wallSel = item.id;
+    this._wallMulti = [];
+  }
+
+  private rememberWallType(type: string): void {
+    try {
+      const list = JSON.parse(localStorage.getItem("neonplan3d.wallRecent") ?? "[]") as string[];
+      localStorage.setItem("neonplan3d.wallRecent", JSON.stringify([type, ...list.filter((t) => t !== type)].slice(0, 6)));
+    } catch {
+      // no storage
+    }
+  }
+
+  private wallRecent(): string[] {
+    try {
+      const list = JSON.parse(localStorage.getItem("neonplan3d.wallRecent") ?? "[]");
+      return Array.isArray(list) ? list.filter((t): t is string => typeof t === "string" && (FURNITURE_TYPES.includes(t as never) || !!packItem(t))) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * The wall view's side bar: a few category symbols, a search and the recently used – no long list. A tapped gap
+   * in the wall narrows it to what fits there (best fit first); a cabinet too wide for the gap is fitted to it.
+   */
+  private renderWallFurniture(frame: WallFrame, room: Room) {
+    const gap = this._wallGap;
+    const gw = gap ? gap.s1 - gap.s0 : 0;
+    const q = fold(this._wallQuery.trim());
+    const cat = this._wallCat;
+    const packItems = (this.packs ?? []).flatMap((p) => p.items.filter((it) => !it.light && !it.vehicle && !it.hole && it.mount !== "ceiling").map((it) => ({ type: packType(p.id, it.id), label: packItemName(it), search: `${Object.values(it.name).join(" ")} ${p.name}`, wall: it.mount === "wall" })));
+    const label = (t: string) => this.t(`furn_${t}` as I18nKey);
+    let pool: { type: string; label: string; search: string; wall?: boolean }[] = [];
+    if (cat === "pack") pool = packItems;
+    else if (cat === "energy") pool = (["meter", "inverter", "home_battery", "wallbox"] as const).map((t) => ({ type: t, label: label(t), search: "" }));
+    else if (cat) pool = (WALL_CATS[cat] ?? []).map((t) => ({ type: t, label: label(t), search: translate(EN_HASS, `furn_${t}` as I18nKey) }));
+    else if (q || gap) pool = [...Object.values(WALL_CATS).flat().filter((t, i, a) => a.indexOf(t) === i).map((t) => ({ type: t, label: label(t), search: translate(EN_HASS, `furn_${t}` as I18nKey) })), ...packItems];
+    // nothing chosen yet and nothing used before: the base cabinets as a start, so the bar is never empty
+    else if (!this.wallRecent().length) pool = WALL_CATS.base.map((t) => ({ type: t, label: label(t), search: "" }));
+    const words = q.split(/\s+/).filter(Boolean);
+    let hits = words.length ? pool.filter((it) => words.every((w) => fold(`${it.label} ${it.search} ${it.type.replace(/[_:.]/g, " ")}`).includes(w))) : pool;
+    // a gap: standing or hanging pieces that fit (or can be fitted), the closest width first
+    if (gap) {
+      const hanging = (t: string, wall?: boolean) => wall || HANGING.has(t);
+      hits = hits
+        .filter((it) => hanging(it.type, it.wall) === !gap.low)
+        .filter((it) => furnitureSize(it.type)[0] <= gw + 0.01 || (WALL_FIT.has(it.type) && gw >= (WALL_FIT_MIN[it.type] ?? 0.2)))
+        // what fills the gap best first: cabinets built to measure fill it completely, then the closest widths;
+        // the built-in pieces before pack items of the same fill
+        .sort((a, b) => {
+          const fill = (t: string) => (WALL_FIT.has(t) ? 1 : Math.min(1, furnitureSize(t)[0] / gw));
+          return fill(b.type) - fill(a.type) || Number(a.type.startsWith("pack:")) - Number(b.type.startsWith("pack:"));
+        });
+    }
+    const recent = !cat && !q && !gap ? this.wallRecent() : [];
+    const cats: [string, string][] = [
+      ["base", "▭"],
+      ["hang", "▔"],
+      ["tall", "▯"],
+      ["living", "🛋"],
+      ["light", "💡"],
+      ...((this.packs ?? []).some((p) => p.items.length) ? ([["pack", "🧩"]] as [string, string][]) : []),
+      ...(hasFeature("energy_pro") ? ([["energy", "⚡"]] as [string, string][]) : []),
+    ];
+    const shown = [...recent, ...hits.slice(0, 40).map((h) => h.type)];
+    void this.askKitPics(shown);
+    void this._wallPicTick;
+    const item = (t: string, name: string) => {
+      const w = furnitureSize(t)[0];
+      const fitted = gap && WALL_FIT.has(t) && (w > gw + 0.005 || gw - w < 0.1);
+      const pic = this.kitPics.get(t);
+      return html`<button class="fp3d-wv-tile" title=${name} @click=${() => this.addOnWall(t, frame, room)}>
+        <span class="fp3d-wv-tile-pic">${pic ? html`<img src=${pic} alt="" />` : html`<i></i>`}</span>
+        <span class="fp3d-wv-tile-name">${name}</span>
+        <small class=${fitted ? "fp3d-wv-fit" : ""}>${fitted ? `↔ ${this.m(gw, 2)}` : this.m(w, 2)}</small>
+      </button>`;
+    };
+    return html`<aside class="fp3d-wv-kit">
+      <h4>${this.t("wv_kit_title")}</h4>
+      <div class="fp3d-wv-cats">
+        ${cats.map(([k, icon]) => html`<button class="fp3d-wv-cat ${cat === k ? "fp3d-on" : ""}" title=${this.t(`wv_cat_${k}` as I18nKey)} @click=${() => (this._wallCat = cat === k ? null : k)}><span>${icon}</span>${this.t(`wv_cat_${k}` as I18nKey)}</button>`)}
+      </div>
+      <input class="fp3d-search" type="search" placeholder=${this.t("furniture_search")} .value=${this._wallQuery} @input=${(e: Event) => (this._wallQuery = (e.target as HTMLInputElement).value)} />
+      ${gap
+        ? html`<p class="fp3d-sub fp3d-wv-gapnote">${this.t("wv_gap", { w: this.m(gw, 2) })} <button class="fp3d-link" @click=${() => (this._wallGap = null)}>✕</button></p>`
+        : !cat && !q
+          ? html`<p class="fp3d-sub">${this.t("wv_gap_hint")}</p>`
+          : nothing}
+      ${cat ? html`<h4>${this.t(`wv_cat_${cat}` as I18nKey)}</h4>` : nothing}
+      ${recent.length ? html`<h4>${this.t("wv_recent")}</h4><div class="fp3d-wv-tiles">${recent.map((t) => item(t, packItem(t) ? packItemName(packItem(t)!) : label(t)))}</div>` : nothing}
+      ${(cat || q || gap) && !hits.length ? html`<p class="fp3d-sub">${this.t(gap ? "wv_none_fits" : "furniture_search_none")}</p>` : nothing}
+      <div class="fp3d-wv-tiles">${hits.slice(0, 40).map((it) => item(it.type, it.label))}</div>
+    </aside>`;
+  }
+
+  /** Draws the side bar's pictures with the 3D bundle (once per type). */
+  private async askKitPics(types: string[]): Promise<void> {
+    const missing = types.filter((t) => !this.kitPicsAsked.has(t));
+    if (!missing.length) return;
+    for (const t of missing) this.kitPicsAsked.add(t);
+    try {
+      const mod = await load3d();
+      for (const t of missing) {
+        const [w, d, h] = furnitureSize(t);
+        this.kitPics.set(t, mod.furniturePreview({ type: t, w, d, h, variant: null, lamp: LAMP_MODEL[t] ?? null }, 120, this.packs ?? []));
+      }
+    } catch {
+      // no 3D: names only
+    }
+    this._wallPicTick++;
+  }
+
   /** The wall view's side bar: pool devices, ball valves and sight glasses (Pool Pro), energy devices (Energie Pro). */
   private renderWallKit(frame: WallFrame, room: Room, rc: RunCtx | null) {
     const pool = !!rc;
     const energy = hasFeature("energy_pro");
+    if (!pool) return this.isAdmin ? this.renderWallFurniture(frame, room) : nothing;
+    if (this._techMode && rc) return this.renderTechKit(frame, room, rc);
     if (!this.isAdmin || (!pool && !energy)) return nothing;
     const add = (t: string) => html`<button class="fp3d-btn" @click=${() => this.addOnWall(t, frame, room)}>+ ${this.t(`furn_${t}` as I18nKey)}</button>`;
     const fit = (mode: "valve" | "sight", label: I18nKey) =>
@@ -5936,9 +7067,9 @@ export class Fp3dEditor extends LitElement {
     return this.poolArea ?? this.floor?.outdoor.find((o) => o.type === "pool" && o.points.length >= 3);
   }
 
-  /** The pipe tools of the wall view: Pool Pro with a pool on this floor. */
+  /** The pipe tools of the wall view: "Technik zeichnen" (Pool Pro) switched on, or the lab switch. */
   private get canLayRuns(): boolean {
-    return released("pool") && !!this.runPool;
+    return (labOn() || this._techMode) && !!this.runPool;
   }
 
   private runFrame(key: string): WallFrame | null {
@@ -5998,15 +7129,67 @@ export class Fp3dEditor extends LitElement {
       if (d < 0.12 && (!best || d < best.d)) best = { node, d };
     }
     if (best) return { node: best.node };
+    // drawing the technical room: a press on a device's body ends (or starts) at the device as a whole
+    if (this._techMode && !pipesOnly) {
+      // every pool device up to 1.6 m in front of the wall (a pump stands out into the room), seen from the front
+      const dev = c.floor.furniture.find((f) => {
+        if (!(POOL_DEVICES as readonly string[]).includes(f.type) || f.type === "pool_valve") return false;
+        const w = furnitureFootprint(f).map((q) => toWall(c.frame, q));
+        if (Math.min(...w.map((q) => q.d)) > 1.6 || Math.max(...w.map((q) => q.d)) < -0.3) return false;
+        const y0 = mountBase(c.floor, f);
+        return Math.min(...w.map((q) => q.s)) - 0.03 <= s && s <= Math.max(...w.map((q) => q.s)) + 0.03 && y0 - 0.03 <= y && y <= y0 + f.h + 0.03;
+      });
+      if (dev) return { node: `dev:${dev.id}` };
+    }
     for (const r of c.runs)
       for (const pc of r.pieces) {
         const [vs, vy] = [pc.s1 - pc.s0, pc.y1 - pc.y0];
         const l2 = vs * vs + vy * vy;
         const t = l2 > 0 ? Math.max(0, Math.min(1, ((s - pc.s0) * vs + (y - pc.y0) * vy) / l2)) : 0;
         const [qs, qy] = [pc.s0 + vs * t, pc.y0 + vy * t];
-        if (Math.hypot(qs - s, qy - y) < 0.07) return { pipe: { id: r.id, p: onWall(c.frame, qs, qy, pc.d0 + (pc.d1 - pc.d0) * t) } };
+        if (Math.hypot(qs - s, qy - y) < (pipesOnly ? 0.16 : 0.07)) return { pipe: { id: r.id, p: onWall(c.frame, qs, qy, pc.d0 + (pc.d1 - pc.d0) * t) } };
       }
     return {};
+  }
+
+  /**
+   * The eraser: a ball valve or sight glass under the pointer goes; else the pipe; else a hole, T or Y with every
+   * pipe at it (a hole's way outside too, so its pool line can be brought in anew).
+   */
+  private eraseAt(c: RunCtx, s: number, y: number): void {
+    const near = (a: number, b: number, r: number) => Math.hypot(a - s, b - y) < r;
+    for (const r of c.runs)
+      for (const f of r.fittings)
+        if (near(f.s, f.y, 0.1 * Math.max(1, this.wvScale))) {
+          this.changePool(c.pool.id, (l) => {
+            const q = l.pipes?.find((x) => x.id === r.id);
+            if (q) q.fittings = (q.fittings ?? []).filter((x) => x.id !== f.id);
+          });
+          return;
+        }
+    const nodeAt = poolNodeAt(this._doc, c.floor, c.pool);
+    const joint = (c.pool.pool?.joints ?? []).find((j) => {
+      const node = j.kind === "wall" || j.kind === "floor" ? `joint:${j.id}:inside` : `joint:${j.id}`;
+      const q = nodeAt(node);
+      if (!q) return false;
+      const w = toWall(c.frame, [q.x, q.z]);
+      return w.d > -0.3 && w.d < 1.6 && near(w.s, q.y, 0.1);
+    });
+    if (joint) {
+      const part = `joint:${joint.id}`;
+      this.changePool(c.pool.id, (l) => {
+        l.joints = (l.joints ?? []).filter((j) => j.id !== joint.id);
+        l.pipes = (l.pipes ?? []).filter((x) => nodePart(x.from) !== part && nodePart(x.to) !== part);
+      });
+      this._runSel = null;
+      return;
+    }
+    const hit = this.runPick(c, s, y, true);
+    if (hit.pipe) {
+      const id = hit.pipe.id;
+      this.changePool(c.pool.id, (l) => (l.pipes = (l.pipes ?? []).filter((x) => x.id !== id)));
+      this._runSel = null;
+    }
   }
 
   /** A press on the wall while laying a pipe or placing a fitting. */
@@ -6069,10 +7252,14 @@ export class Fp3dEditor extends LitElement {
     const mode = this._runMode;
     if (!mode) return;
     if (mode === "hole_wall" || mode === "hole_floor" || mode === "tee" || mode === "y") return this.placeJoint(c, mode, s, y);
+    if (mode === "feed") return this.placeFeed(c, s, y);
+    if (mode === "erase") return this.eraseAt(c, s, y);
     const hit = node ? { node } : this.runPick(c, s, y, mode !== "draw");
     if (mode !== "draw") {
       if (hit.pipe) this.addFitting(c, hit.pipe.id, hit.pipe.p, mode);
-      this._runMode = null;
+      // drawing the technical room: back to the pen
+      this._runMode = this._techMode ? "draw" : null;
+      if (this._techMode) this._runSel = null;
       return;
     }
     const d = this._runDraft;
@@ -6131,6 +7318,22 @@ export class Fp3dEditor extends LitElement {
     this._runDraft = null;
     if (!d || !floor) return;
     const pts = [...d.pts, ...extra];
+    // drawing the technical room: into its end the line turns once – level first, then straight up or down into it –
+    // instead of a slanted last piece
+    const frame = this._techMode ? this.runFrame(d.wall) : null;
+    const area0 = this._techMode ? this.floor?.outdoor.find((o) => o.id === d.pool) : undefined;
+    if (frame && area0 && !extra.length && (to || toT)) {
+      const start = pts.length ? pts[pts.length - 1] : (() => {
+        const n = d.from ? poolNodeAt(this._doc, floor, area0)(d.from) : null;
+        return n ? ([n.x, n.y, n.z] as P3) : d.fromT;
+      })();
+      const n = toT ? { x: toT[0], y: toT[1], z: toT[2] } : poolNodeAt(this._doc, floor, area0)(to);
+      if (start && n) {
+        const a = toWall(frame, [start[0], start[2]]);
+        const b = toWall(frame, [n.x, n.z]);
+        if (Math.abs(a.s - b.s) > 0.03 && Math.abs(start[1] - n.y) > 0.03) pts.push(onWall(frame, b.s, start[1], d.d));
+      }
+    }
     if (!pts.length && !toT && (!to || to === d.from) && !d.fromT) return;
     let chosen: string | null = null;
     this.changePool(d.pool, (l, area) => {
@@ -6164,8 +7367,25 @@ export class Fp3dEditor extends LitElement {
         const q = jointPorts(j.kind).find((x) => !taken.has(`joint:${id}:${x}`));
         return q ? `joint:${id}:${q}` : n;
       };
-      const from = d.fromT ? tee(d.fromT) : free(d.from);
-      const end = toT ? tee(toT) : free(to, [from]);
+      let from = d.fromT ? tee(d.fromT) : free(d.from);
+      let end = toT ? tee(toT) : free(to, [from]);
+      // a device as a whole: the connection the line's other end asks for (water in: the suction side …)
+      const devs = floor.furniture.filter((f) => (POOL_DEVICES as readonly string[]).includes(f.type)).map((f) => ({ id: f.id, type: f.type }));
+      const taken = (dev: string) => pipes.flatMap((p) => [p.from, p.to]).filter((n) => nodePart(n) === dev).map((n) => splitNode(n).port).filter((q): q is PortName => !!q);
+      const toWasteNode = (n: string) => {
+        const { kind, id } = splitNode(n);
+        if (kind === "port") return area.pool?.ports?.find((q) => q.id === id)?.kind === "waste";
+        return kind === "joint" && /kanal|waste|abwasser|backwash/i.test(joints.find((j) => j.id === id)?.name ?? "");
+      };
+      const resolve = (n: string, other: string) => {
+        const { kind, id, port } = splitNode(n);
+        if (kind !== "dev" || port) return n;
+        const type = floor.furniture.find((f) => f.id === id)?.type ?? "";
+        const q = autoPort(type, other ? nodeFlow(other, area, devs) : null, toWasteNode(other), taken(`dev:${id}`));
+        return q ? `dev:${id}:${q}` : n;
+      };
+      from = resolve(from, end);
+      end = resolve(end, from);
       const xz = pts.map((q): Vec2 => [round(q[0]), round(q[2])]);
       const hs = pts.map((q) => round(q[1]));
       const ext = d.extend;
@@ -6186,12 +7406,176 @@ export class Fp3dEditor extends LitElement {
         chosen = q.id;
         return;
       }
-      const pipe: PoolPipe = { id: uid("pipe"), from, to: end, floor_id: floor.id, points: xz, heights: hs, height: height ?? hs[hs.length - 1] ?? null };
+      let pipe: PoolPipe = { id: uid("pipe"), from, to: end, floor_id: floor.id, points: xz, heights: hs, height: height ?? hs[hs.length - 1] ?? null };
+      // the water runs from where it comes out to where it goes in, whichever way the line was drawn
+      pipe = orientPipe(pipe, from ? nodeFlow(from, area, devs) : null, end ? nodeFlow(end, area, devs) : null);
       pipes.push(pipe);
       chosen = pipe.id;
     });
-    if (chosen) this._runSel = { pipe: chosen, pt: null };
-    this._runMode = null;
+    if (chosen && !this._techMode) this._runSel = { pipe: chosen, pt: null };
+    // drawing the technical room: the pen stays in the hand
+    this._runMode = this._techMode ? "draw" : null;
+  }
+
+  /**
+   * A line from the pool brought into the room where the wall was tapped: low down it comes out of the floor, higher
+   * up through the wall. The way outside – under the ground to the skimmer, the drain, the inlets (with a T-piece for
+   * several) or the waste drain – is laid by itself; inside it waits for the pipes drawn to it.
+   */
+  private placeFeed(c: RunCtx, s: number, y: number): void {
+    const kind = this._feedKind;
+    const floor = this.floor;
+    this._feedKind = null;
+    this._runMode = "draw";
+    if (!kind || !floor) return;
+    const ss = Math.round(s * 20) / 20;
+    const low = y < 0.25;
+    const face = c.gap - RUN_GAP;
+    const thick = sharedEdge(c.floor, c.room.id, c.frame.a, c.frame.b) ? this._doc.settings.wall_interior : this._doc.settings.wall_exterior;
+    const name = this.t(`feed_${kind}` as I18nKey);
+    const [x, z] = onWallXZ(c.frame, ss, low ? c.gap : face);
+    const hole: PoolJoint = low
+      ? { id: uid("joint"), kind: "floor", x, z, y: 0, name }
+      : { id: uid("joint"), kind: "wall", x, z, y: Math.round(y * 20) / 20, nx: round(c.frame.n[0]), nz: round(c.frame.n[1]), depth: round(thick), name };
+    this.changePool(c.pool.id, (l, area) => {
+      l.joints = [...(l.joints ?? []), hole];
+      // no waste drain yet: one outside, a metre beyond the hole
+      let ports = (l.ports ?? []).filter((q) => q.kind === kind);
+      if (kind === "waste" && !ports.length) {
+        const out = jointPortAt(hole, "outside");
+        const port = { id: uid("port"), kind: "waste" as const, x: round(out.x - c.frame.n[0] * 1), z: round(out.z - c.frame.n[1] * 1) };
+        l.ports = [...(l.ports ?? []), port];
+        ports = [port];
+      }
+      if (!ports.length) return;
+      const nodeAt = poolNodeAt(this._doc, floor, area);
+      const lookup = (n: string) => {
+        const { kind: k, id, port } = splitNode(n);
+        const j = k === "joint" ? (l.joints ?? []).find((q) => q.id === id) : undefined;
+        if (j) return jointPortAt(j, port);
+        const pp = k === "port" ? (l.ports ?? []).find((q) => q.id === id) : undefined;
+        return pp ? (nodeAt(n) ?? { x: pp.x, y: 0.02, z: pp.z }) : nodeAt(n);
+      };
+      const flow = (n: string) => {
+        const { kind: k, id } = splitNode(n);
+        if (k === "port") {
+          const pp = (l.ports ?? []).find((q) => q.id === id);
+          return pp ? poolPortFlow(pp.kind) : null;
+        }
+        return null;
+      };
+      const plan = planConnection({ from: `joint:${hole.id}:outside`, vias: [], to: ports.map((q) => `port:${q.id}`), floorId: floor.id }, lookup, l.joints ?? [], flow, (k) => uid(k));
+      l.joints = [...(l.joints ?? []), ...plan.joints];
+      l.pipes = [...(l.pipes ?? []), ...plan.pipes];
+    });
+  }
+
+  /** The side bar of "Technik zeichnen": devices, the pool's lines to bring in, ball valve and sight glass, what is missing. */
+  private renderTechKit(frame: WallFrame, room: Room, c: RunCtx) {
+    const area = c.pool;
+    const add = (t: string) => html`<button class="fp3d-wv-tile" @click=${() => this.addOnWall(t, frame, room)}>
+      <span class="fp3d-wv-tile-pic">${this.kitPics.get(t) ? html`<img src=${this.kitPics.get(t)} alt="" />` : html`<i></i>`}</span>
+      <span class="fp3d-wv-tile-name">${this.t(`furn_${t}` as I18nKey)}</span>
+    </button>`;
+    void this.askKitPics(["pool_pump", "pool_filter", "pool_heat_pump", "pool_dosing"]);
+    const kinds = ["skimmer", "drain", "inlet", "waste"].filter((k) => k === "waste" || (area.pool?.ports ?? []).some((q) => q.kind === k));
+    const fit = (mode: "valve" | "sight", label: I18nKey) =>
+      html`<button class="fp3d-btn ${this._runMode === mode ? "fp3d-primary" : ""}" title=${this.t("wall_run_fit")} @click=${() => {
+        this._runDraft = null;
+        this._runMode = this._runMode === mode ? "draw" : mode;
+      }}>+ ${this.t(label)}</button>`;
+    return html`<aside class="fp3d-wv-kit fp3d-tech-kit">
+      ${this.renderTechStep(c)}
+      <div class="fp3d-seg fp3d-tech-pen" role="group">
+        <button aria-pressed=${this._runMode === "draw"} @click=${() => {
+          this._runMode = "draw";
+          this._runSel = null;
+        }}><span>✏</span>${this.t("tech_draw")}</button>
+        <button aria-pressed=${this._runMode !== "draw" && this._runMode !== "feed" && this._runMode !== "erase"} @click=${() => {
+          this._runDraft = null;
+          this._runMode = null;
+        }}><span>✋</span>${this.t("tech_pick")}</button>
+        <button aria-pressed=${this._runMode === "erase"} title=${this.t("tech_erase_hint")} @click=${() => {
+          this._runDraft = null;
+          this._runSel = null;
+          this._feedKind = null;
+          this._runMode = this._runMode === "erase" ? "draw" : "erase";
+        }}><span>🧽</span>${this.t("tech_erase")}</button>
+      </div>
+      <button class="fp3d-btn fp3d-tech-undo" ?disabled=${!this._canUndo} title="Ctrl+Z" @click=${() => {
+        this._runDraft = null;
+        this.undo();
+      }}>↶ ${this.t("undo")}</button>
+      <h4>${this.t("tech_feeds")}</h4>
+      ${kinds.map((k) => {
+        const done = feedDone(area, k);
+        return html`<button class="fp3d-btn fp3d-tech-feed ${this._feedKind === k ? "fp3d-primary" : ""} ${done ? "fp3d-on" : ""}" ?disabled=${done} @click=${() => {
+          this._runDraft = null;
+          this._feedKind = this._feedKind === k ? null : k;
+          this._runMode = this._feedKind ? "feed" : "draw";
+        }}><i>${k === "waste" ? "🟤" : "〰"}</i>${this.t(`feed_${k}` as I18nKey)}${done ? html`<small>✓</small>` : nothing}</button>`;
+      })}
+      ${!(area.pool?.ports ?? []).some((q) => q.kind !== "waste") ? html`<p class="fp3d-sub">${this.t("tech_no_ports")}</p>` : nothing}
+      <h4>${this.t("tech_devices")}</h4>
+      <div class="fp3d-wv-tiles">${(["pool_pump", "pool_filter", "pool_heat_pump", "pool_dosing"] as const).map(add)}</div>
+      <h4>${this.t("tech_fittings")}</h4>
+      ${fit("valve", "wall_run_valve")} ${fit("sight", "wall_run_sight")}
+      <p class="fp3d-sub">${this.t("tech_hint")}</p>
+    </aside>`;
+  }
+
+  /**
+   * The next step, in plain words: bring the pool's lines in, put the pump and filter up, then the line still missing
+   * ("from the skimmer to the pump's suction side") – one at a time, until the water flows.
+   */
+  private renderTechStep(c: RunCtx) {
+    const area = c.pool;
+    const ports = area.pool?.ports ?? [];
+    const devs = c.floor.furniture.filter((f) => (POOL_DEVICES as readonly string[]).includes(f.type));
+    const box = (n: number | null, text: string) => html`<div class="fp3d-tech-step ${n === null ? "fp3d-done" : ""}"><b>${n === null ? "✓" : this.t("tech_step", { n })}</b>${text}</div>`;
+    if (this._runMode === "feed") return box(1, this.t("tech_feed_place"));
+    if (this._runMode === "erase") return html`<div class="fp3d-tech-step fp3d-tech-erasing"><b>🧽 ${this.t("tech_erase")}</b>${this.t("tech_erase_hint")}</div>`;
+    if (this._runMode === "valve" || this._runMode === "sight") return box(4, this.t("tech_step_fit"));
+    if (this._runDraft) return box(3, this.t("tech_step_drawing"));
+    if (!ports.some((q) => q.kind !== "waste")) return box(1, this.t("tech_no_ports"));
+    const missing = ["skimmer", "drain", "inlet"].find((k) => ports.some((q) => q.kind === k) && !feedDone(area, k));
+    if (missing) return box(1, this.t("tech_step_feed", { name: this.t(`feed_${missing}` as I18nKey) }));
+    const pump = devs.find((f) => f.type === "pool_pump");
+    const filter = devs.find((f) => f.type === "pool_filter");
+    if (!pump || !filter) return box(2, this.t("tech_step_devices"));
+    const issues = sketchIssues(area, devs.map((f) => ({ id: f.id, type: f.type })));
+    const name = (n: string) => this.poolNodeLabel(area, n);
+    const port = issues.find((i) => i.kind === "port");
+    if (port) {
+      const { port: q } = splitNode(port.node);
+      // where the line to this connection comes from (or goes to)
+      const fromTo: Record<string, string> = {
+        suction: this.t("feed_skimmer"),
+        pressure: name(`dev:${filter.id}:pump`),
+        pump: name(`dev:${pump.id}:pressure`),
+        return: devs.some((f) => f.type === "pool_heat_pump") ? this.t("furn_pool_heat_pump") : this.t("feed_inlet"),
+        waste: this.t("feed_waste"),
+        in: name(`dev:${filter.id}:return`),
+        out: this.t("feed_inlet"),
+      };
+      return box(3, this.t("tech_step_line", { a: q ? (fromTo[q] ?? "…") : "…", b: name(port.node) }));
+    }
+    if (issues.some((i) => i.kind === "loose")) return box(3, this.t("tech_step_loose"));
+    return box(null, this.t("tech_ok"));
+  }
+
+  /** "Technik zeichnen": what is still missing, or that the water flows. */
+  private renderTechIssues(c: RunCtx) {
+    const devs = c.floor.furniture.filter((f) => (POOL_DEVICES as readonly string[]).includes(f.type)).map((f) => ({ id: f.id, type: f.type }));
+    const issues = sketchIssues(c.pool, devs);
+    if (!issues.length) return html`<span class="fp3d-tech-ok">✓ ${this.t("tech_ok")}</span>`;
+    const loose = issues.filter((i) => i.kind === "loose").length;
+    const text = [
+      ...(loose ? [this.t("tech_issue_loose", { n: loose })] : []),
+      ...issues.filter((i) => i.kind === "port").map((i) => this.t("tech_issue_port", { name: this.poolNodeLabel(c.pool, i.node) })),
+      ...issues.filter((i) => i.kind === "feed").map((i) => this.t("tech_issue_feed", { name: this.t(`feed_${i.node}` as I18nKey) })),
+    ];
+    return html`<span class="fp3d-tech-issues">⚠ ${text.slice(0, 4).join(" · ")}${text.length > 4 ? " …" : ""}</span>`;
   }
 
   /** A hole through the wall (or the floor in front of it), a T- or Y-piece where the wall was tapped. */
@@ -6273,7 +7657,7 @@ export class Fp3dEditor extends LitElement {
     if (this._runMode || !this.isAdmin) return;
     e.stopPropagation();
     const nodeAt = poolNodeAt(this._doc, c.floor, c.pool);
-    if (e.detail >= 2) {
+    if (this.doubleTap(e, `runpt:${pipeId}:${i}`)) {
       this.changePool(c.pool.id, (l) => {
         const q = l.pipes?.find((x) => x.id === pipeId);
         if (!q) return;
@@ -6343,7 +7727,7 @@ export class Fp3dEditor extends LitElement {
     if (this._runMode || !this.isAdmin) return;
     e.stopPropagation();
     this._runSel = { pipe: pipeId, pt: null };
-    if (e.detail >= 2) {
+    if (this.doubleTap(e, `fitting:${id}`)) {
       this.changePool(c.pool.id, (l) => {
         const q = l.pipes?.find((x) => x.id === pipeId);
         if (q?.fittings) q.fittings = q.fittings.filter((x) => x.id !== id);
@@ -6461,7 +7845,7 @@ export class Fp3dEditor extends LitElement {
       const w = q && toWall(c.frame, [q.x, q.z]);
       return q && w && w.d > -0.6 && w.d < 1.6 && w.s > -0.2 && w.s < c.L + 0.2
         ? [
-            svg`<g class="fp3d-wv-node ${cls} ${joint ? "fp3d-wv-joint" : ""}" transform="translate(${X(w.s)} ${Y(q.y)})" @pointerdown=${(e: PointerEvent) => joint && this.jointDown(e, joint, w.d)}>
+            svg`<g class="fp3d-wv-node ${cls} ${joint ? "fp3d-wv-joint" : ""}" transform="translate(${X(w.s)} ${Y(q.y)}) scale(${this.wvScale})" @pointerdown=${(e: PointerEvent) => joint && this.jointDown(e, joint, w.d)}>
               <circle r="0.05" /><text y="0.11">${text}</text><title>${this.poolNodeLabel(c.pool, node)}</title>
             </g>`,
           ]
@@ -6477,15 +7861,33 @@ export class Fp3dEditor extends LitElement {
         j.kind === "wall" || j.kind === "floor" ? marker(`joint:${j.id}:inside`, this.jointLabel(c.pool, j.id), "fp3d-wv-hole-mark", j.id) : marker(`joint:${j.id}`, this.jointLabel(c.pool, j.id), "", j.id),
       ),
     ];
+    // drawing the technical room: the water flows in the drawing as if the pump ran (blue, warm after a heating heat
+    // pump, brown to the waste drain); a pipe it does not reach stays grey
+    const wet = this._techMode
+      ? poolFlow({
+          pipes: c.pool.pool?.pipes ?? [],
+          ports: c.pool.pool?.ports ?? [],
+          devices: this._doc.floors.flatMap((f) => f.furniture).filter((f) => (POOL_DEVICES as readonly string[]).includes(f.type)).map((f) => ({ id: f.id, type: f.type as PoolDeviceType, open: f.valve_open !== false, valve: f.valve_position ?? null })),
+          pumpOn: true,
+          heaterOn: false,
+          heating: false,
+        })
+      : null;
+    const wetStyle = (id: string) => {
+      const f = wet?.get(id);
+      if (!f?.active) return "";
+      const [r, g, b] = waterColor(f).map((v) => Math.round(v * 255));
+      return `stroke: rgb(${r}, ${g}, ${b}); stroke-opacity: 0.95`;
+    };
     return svg`<g class="fp3d-wv-runs">
       ${nodes}
       ${c.runs.map(
-        (r) => svg`<g class="fp3d-wv-run ${r.id === sel ? "fp3d-wv-run-sel" : ""}">
-          ${r.pieces.map((pc) => svg`<line class=${pc.y0 < -0.01 && pc.y1 < -0.01 ? "fp3d-wv-under" : ""} x1=${X(pc.s0)} y1=${Y(pc.y0)} x2=${X(pc.s1)} y2=${Y(pc.y1)} @pointerdown=${(e: PointerEvent) => this.runPieceDown(e, c, r, pc.k)} />`)}
+        (r) => svg`<g class="fp3d-wv-run ${r.id === sel ? "fp3d-wv-run-sel" : ""} ${wet && !wet.get(r.id)?.active ? "fp3d-wv-dry" : ""}">
+          ${r.pieces.map((pc) => svg`<line class=${pc.y0 < -0.01 && pc.y1 < -0.01 ? "fp3d-wv-under" : ""} style=${wetStyle(r.id)} x1=${X(pc.s0)} y1=${Y(pc.y0)} x2=${X(pc.s1)} y2=${Y(pc.y1)} @pointerdown=${(e: PointerEvent) => this.runPieceDown(e, c, r, pc.k)} />`)}
           ${r.ends.map((e) => svg`<circle class="fp3d-wv-end" cx=${X(e.s)} cy=${Y(e.y)} r="0.035" />`)}
           ${r.fittings.map((f) =>
             f.kind === "valve"
-              ? svg`<g class="fp3d-wv-valve ${f.open ? "" : "fp3d-wv-shut"}" transform="translate(${X(f.s)} ${Y(f.y)})" @pointerdown=${(e: PointerEvent) => this.fittingDown(e, c, r.id, f.id)}>
+              ? svg`<g class="fp3d-wv-valve ${f.open ? "" : "fp3d-wv-shut"}" transform="translate(${X(f.s)} ${Y(f.y)}) scale(${this.wvScale})" @pointerdown=${(e: PointerEvent) => this.fittingDown(e, c, r.id, f.id)}>
                   <circle r="0.05" /><line x1="0" y1="0" x2=${f.open ? 0.11 : 0} y2=${f.open ? 0 : -0.11} />
                 </g>`
               : svg`<rect class="fp3d-wv-sight" x=${X(f.s) - 0.06} y=${Y(f.y) - 0.035} width="0.12" height="0.07" rx="0.02" @pointerdown=${(e: PointerEvent) => this.fittingDown(e, c, r.id, f.id)} />`,
@@ -6632,7 +8034,7 @@ export class Fp3dEditor extends LitElement {
       if (pt) {
         const [pipe, i] = split(pt);
         // a double click takes the corner point out
-        if (e.detail >= 2)
+        if (this.doubleTap(e, `pipept:${pt}`))
           this.change((_, f) => {
             const q = f.outdoor.find((x) => x.id === a.id)?.pool?.pipes?.find((x) => x.id === pipe);
             q?.points.splice(i, 1);
@@ -7376,6 +8778,13 @@ export class Fp3dEditor extends LitElement {
     const devs = this._doc.floors.flatMap((f) => f.furniture).filter((m) => (POOL_DEVICES as readonly string[]).includes(m.type));
     const pipe = pipes.find((p) => p.id === this._pipeId);
     return html`<section>
+        <button class="fp3d-btn fp3d-primary fp3d-wide" ?disabled=${!admin} title=${this.t("tech_open_hint")} @click=${() => {
+          this.techPick = true;
+          this._wallPick = true;
+        }}>🛠 ${this.t("tech_open")}</button>
+        <p class="fp3d-sub">${this.t("tech_open_hint")}</p>
+      </section>
+      <section>
         <h3>${this.t("pool_ports")}</h3>
         <div class="fp3d-actions">
           ${(["skimmer", "drain", "inlet", "waste"] as const).map((k) => html`<button class="fp3d-btn" ?disabled=${!admin} @click=${() => this.addPoolPort(k)}>+ ${this.t(`pool_port_${k}` as I18nKey)}</button>`)}
@@ -7384,6 +8793,19 @@ export class Fp3dEditor extends LitElement {
           (p) => html`<div class="fp3d-pool-row">
             <button class="fp3d-link" title=${this.t("card_open")} @click=${() => this.openCard(a.id, `port:${p.id}`)}>${this.poolNodeLabel(a, `port:${p.id}`)}</button>
             <span class="fp3d-muted">${this.partStatus(a, `port:${p.id}`)[0] ? "✓" : "○"}</span>
+            ${p.kind === "inlet" || p.kind === "skimmer"
+              ? html`<label class="fp3d-pool-depth" title=${this.t("pool_port_depth_hint")}
+                  >${this.t("pool_port_depth")}
+                  <input type="number" step="0.05" min="0" max="3" .value=${String(p.depth ?? (p.kind === "inlet" ? 0.3 : 0))} ?disabled=${!admin} @change=${(e: Event) => {
+                    const v = Number((e.target as HTMLInputElement).value.replace(",", "."));
+                    if (!Number.isFinite(v)) return;
+                    this.change((_, floor) => {
+                      const q = floor.outdoor.find((o) => o.id === a.id)?.pool?.ports?.find((x) => x.id === p.id);
+                      if (q) q.depth = Math.min(3, Math.max(0, round(v)));
+                    });
+                  }} />m</label
+                >`
+              : nothing}
             <button class="fp3d-btn fp3d-danger" ?disabled=${!admin} title=${this.t("delete")} @click=${() => this.deletePoolPort(a.id, p.id)}>✕</button>
           </div>`,
         )}
@@ -7407,6 +8829,10 @@ export class Fp3dEditor extends LitElement {
                   <select ?disabled=${!admin} title=${this.t("pool_valve_position")} @change=${(e: Event) => this.setPoolDevice(f.id, { valve_position: (e.target as HTMLSelectElement).value as ValvePosition })}>
                   ${VALVE_POSITIONS.map((v) => html`<option value=${v} ?selected=${(f.valve_position ?? "filter") === v}>${this.t(`valve_${v}` as I18nKey)}</option>`)}
                 </select>`
+              : f.type === "pool_heat_pump"
+                ? html`<select ?disabled=${!admin} title=${this.t("hp_ports")} @change=${(e: Event) => this.setPoolDevice(f.id, { variant: (e.target as HTMLSelectElement).value === "right" ? null : (e.target as HTMLSelectElement).value })}>
+                    ${(["right", "left", "back"] as const).map((v) => html`<option value=${v} ?selected=${(f.variant ?? "right") === v}>${this.t("hp_ports")}: ${this.t(`hp_side_${v}` as I18nKey)}</option>`)}
+                  </select>`
               : f.type === "pool_valve"
                 ? html`<label class="fp3d-check"
                     ><input type="checkbox" .checked=${f.valve_open !== false} ?disabled=${!admin} @change=${(e: Event) => this.setPoolDevice(f.id, { valve_open: (e.target as HTMLInputElement).checked ? null : false })} />
@@ -7477,7 +8903,11 @@ export class Fp3dEditor extends LitElement {
         ><input type="checkbox" .checked=${!!a.above} ?disabled=${!admin} @change=${(ev: Event) => this.updateOutdoor({ above: (ev.target as HTMLInputElement).checked || undefined })} />
         ${this.t("pool_above")}</label
       >
-      ${a.above ? this.len(this.t("pool_height"), poolHeight(a), (v) => this.updateOutdoor({ height: Math.min(2.5, Math.max(0.4, round(v))) }), 0.05, 0.4) : nothing}`;
+      ${a.above ? this.len(this.t("pool_height"), poolHeight(a), (v) => this.updateOutdoor({ height: Math.min(2.5, Math.max(0.4, round(v))) }), 0.05, 0.4) : nothing}
+      ${this.len(this.t("pool_depth"), poolDepth(a), (v) => this.updateOutdoor({ depth: Math.min(5, Math.max(0.3, round(v))) }), 0.05, 0.3)}
+      ${a.above ? nothing : this.len(this.t("pool_rim"), a.rim ?? 0.06, (v) => this.updateOutdoor({ rim: Math.min(2, Math.max(-0.3, round(v))) }), 0.01, -0.3)}
+      <p class="fp3d-sub fp3d-wide">${this.t("pool_depth_hint")}</p>
+      ${!a.above && this.floor && !poolSunken(this.floor, a) ? html`<p class="fp3d-sub fp3d-wide fp3d-warn">${this.t("pool_depth_ground")}</p>` : nothing}`;
   }
 
   /** Pool Pro: the pool's entities (each role found by name when left empty), or the teaser without the add-on. */
@@ -7550,8 +8980,11 @@ export class Fp3dEditor extends LitElement {
 
   private renderFurniture(floor: Floor) {
     const k = this._view.scale;
-    return svg`<g>${floor.furniture.map((f) => {
-      const sel = f.id === this._furnitureId;
+    const set = this._furnitureId ? this.selection() : [];
+    const many = set.length > 1;
+    return svg`<g>${this.renderSelectionFrame(floor, set)}${floor.furniture.map((f) => {
+      const member = set.includes(f.id);
+      const sel = f.id === this._furnitureId && !many;
       const [cx, cy] = this.toScreen([f.x, f.z]);
       const big = Math.min(f.w, f.d) * k > 44;
       // the handle sits in front of the item; dragging it turns the item
@@ -7560,7 +8993,7 @@ export class Fp3dEditor extends LitElement {
       const [hx, hy] = this.toScreen([f.x - Math.sin(a) * reach, f.z + Math.cos(a) * reach]);
       const [fx, fy] = this.toScreen([f.x - Math.sin(a) * (f.d / 2), f.z + Math.cos(a) * (f.d / 2)]);
       const lit = isLamp(f.type) && !!f.entity && f.entity !== "none" && this.hass?.states[f.entity]?.state === "on";
-      return svg`<g data-furniture=${f.id} class=${`fp3d-furn${sel ? " fp3d-furn-sel" : ""}${lit ? " fp3d-furn-lit" : ""}${(ENERGY_DEVICES as readonly string[]).includes(f.type) ? " fp3d-energy-item" : ""}`}>
+      return svg`<g data-furniture=${f.id} class=${`fp3d-furn${sel || member ? " fp3d-furn-sel" : ""}${lit ? " fp3d-furn-lit" : ""}${(ENERGY_DEVICES as readonly string[]).includes(f.type) ? " fp3d-energy-item" : ""}`}>
         <g transform="translate(${cx} ${cy}) rotate(${f.rotation}) scale(${f.mirror ? -k : k} ${k})">
           <rect class="fp3d-furn-body" x=${-f.w / 2} y=${-f.d / 2} width=${f.w} height=${f.d} />
           <g class="fp3d-furn-sym">${furnitureSymbol(f.type, f.w, f.d)}</g>
@@ -7594,6 +9027,60 @@ export class Fp3dEditor extends LitElement {
           </g>`
         : nothing}`;
     })}</g>`;
+  }
+
+  /** A dashed frame around several selected items (a block or a multi selection), and the frame being drawn. */
+  private renderSelectionFrame(floor: Floor, set: string[]) {
+    const d = this.drag;
+    const drawing = d?.kind === "marquee" ? svg`<rect class="fp3d-marquee" x=${Math.min(...[d.start, d.end].map((p) => this.toScreen(p)[0]))} y=${Math.min(...[d.start, d.end].map((p) => this.toScreen(p)[1]))} width=${Math.abs(this.toScreen(d.end)[0] - this.toScreen(d.start)[0])} height=${Math.abs(this.toScreen(d.end)[1] - this.toScreen(d.start)[1])} />` : nothing;
+    if (set.length < 2) return drawing;
+    const pts = floor.furniture.filter((m) => set.includes(m.id)).flatMap((m) => furnitureFootprint(m));
+    if (!pts.length) return drawing;
+    const [x0, y0] = this.toScreen([Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1]))]);
+    const [x1, y1] = this.toScreen([Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))]);
+    const block = !this._multi.length;
+    return svg`${drawing}<g class=${`fp3d-selframe${block ? " fp3d-selframe-block" : ""}`}>
+      <rect x=${x0 - 6} y=${y0 - 6} width=${x1 - x0 + 12} height=${y1 - y0 + 12} rx="6" />
+      <text x=${x0 - 4} y=${y0 - 12}>${block ? `▣ ${this.t("block_title")} · ${set.length}` : this.t("multi_title", { n: set.length })}</text>
+    </g>`;
+  }
+
+  /** Side panel for several items: a block (or a multi selection that can become one). */
+  private renderBlockForm() {
+    const set = this.selection();
+    const items = (this.floor?.furniture ?? []).filter((m) => set.includes(m.id));
+    const block = !this._multi.length && !!items[0]?.group;
+    const fixed = items.every((m) => this.isFixedItem("furniture", m.id));
+    const some = !fixed && items.some((m) => this.isFixedItem("furniture", m.id));
+    return html`<section>
+      <div class="fp3d-h3row"><h3>${block ? `▣ ${this.t("block_title")}` : this.t("multi_title", { n: items.length })}</h3></div>
+      <p class="fp3d-sub">${this.t(block ? "block_hint" : "multi_hint")}</p>
+      ${some ? html`<p class="fp3d-sub fp3d-wv-fixnote">${this.t("block_some_fixed")}</p>` : nothing}
+      <div class="fp3d-block-parts">
+        ${items.map(
+          (m) => html`<button class="fp3d-chip" title=${this.t("block_part_edit")} @click=${() => {
+            this.selectItem("furniture", m.id);
+            this._single = !!m.group;
+          }}>${m.name || furnitureName(this.hass, m.type)}</button>`,
+        )}
+      </div>
+      <div class="fp3d-actions">
+        ${block
+          ? html`<button class="fp3d-btn" @click=${() => this.ungroupSelection()}>${this.t("block_break")}</button>`
+          : html`<button class="fp3d-btn fp3d-primary" @click=${() => this.groupSelection()}>▣ ${this.t("block_make")}</button>`}
+        <button class="fp3d-btn" @click=${() => this.rotateSelection(-90)}>${this.t("rotate_left")}</button>
+        <button class="fp3d-btn" @click=${() => this.rotateSelection(90)}>${this.t("rotate_right")}</button>
+        <button class="fp3d-btn" @click=${() => this.duplicateFurniture()}>${this.t("duplicate")}</button>
+        <button class="fp3d-btn ${some ? "fp3d-primary" : ""}" @click=${() => this.lockSelection(!fixed && !some)}>${fixed ? `🔓 ${this.t("unfix")}` : some ? `🔓 ${this.t("unfix_all")}` : `🔒 ${this.t("fix")}`}</button>
+        <button class="fp3d-btn fp3d-danger" @click=${() => this.deleteFurniture()}>${this.t("delete")}</button>
+      </div>
+      ${this.renderMultiToggle()}
+    </section>`;
+  }
+
+  /** Touch has no shift key: this switch makes taps add items and a drag on empty ground draw a frame. */
+  private renderMultiToggle() {
+    return html`<label class="fp3d-check fp3d-multi-toggle"><input type="checkbox" .checked=${this._multiMode} @change=${(e: Event) => (this._multiMode = (e.target as HTMLInputElement).checked)} /> ${this.t("multi_mode")}</label>`;
   }
 
   private renderOpenings(floor: Floor, walls: Wall[]) {
@@ -7894,6 +9381,22 @@ export class Fp3dEditor extends LitElement {
     /></label>`;
   }
 
+  /** The right mouse button held down: where, on what, and whether it was dragged (then it moved the plan). */
+  private rightPress: { at: [number, number]; target: Element; moved: boolean } | null = null;
+  /** When the right button was last released (its contextmenu event then stays quiet). */
+  private rightUp = -1e9;
+
+  /** The last press on a point, to tell a double click (a pointerdown's `detail` stays 0 in Chrome, D410). */
+  private lastTap: { key: string; at: number } | null = null;
+
+  /** Whether this press is the second of a double click on the same point (within 450 ms). */
+  private doubleTap(e: PointerEvent, key: string): boolean {
+    const now = performance.now();
+    const twice = e.detail >= 2 || (this.lastTap?.key === key && now - this.lastTap.at < 450);
+    this.lastTap = twice ? null : { key, at: now };
+    return twice;
+  }
+
   /** A tap in the 3D pane: select there, and fold the sidebar away (the bar under the pane has the essentials). */
   private selectFrom3d(kind: "room" | "furniture" | "device", id: string | null): void {
     this.selectItem(kind, id);
@@ -7910,21 +9413,36 @@ export class Fp3dEditor extends LitElement {
     }
   }
 
-  /** The sidebar: always beside the plan, or, next to the 3D pane, folded to a strip while idle. */
+  /** Fold the sidebar to its strip, or unfold it (beside the 3D pane: over the pane, while needed). */
+  private setSideFolded(folded: boolean): void {
+    if (this._split && !this._sidePinned) {
+      this._sideOpen = !folded;
+      return;
+    }
+    this._sideMin = folded;
+    try {
+      localStorage.setItem("neonplan3d.sideMin", folded ? "1" : "0");
+    } catch {
+      // no storage
+    }
+  }
+
+  /**
+   * The sidebar: beside the plan, folded to a narrow strip on request (more room for the plan); next to the 3D pane
+   * and not pinned, folded while idle and opened over the pane.
+   */
   private renderAside(floor: Floor | undefined) {
     const folding = this._split && !this._sidePinned && !this.narrow;
-    if (!folding) return html`<aside class="fp3d-side">${this.renderPinRow()}${this.renderSide(floor)}</aside>`;
-    const open = this._sideOpen;
-    if (!open) {
+    const folded = !this.narrow && (folding ? !this._sideOpen : this._sideMin);
+    if (folded) {
       return html`<aside class="fp3d-side fp3d-side-strip">
-        <button class="fp3d-strip-btn" title=${this.t("side_open")} @click=${() => (this._sideOpen = true)}>☰</button>
-        ${this._furnitureId || this._deviceId || this._openingId
-          ? html`<button class="fp3d-strip-btn fp3d-strip-hot" title=${this.t("side_details")} @click=${() => (this._sideOpen = true)}>⚙</button>`
+        <button class="fp3d-strip-btn" title=${this.t("side_open")} @click=${() => this.setSideFolded(false)}>‹</button>
+        ${this._furnitureId || this._deviceId || this._openingId || this._roomId
+          ? html`<button class="fp3d-strip-btn fp3d-strip-hot" title=${this.t("side_details")} @click=${() => this.setSideFolded(false)}>⚙</button>`
           : nothing}
-        <button class="fp3d-strip-btn" title=${this.t("tool_furniture")} @click=${() => ((this._tool = "furniture"), (this._draft = []), (this._sideOpen = true))}>🛋</button>
-        <button class="fp3d-strip-btn" title=${this.t("tool_opening")} @click=${() => ((this._tool = "opening"), (this._draft = []), (this._sideOpen = true))}>🚪</button>
       </aside>`;
     }
+    if (!folding) return html`<aside class="fp3d-side">${this.renderPinRow()}${this.renderSide(floor)}</aside>`;
     // open over the 3D pane, so the pane keeps its size
     return html`<aside class="fp3d-side fp3d-side-strip"></aside>
       <aside class="fp3d-side fp3d-side-overlay">
@@ -7933,10 +9451,12 @@ export class Fp3dEditor extends LitElement {
       </aside>`;
   }
 
-  private renderPinRow(overlay = false) {
-    if (!this._split || this.narrow) return nothing;
+  private renderPinRow(_overlay = false) {
+    if (this.narrow) return nothing;
+    const fold = html`<button class="fp3d-btn" title=${this.t("side_fold_hint")} @click=${() => this.setSideFolded(true)}>${this.t("side_close")} ›</button>`;
+    if (!this._split) return html`<div class="fp3d-pin-row">${fold}</div>`;
     return html`<div class="fp3d-pin-row">
-      ${overlay ? html`<button class="fp3d-btn" @click=${() => (this._sideOpen = false)}>${this.t("side_close")}</button>` : nothing}
+      ${fold}
       <button class="fp3d-btn" aria-pressed=${this._sidePinned} title=${this.t("side_pin_hint")} @click=${() => this.setSidePinned(!this._sidePinned)}>
         📌 ${this.t(this._sidePinned ? "side_pinned" : "side_pin")}
       </button>
@@ -7981,43 +9501,12 @@ export class Fp3dEditor extends LitElement {
     return html`
       ${admin ? nothing : html`<p class="fp3d-note">${this.t("read_only")}</p>`}
       <section>
-        <h3>${this.t("floors")}</h3>
-        <div class="fp3d-floor-list">
-          ${[...floors].reverse().map(
-            (f) => html`<button
-              class="fp3d-chip"
-              aria-pressed=${f.id === this._floorId}
-              @click=${() => {
-                this._floorId = f.id;
-                this._roomId = null;
-                this._vertex = null;
-                this._draft = [];
-                this.fit();
-              }}
-            >
-              ${f.name}
-            </button>`,
-          )}
-          ${admin
-            ? html`<button
-                class="fp3d-btn"
-                aria-expanded=${this._floorMenu}
-                @click=${() => (this.freeHaFloors.length ? (this._floorMenu = !this._floorMenu) : this.addFloor())}
-              >
-                + ${this.t("add_floor")}
-              </button>`
-            : nothing}
-        </div>
-        ${admin && this._floorMenu
-          ? html`<div class="fp3d-floor-menu">
-              <p class="fp3d-sub">${this.t("floor_from_ha")}</p>
-              ${this.freeHaFloors.map(
-                (f) => html`<button class="fp3d-btn" @click=${() => this.addFloor(f)}>
-                  ${f.name}${f.level != null ? html` <span class="fp3d-sub">· ${this.t("level", { n: f.level })}</span>` : nothing}
-                </button>`,
-              )}
-              <button class="fp3d-btn" @click=${() => this.addFloor()}>${this.t("floor_empty")}</button>
-            </div>`
+        <h3>${floor ? this.t("floor_settings_of", { floor: floor.name }) : this.t("floors")}</h3>
+        ${floors.length ? nothing : html`<p class="fp3d-sub">${this.t("floor_none_hint")}</p>`}
+        ${admin && floor
+          ? html`<button class="fp3d-btn" aria-pressed=${!!this._doc.settings.lock_plan} title=${this.t("lock_plan_hint")} @click=${() => this.toggleLockPlan()}>
+              ${this.t(this._doc.settings.lock_plan ? "plan_unlock" : "plan_lock")}
+            </button>`
           : nothing}
         ${floor
           ? html`<div class="fp3d-form">
@@ -8099,7 +9588,7 @@ export class Fp3dEditor extends LitElement {
       ${admin ? this.renderStartView() : nothing} ${admin ? this.renderFavorites() : nothing}
       ${this.renderHelpLinks()}
       ${admin && SHOW_PRESENCE ? this.renderPresenceSettings() : nothing}
-      ${floor && admin ? this.renderBackgroundForm(floor) : nothing} ${admin ? this.renderSettings() : nothing}
+      ${floor && admin ? this.renderBackgroundForm(floor) : nothing} ${admin ? this.renderSettings() : nothing} ${admin ? this.renderTerrain() : nothing}
       ${admin ? this.renderBackup() : nothing}
     `;
   }
@@ -8422,10 +9911,12 @@ export class Fp3dEditor extends LitElement {
     // sensors with a number for the live position of a blind
     const positions = this.entityOptions((id) => /^(sensor|number|input_number)\./.test(id) && Number.isFinite(Number(this.hass?.states[id]?.state)));
     // plain contacts, and handle sensors with three states (open / tilted / closed)
+    // a garage door may also be a switch or toggle helper (a relay that drives the door): on = open, a tap switches it
     const contacts = this.entityOptions(
       (id) =>
         (id.startsWith("binary_sensor.") && ["door", "window", "opening", "garage_door"].includes(dc(id) ?? "")) ||
-        (numberish(id) && windowPosition(this.hass?.states[id]) !== null),
+        (numberish(id) && windowPosition(this.hass?.states[id]) !== null) ||
+        (garage && /^(switch|input_boolean)\./.test(id)),
     );
     // handle sensors: text states (open / tilted / closed), a window_state attribute, or a telling name
     const handles = this.entityOptions((id) => {
@@ -8491,7 +9982,7 @@ export class Fp3dEditor extends LitElement {
             <button class="fp3d-btn" title=${this.t("flip_hinge_hint")} @click=${() => this.updateOpening({ hinge: o.hinge === "left" ? "right" : "left" })}>
               ⇆ ${this.t(o.leaves === 2 ? "flip_main_leaf" : "flip_hinge")}
             </button>
-            ${door
+            ${door || (window && o.sill < 0.1)
               ? html`<button class="fp3d-btn" title=${this.t("flip_swing_hint")} @click=${() => this.updateOpening({ swing: o.swing === "out" ? "in" : "out" })}>
                   ⇅ ${this.t("flip_swing")}
                 </button>`
@@ -8503,6 +9994,21 @@ export class Fp3dEditor extends LitElement {
         ${this.len(this.t("opening_position"), o.offset, (v) => this.updateOpening({ offset: Math.max(0, v) }), 0.01, 0)}
         ${window ? this.len(this.t("sill"), o.sill, (v) => this.updateOpening({ sill: Math.max(0, v) }), 0.01, 0) : nothing}
         ${this.len(this.t("opening_height"), o.height, (v) => this.updateOpening({ height: Math.max(0.3, v) }), 0.01, 0.3)}
+        ${window && this.isAdmin
+          ? html`<div class="fp3d-actions fp3d-wide">
+              <button
+                class="fp3d-btn"
+                title=${this.t("cellar_window_hint")}
+                @click=${() => {
+                  // small and high up in the wall: 1.0 × 0.5 m, its top 25 cm under the ceiling
+                  const h = this.floor?.height ?? 2.5;
+                  this.updateOpening({ width: 1, height: 0.5, sill: Math.max(0, Math.round((h - 0.75) * 100) / 100) });
+                }}
+              >
+                ▭ ${this.t("cellar_window")}
+              </button>
+            </div>`
+          : nothing}
         ${garage ? nothing : this.renderStyleSelect(o)}
         ${this.renderSidelightFields(o)}
         <label class="fp3d-field fp3d-wide" title=${this.t("opening_mark_hint")}
@@ -8569,6 +10075,13 @@ export class Fp3dEditor extends LitElement {
               ${this.t("contact_invert")}</label
             >`
           : nothing}
+        ${o.type === "window" && this.floor && o.sill < groundLevel(this.floor) - 0.05
+          ? html`<label class="fp3d-check fp3d-wide" title=${this.t("well_hint")}
+                ><input type="checkbox" .checked=${o.well !== false} ?disabled=${!admin} @change=${(ev: Event) => this.updateOpening({ well: (ev.target as HTMLInputElement).checked ? undefined : false })} />
+                ${this.t("well")}</label
+              >
+              ${o.well !== false ? this.len(this.t("well_rim"), o.well_rim ?? 0, (v) => this.updateOpening({ well_rim: Math.max(-0.3, Math.min(1, v)) || null }), 0.01, -0.3) : nothing}`
+          : nothing}
         ${o.type === "window"
           ? html`<label class="fp3d-check fp3d-wide" title=${this.t("rain_ignore_hint")}
               ><input type="checkbox" .checked=${!!o.rain_ignore} ?disabled=${!admin} @change=${(ev: Event) => this.updateOpening({ rain_ignore: (ev.target as HTMLInputElement).checked || undefined })} />
@@ -8584,9 +10097,16 @@ export class Fp3dEditor extends LitElement {
   }
 
   private renderFurnitureForm(f: Furniture) {
+    if (this.selection().length > 1) return this.renderBlockForm();
     const admin = this.isAdmin;
     return html`<section>
       <div class="fp3d-h3row"><h3>${f.name || this.t("furniture")}</h3>${this.fixButton("furniture", f.id)}</div>
+      ${f.group
+        ? html`<p class="fp3d-sub fp3d-block-note">▣ ${this.t("block_part")} <button class="fp3d-link" @click=${() => {
+            this._single = false;
+            this.requestUpdate();
+          }}>${this.t("block_select")}</button></p>`
+        : nothing}
       <div class="fp3d-form">
         <label class="fp3d-field fp3d-wide"
           >${this.t("furn_name")}
@@ -8601,7 +10121,7 @@ export class Fp3dEditor extends LitElement {
         <label class="fp3d-field fp3d-wide"
           >${this.t("furniture_type")}
           <select ?disabled=${!admin} @change=${(e: Event) => this.updateFurniture({ type: (e.target as HTMLSelectElement).value })}>
-            ${FURNITURE_TYPES.map((t) => html`<option value=${t} ?selected=${t === f.type}>${this.t(`furn_${t}` as I18nKey)}</option>`)}
+            ${this.typeChoices(f.type).map((t) => html`<option value=${t} ?selected=${t === f.type}>${this.t(`furn_${t}` as I18nKey)}</option>`)}
             ${(this.packs ?? [])
               .filter((pack) => pack.items.length)
               .map(
@@ -8618,8 +10138,8 @@ export class Fp3dEditor extends LitElement {
           </select></label
         >
         ${this.len(this.t("x"), f.x, (v) => this.updateFurniture({ x: v }))} ${this.len(this.t("z"), f.z, (v) => this.updateFurniture({ z: v }))}
-        ${this.len(this.t("width"), f.w, (v) => this.updateFurniture({ w: Math.max(0.05, v) }), 0.01, 0.05)}
-        ${this.len(this.t("depth"), f.d, (v) => this.updateFurniture({ d: Math.max(0.05, v) }), 0.01, 0.05)}
+        ${this.len(this.t("width"), f.w, (v) => this.updateFurniture({ w: Math.max(0.01, v) }), 0.01, 0.01)}
+        ${this.len(this.t("depth"), f.d, (v) => this.updateFurniture({ d: Math.max(0.01, v) }), 0.01, 0.01)}
         ${this.len(this.t("height_m"), f.h, (v) => this.updateFurniture({ h: Math.max(0.005, v) }), 0.01, 0)}
         ${this.num(this.t("rotation"), f.rotation, (v) => this.updateFurniture({ rotation: ((v % 360) + 360) % 360 }), 1)}
         ${isLamp(f.type)
@@ -8672,7 +10192,7 @@ export class Fp3dEditor extends LitElement {
             >
           </div>`
         : nothing}
-      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing}
+      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -8687,7 +10207,8 @@ export class Fp3dEditor extends LitElement {
             ${f.entity && f.entity !== "none" && f.type !== "parking" ? html`<button class="fp3d-btn" title=${this.t("as_device_hint")} @click=${() => this.furnitureToDevice(f)}>${this.t("as_device")}</button>` : nothing}
             <button class="fp3d-btn" @click=${() => this.duplicateFurniture()}>${this.t("duplicate")}</button>
             <button class="fp3d-btn fp3d-danger" @click=${() => this.deleteFurniture()}>${this.t("delete")}</button>
-          </div>`
+          </div>
+          ${this.renderMultiToggle()}`
         : nothing}
     </section>`;
   }
@@ -9058,7 +10579,195 @@ export class Fp3dEditor extends LitElement {
               <p class="fp3d-sub fp3d-wide">${this.t("furn_state_hint")}</p>`;
   }
 
+  /** Awning: its fall, the valance, a position sensor, its run time and the other direction (with the cover above). */
+  /** Haushalt Pro: the house's household settings (the hours the bins glow – for all bins). */
+  private setHousehold(patch: NonNullable<Building["settings"]["household"]>): void {
+    const next = structuredClone(this._doc);
+    next.settings.household = { ...(next.settings.household ?? {}), ...patch };
+    this.setDoc(next);
+  }
+
+  /**
+   * Waste bin and mailbox: shape and colours for everyone; the waste calendar and the post sensors with Haushalt Pro
+   * (a teaser while it is locked).
+   */
+  private renderHouseholdForm(f: Furniture) {
+    const admin = this.isAdmin;
+    const pro = hasFeature("household");
+    const teaser = !pro && released("household")
+      ? html`<section class="fp3d-teaser fp3d-wide">
+          <div class="fp3d-teaser-head"><b>🏠 ${this.t("pro_name_household")}</b></div>
+          <p class="fp3d-sub">${this.t(f.type === "waste_bin" ? "household_teaser_bin" : "household_teaser_mail")}</p>
+        </section>`
+      : nothing;
+    const select = <T extends string>(label: string, value: T, options: readonly T[], key: (o: T) => I18nKey, onChange: (v: T) => void) =>
+      html`<label class="fp3d-field fp3d-wide"
+        >${label}
+        <select ?disabled=${!admin} @change=${(e: Event) => onChange((e.target as HTMLSelectElement).value as T)}>
+          ${options.map((o) => html`<option value=${o} ?selected=${o === value}>${this.t(key(o))}</option>`)}
+        </select></label
+      >`;
+    if (f.type === "waste_bin") {
+      const shape = binShape(f);
+      const kind = f.bin_kind ?? "rest";
+      const [body, lid] = binColors(f);
+      const sources = this.entityOptions((id) => id.startsWith("calendar.") || id.startsWith("sensor."));
+      return html`<div class="fp3d-form fp3d-links">
+        ${select(this.t("bin_shape"), shape, BIN_SHAPES, (o) => `bin_shape_${o}` as I18nKey, (v) => {
+          const [w, d, h] = BIN_SIZE[v];
+          this.updateFurniture({ variant: v === "bin240" ? null : v, w, d, h });
+        })}
+        ${select(this.t("bin_kind"), kind, WASTE_KINDS, (o) => `bin_kind_${o}` as I18nKey, (v) => {
+          // a new kind starts from its usual colours in this country
+          const [b, l] = wasteColors(v, householdCountry());
+          this.updateFurniture({ bin_kind: v, bin_color: b, bin_lid: l === b ? null : l });
+        })}
+        <label class="fp3d-field"
+          >${this.t("bin_color")}
+          <input type="color" .value=${body} ?disabled=${!admin} @change=${(e: Event) => this.updateFurniture({ bin_color: (e.target as HTMLInputElement).value })}
+        /></label>
+        <label class="fp3d-field"
+          >${this.t("bin_lid")}
+          <input type="color" .value=${lid} ?disabled=${!admin} @change=${(e: Event) => this.updateFurniture({ bin_lid: (e.target as HTMLInputElement).value })}
+        /></label>
+        ${pro
+          ? html`${this.entitySelect(this.t("bin_source"), f.bin_source ?? null, undefined, sources, (v) => this.updateFurniture({ bin_source: v === "none" ? null : v }))}
+              <label class="fp3d-field fp3d-wide"
+                >${this.t("bin_match")}
+                <input type="text" .value=${f.bin_match ?? ""} placeholder=${this.t(`bin_kind_${kind}` as I18nKey)} ?disabled=${!admin}
+                  @change=${(e: Event) => this.updateFurniture({ bin_match: (e.target as HTMLInputElement).value.trim() || null })} /></label>
+              ${this.num(this.t("bin_from"), this._doc.settings.household?.bin_from ?? 14, (v) => this.setHousehold({ bin_from: Math.max(0, Math.min(24, v)) }), 0.5)}
+              ${this.num(this.t("bin_until"), this._doc.settings.household?.bin_until ?? 12, (v) => this.setHousehold({ bin_until: Math.max(0, Math.min(24, v)) }), 0.5)}
+              <p class="fp3d-sub fp3d-wide">${this.t("bin_hint")}</p>`
+          : teaser}
+      </div>`;
+    }
+    const shape = mailboxShape(f);
+    const flags = this.entityOptions((id) => ["binary_sensor.", "input_boolean.", "sensor.", "counter.", "input_number."].some((d) => id.startsWith(d)));
+    const doors = this.entityOptions((id) => id.startsWith("binary_sensor."));
+    return html`<div class="fp3d-form fp3d-links">
+      ${select(this.t("mailbox_shape"), shape, MAILBOX_SHAPES, (o) => `mailbox_shape_${o}` as I18nKey, (v) => {
+        const [w, d, h] = MAILBOX_SIZE[v];
+        this.updateFurniture({ variant: v === "wall" ? null : v, w, d, h });
+      })}
+      ${pro
+        ? html`${this.entitySelect(this.t("mailbox_entity"), typeof f.entity === "string" && f.entity !== "none" ? f.entity : null, undefined, flags, (v) => this.updateFurniture({ entity: v ?? "none" }))}
+            ${this.entitySelect(this.t("mailbox_door"), f.mailbox_door ?? null, undefined, doors, (v) => this.updateFurniture({ mailbox_door: v === "none" ? null : v }))}
+            <p class="fp3d-sub fp3d-wide">${this.t("mailbox_hint")}</p>`
+        : teaser}
+    </div>`;
+  }
+
+  /**
+   * Haushalt Pro on other items: a plant's moisture, a washer's time left and door, a fridge's door warning, and a
+   * consumable or service for every electric item. A teaser on plants, appliances and fridges while it is locked.
+   */
+  private renderHouseholdExtras(f: Furniture) {
+    const plant = f.type === "plant" || isPackPlant(f.type);
+    const appliance = f.type === "washer" || f.type === "dryer" || f.type === "dishwasher";
+    const fridge = f.type === "fridge" || f.type === "fridge_smart";
+    const electric = isElectric(f.type);
+    if (!plant && !electric) return nothing;
+    if (!hasFeature("household")) {
+      if (!released("household") || !(plant || appliance || fridge)) return nothing;
+      return html`<section class="fp3d-teaser">
+        <div class="fp3d-teaser-head"><b>🏠 ${this.t("pro_name_household")}</b></div>
+        <p class="fp3d-sub">${this.t(plant ? "hh_teaser_plant" : fridge ? "hh_teaser_fridge" : "hh_teaser_appliance")}</p>
+      </section>`;
+    }
+    const sensors = this.entityOptions((id) => id.startsWith("sensor."));
+    const doors = this.entityOptions((id) => id.startsWith("binary_sensor."));
+    const services = this.entityOptions((id) => ["sensor.", "binary_sensor.", "input_boolean.", "input_datetime.", "input_number."].some((d) => id.startsWith(d)));
+    const ref = (v: string | null) => (v === "none" ? null : v);
+    return html`<div class="fp3d-form fp3d-links">
+      <p class="fp3d-sub fp3d-wide"><b>🏠 ${this.t("pro_name_household")}</b></p>
+      ${plant
+        ? html`${this.entitySelect(this.t("hh_moisture"), f.moisture ?? null, undefined, this.entityOptions((id) => id.startsWith("plant.") || id.startsWith("sensor.")), (v) => this.updateFurniture({ moisture: ref(v) }))}
+            ${this.num(this.t("hh_moisture_min"), f.moisture_min ?? 20, (v) => this.updateFurniture({ moisture_min: Math.max(0, Math.min(100, Math.round(v))) }), 1)}`
+        : nothing}
+      ${appliance
+        ? html`${this.entitySelect(this.t("hh_remaining"), f.remaining ?? null, undefined, sensors, (v) => this.updateFurniture({ remaining: ref(v) }))}
+            ${this.entitySelect(this.t("hh_door"), f.door_left ?? null, undefined, doors, (v) => this.updateFurniture({ door_left: ref(v) }))}
+            <p class="fp3d-sub fp3d-wide">${this.t("hh_appliance_hint")}</p>`
+        : nothing}
+      ${fridge
+        ? html`${f.type === "fridge" ? this.entitySelect(this.t("hh_fridge_door"), f.door_left ?? null, undefined, doors, (v) => this.updateFurniture({ door_left: ref(v) })) : nothing}
+            ${this.num(this.t("hh_door_alarm"), f.door_alarm ?? 2, (v) => this.updateFurniture({ door_alarm: Math.max(0.5, Math.min(120, v)) }), 0.5)}`
+        : nothing}
+      ${electric
+        ? html`${this.entitySelect(this.t("hh_service_entity"), f.service ?? null, undefined, services, (v) => this.updateFurniture({ service: ref(v) }))}
+            ${f.service && f.service !== "none" ? this.num(this.t("hh_service_min"), f.service_min ?? 10, (v) => this.updateFurniture({ service_min: Math.max(0, v) }), 1) : nothing}
+            <p class="fp3d-sub fp3d-wide">${this.t("hh_service_hint")}</p>`
+        : nothing}
+    </div>`;
+  }
+
+  private renderAwningFields(f: Furniture) {
+    const admin = this.isAdmin;
+    const sensors = this.entityOptions((id) => id.startsWith("sensor.") || id.startsWith("input_number.") || id.startsWith("number."));
+    // each kind with the sizes it usually has: width, projection (depth), height above the floor, fall
+    const KINDS: Record<string, { w: number; d: number; y: number; pitch: number | null }> = {
+      arm: { w: 3, d: 2.5, y: 2.3, pitch: null },
+      drop: { w: 2.4, d: 1.2, y: 2.3, pitch: 20 },
+      vertical: { w: 2, d: 0.2, y: 2.3, pitch: null },
+      pergola: { w: 4, d: 3.5, y: 2.6, pitch: 6 },
+      side: { w: 3, d: 0.2, y: 1.8, pitch: null },
+    };
+    const kind = f.variant ?? "arm";
+    return html`<label class="fp3d-field fp3d-wide"
+        >${this.t("awning_kind")}
+        <select
+          ?disabled=${!admin}
+          @change=${(e: Event) => {
+            const k = (e.target as HTMLSelectElement).value;
+            const d = KINDS[k];
+            this.updateFurniture({ variant: k === "arm" ? null : k, w: d.w, d: d.d, mount_y: d.y, awning_pitch: d.pitch });
+          }}
+        >
+          ${Object.keys(KINDS).map((k) => html`<option value=${k} ?selected=${kind === k}>${this.t(`awning_kind_${k}` as I18nKey)}</option>`)}
+        </select></label
+      >
+      <p class="fp3d-sub fp3d-wide">${this.t(`awning_kind_${kind}_hint` as I18nKey)}</p>
+      ${kind === "vertical" || kind === "side" ? nothing : this.num(this.t("awning_pitch"), f.awning_pitch ?? 12, (v) => this.updateFurniture({ awning_pitch: Math.max(0, Math.min(80, Math.round(v))) }), 1)}
+      ${this.num(this.t("awning_time"), f.awning_time ?? 20, (v) => this.updateFurniture({ awning_time: Math.max(2, Math.min(300, Math.round(v))) }), 1)}
+      ${this.entitySelect(this.t("awning_position"), f.awning_position ?? null, undefined, sensors, (v) => this.updateFurniture({ awning_position: v === "none" ? null : v }))}
+      <label class="fp3d-check fp3d-wide"
+        ><input type="checkbox" .checked=${f.awning_valance !== false} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ awning_valance: (ev.target as HTMLInputElement).checked })} />
+        ${this.t("awning_valance")}</label
+      >
+      <label class="fp3d-check fp3d-wide" title=${this.t("awning_invert_hint")}
+        ><input type="checkbox" .checked=${!!f.awning_invert} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ awning_invert: (ev.target as HTMLInputElement).checked })} />
+        ${this.t("awning_invert")}</label
+      >
+      <p class="fp3d-sub fp3d-wide">${this.t("awning_hint")}</p>`;
+  }
+
+  /** A motorised curtain or roll-down screen from a pack (#511): run time, a live position sensor, the other direction. */
+  private renderMotionFields(f: Furniture) {
+    const admin = this.isAdmin;
+    const sensors = this.entityOptions((id) => id.startsWith("sensor.") || id.startsWith("input_number.") || id.startsWith("number."));
+    const side = f.variant === "left" || f.variant === "right" ? f.variant : "both";
+    return html`${packMotion(f.type) === "curtain"
+        ? html`<label class="fp3d-field fp3d-wide"
+            >${this.t("curtain_side")}
+            <select ?disabled=${!admin} @change=${(e: Event) => {
+              const v = (e.target as HTMLSelectElement).value;
+              this.updateFurniture({ variant: v === "both" ? null : v });
+            }}>
+              ${(["both", "left", "right"] as const).map((k) => html`<option value=${k} ?selected=${side === k}>${this.t(`curtain_side_${k}`)}</option>`)}
+            </select></label
+          >`
+        : nothing}
+      ${this.num(this.t("motor_time"), f.awning_time ?? 20, (v) => this.updateFurniture({ awning_time: Math.max(2, Math.min(300, Math.round(v))) }), 1)}
+      ${this.entitySelect(this.t("awning_position"), f.awning_position ?? null, undefined, sensors, (v) => this.updateFurniture({ awning_position: v === "none" ? null : v }))}
+      <label class="fp3d-check fp3d-wide" title=${this.t("motor_invert_hint")}
+        ><input type="checkbox" .checked=${!!f.awning_invert} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ awning_invert: (ev.target as HTMLInputElement).checked })} />
+        ${this.t("awning_invert")}</label
+      >`;
+  }
+
   private renderFurnitureLinks(f: Furniture) {
+    const ALARM_CLASSES = new Set(["smoke", "gas", "carbon_monoxide", "heat", "moisture", "safety", "sound", "problem"]);
     if (!this.hass) return nothing;
     const hass = this.hass;
     // what "automatic" would choose: resolve with this item's own links cleared
@@ -9077,31 +10786,52 @@ export class Fp3dEditor extends LitElement {
         ? // a lamp can follow a light or a plain switch (e.g. a relay that switches the ceiling light)
           /^(light|switch|input_boolean)\./.test(id)
         : tvLike
-          ? // a media player, or the smart plug an older TV is switched with
-            /^(media_player|switch|input_boolean|light)\./.test(id)
-          : f.type === "radiator"
+          ? // a media player, or the smart plug an older TV is switched with; a roll-down screen also its motor's cover (#511)
+            /^(media_player|switch|input_boolean|light)\./.test(id) || (packMotion(f.type) === "screen" && id.startsWith("cover."))
+          : f.type === "awning"
+            ? id.startsWith("cover.")
+            : packMotion(f.type) === "curtain"
+            ? // a motorised curtain: its motor's cover (or a switch that drives it, #511)
+              /^(cover|switch|input_boolean)\./.test(id)
+            : f.type === "radiator" || f.type === "ac_unit"
             ? id.startsWith("climate.")
-            : f.type === "robot_vacuum"
+            : isRobotVacuum(f.type)
               ? id.startsWith("vacuum.")
               : // or a status sensor (a 3D printer's print status: running, idle, finish …)
                 // (a robot vacuum from a pack, e.g. the one with its dock, follows its vacuum entity; a motorised
                 // curtain its cover, #286)
-                /^(switch|media_player|fan|input_boolean|climate|vacuum|cover)\./.test(id) || isStatusSensor(hass.states[id]),
+                /^(switch|media_player|fan|input_boolean|climate|vacuum|cover)\./.test(id) ||
+                isStatusSensor(hass.states[id]) ||
+                // alarms that report as binary sensors (binary_sensor.…_smoke, #490); a smoke detector takes any
+                (id.startsWith("binary_sensor.") && (f.type.endsWith("smoke_detector") || ALARM_CLASSES.has(String(hass.states[id]?.attributes.device_class ?? "")))),
     );
     const power = this.entityOptions((id) => this.isPowerSensor(id));
     const doorSensors = f.type === "fridge_smart" ? this.entityOptions((id) => id.startsWith("binary_sensor.")) : [];
     return html`<div class="fp3d-form fp3d-links">
         ${f.type === "grid_point"
           ? html`<p class="fp3d-sub fp3d-wide">${this.t("grid_point_hint")}</p>`
-          : this.entitySelect(this.t(lamp ? "furn_entity_light" : tvLike ? "furn_entity_tv" : f.type === "radiator" ? "furn_entity_climate" : f.type === "robot_vacuum" ? "furn_entity_vacuum" : "furn_entity"), f.entity ?? null, autoPick("entity"), entities, (v) =>
+          : this.entitySelect(this.t(lamp ? "furn_entity_light" : packMotion(f.type) ? "motor_cover" : tvLike ? "furn_entity_tv" : f.type === "awning" ? "awning_cover" : f.type === "radiator" || f.type === "ac_unit" ? "furn_entity_climate" : isRobotVacuum(f.type) ? "furn_entity_vacuum" : "furn_entity"), f.entity ?? null, autoPick("entity"), entities, (v) =>
               this.updateFurniture({ entity: v }),
             )}
+        ${f.type === "awning" ? this.renderAwningFields(f) : packMotion(f.type) ? this.renderMotionFields(f) : nothing}
         ${!lamp && !(ENERGY_DEVICES as readonly string[]).includes(f.type) && !hasScreen(f.type) ? this.renderStateLinks(f) : nothing}
         ${lamp && f.entity && f.entity !== "none"
           ? html`${this.entitySelect(this.t("furn_color_entity"), f.color_entity ?? null, undefined, this.entityOptions((id) => id.startsWith("light.") && id !== f.entity), (v) => this.updateFurniture({ color_entity: v === "none" ? null : v }))}
               <p class="fp3d-sub fp3d-wide">${this.t("furn_color_entity_hint")}</p>`
           : nothing}
         ${lamp ? this.glowScaleField(f.glow_scale, (v) => this.updateFurniture({ glow_scale: v })) : nothing}
+        ${lamp && f.entity && f.entity !== "none"
+          ? html`<label class="fp3d-check fp3d-wide" title=${this.t("furn_only_color_hint")}
+                ><input type="checkbox" .checked=${!!f.only_color} ?disabled=${!this.isAdmin} @change=${(ev: Event) => this.updateFurniture({ only_color: (ev.target as HTMLInputElement).checked ? "#ffd400" : null })} />
+                ${this.t("furn_only_color")}</label
+              >
+              ${f.only_color
+                ? html`<label class="fp3d-field"
+                      >${this.t("furn_only_color_pick")}
+                      <input type="color" .value=${f.only_color} ?disabled=${!this.isAdmin} @change=${(ev: Event) => this.updateFurniture({ only_color: (ev.target as HTMLInputElement).value })} /></label>
+                    <p class="fp3d-sub fp3d-wide">${this.t("furn_only_color_hint")}</p>`
+                : nothing}`
+          : nothing}
         ${lamp || f.type === "grid_point"
           ? nothing
           : this.entitySelect(
@@ -9111,6 +10841,23 @@ export class Fp3dEditor extends LitElement {
               power,
               (v) => this.updateFurniture({ power: v }),
             )}
+        ${!lamp && f.power && f.power !== "none" && !(ENERGY_DEVICES as readonly string[]).includes(f.type)
+          ? html`<label class="fp3d-field" title=${this.t("furn_run_w_hint")}
+              >${this.t("furn_run_w")}
+              <input
+                type="number"
+                min="1"
+                max="5000"
+                step="5"
+                placeholder="10"
+                .value=${f.run_w ? String(f.run_w) : ""}
+                ?disabled=${!this.isAdmin}
+                @change=${(ev: Event) => {
+                  const v = Number((ev.target as HTMLInputElement).value);
+                  this.updateFurniture({ run_w: v > 0 ? Math.min(5000, Math.round(v)) : null });
+                }}
+            /></label>`
+          : nothing}
         ${hasFeature("energy_pro") && !lamp && !["grid_point", "meter", "inverter", "home_battery"].includes(f.type)
           ? html`<label class="fp3d-check fp3d-wide" title=${this.t("furn_holo_hint")}
               ><input type="checkbox" .checked=${!!f.holo} ?disabled=${!this.isAdmin} @change=${(ev: Event) => this.updateFurniture({ holo: (ev.target as HTMLInputElement).checked })} />
@@ -9171,7 +10918,7 @@ export class Fp3dEditor extends LitElement {
           >
           <div class="fp3d-form">${this.markerSelect(f.marker ?? null, (v) => this.updateFurniture({ marker: v }))}${this.iconInput(f.icon, (v) => this.updateFurniture({ icon: v }))}</div>`
         : nothing}
-      ${f.type === "robot_vacuum"
+      ${isRobotVacuum(f.type)
         ? html`<div class="fp3d-form fp3d-links">
             ${this.entitySelect(
               this.t("furn_robot_room"),
@@ -9190,7 +10937,7 @@ export class Fp3dEditor extends LitElement {
             <p class="fp3d-sub">${this.t("fridge_hint")}</p>`
         : nothing}
       ${hasScreen(f.type) ? this.renderPictureRules(f) : nothing}
-      <p class="fp3d-sub">${this.t(lamp ? (f.type === "lamp_pendant" ? "lamp_hint_pendant" : "lamp_hint") : media ? "furn_links_hint_tv" : f.type === "robot_vacuum" ? "robot_hint" : "furn_links_hint")}</p>`;
+      <p class="fp3d-sub">${this.t(lamp ? (f.type === "lamp_pendant" ? "lamp_hint_pendant" : "lamp_hint") : media ? "furn_links_hint_tv" : isRobotVacuum(f.type) ? "robot_hint" : "furn_links_hint")}</p>`;
   }
 
   /** Parking spot: presence sensor, the vehicle shown, its size, and an optional vehicle type sensor. */
@@ -9529,8 +11276,8 @@ export class Fp3dEditor extends LitElement {
         this.librarySection(
           `group:${group}`,
           this.t(`furn_group_${group}` as I18nKey),
-          // the smart fridge is exclusive: only an installed pack with the feature "fridge_smart" offers it
-          [...types, ...(group === "kitchen" && hasFeature("fridge_smart") ? ["fridge_smart"] : [])].map((t) => ({ type: t, label: this.t(`furn_${t}` as I18nKey), search: translate(EN_HASS, `furn_${t}` as I18nKey) })),
+          // the smart fridge is exclusive: an installed pack with the feature "fridge_smart", or Haushalt Pro, offers it
+          [...types, ...(group === "kitchen" && (hasFeature("fridge_smart") || hasFeature("household")) ? ["fridge_smart"] : [])].map((t) => ({ type: t, label: this.t(`furn_${t}` as I18nKey), search: translate(EN_HASS, `furn_${t}` as I18nKey) })),
           q,
         ),
       )}
@@ -10109,6 +11856,32 @@ export class Fp3dEditor extends LitElement {
     </details>`;
   }
 
+  /** The ground around the house: its height, a hillside, the earth around cellars. */
+  private renderTerrain() {
+    const t = this._doc.settings.terrain ?? {};
+    const set = (patch: Partial<NonNullable<Building["settings"]["terrain"]>>) => {
+      const next = structuredClone(this._doc);
+      next.settings.terrain = { ...(next.settings.terrain ?? {}), ...patch };
+      this.setDoc(next);
+    };
+    const low = this._doc.floors.some((f) => f.elevation < -0.3);
+    return html`<details class="fp3d-section">
+      <summary>⛰ ${this.t("terrain")}</summary>
+      <p class="fp3d-sub">${this.t("terrain_hint")}</p>
+      <div class="fp3d-form">
+        ${this.len(this.t("terrain_level"), t.level ?? -0.2, (v) => set({ level: Math.max(-20, Math.min(20, v)) }), 0.05)}
+        <label class="fp3d-check fp3d-wide" title=${this.t("terrain_earth_hint")}
+          ><input type="checkbox" .checked=${t.earth !== false} @change=${(ev: Event) => set({ earth: (ev.target as HTMLInputElement).checked })} />
+          ${this.t("terrain_earth")}</label
+        >
+      </div>
+      <p class="fp3d-sub">${this.t(low ? "terrain_cellar_hint" : "terrain_no_cellar_hint")}</p>
+      ${t.level != null
+        ? html`<div class="fp3d-actions"><button class="fp3d-btn" @click=${() => set({ level: null })}>${this.t("terrain_reset")}</button></div>`
+        : nothing}
+    </details>`;
+  }
+
   private renderSettings() {
     const s = this._doc.settings;
     const set = (patch: Partial<Building["settings"]>) => {
@@ -10252,7 +12025,8 @@ export class Fp3dEditor extends LitElement {
         right: 0;
         bottom: 0;
         width: min(340px, 60%);
-        z-index: 6;
+        /* open over the 3D pane: above the toolbar too, so its buttons never sit on the sidebar's */
+        z-index: 30;
         box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
       }
       .fp3d-pin-row {
@@ -10290,6 +12064,8 @@ export class Fp3dEditor extends LitElement {
         height: auto;
       }
       .fp3d-main {
+        /* nothing of the plan column reaches over the sidebar (its menus still hang down) */
+        overflow-x: clip;
         display: grid;
         grid-template-rows: auto 1fr;
         /* the column never grows with a wide toolbar (that would push the plan under the sidebar) */
@@ -10299,6 +12075,8 @@ export class Fp3dEditor extends LitElement {
       }
       .fp3d-toolbar {
         position: relative;
+        /* its menus open over the plan below */
+        z-index: 20;
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
@@ -10454,6 +12232,7 @@ export class Fp3dEditor extends LitElement {
       }
       .fp3d-editor-3d {
         position: relative;
+        overflow: hidden;
         flex: 1 1 0;
         min-width: 240px;
         min-height: 0;
@@ -10653,6 +12432,10 @@ export class Fp3dEditor extends LitElement {
         gap: 18px;
         min-height: 0;
       }
+      .fp3d-side:not(.fp3d-side-overlay) {
+        position: relative;
+        z-index: 7;
+      }
       .fp3d-narrow .fp3d-side {
         border-left: none;
         border-top: 1px solid var(--fp3d-line);
@@ -10849,6 +12632,21 @@ export class Fp3dEditor extends LitElement {
         font-size: 11px;
         font-weight: 700;
         pointer-events: none;
+      }
+      /* the opt-in reports: the exact JSON they send */
+      .fp3d-wv.fp3d-diag {
+        width: min(640px, 100%);
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
+      }
+      .fp3d-diag-json {
+        margin: 0;
+        overflow: auto;
+        padding: 10px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.3);
+        font-size: 12px;
+        line-height: 1.4;
+        white-space: pre;
       }
       /* the wall view: a room's wall from the front, furniture on it to slide along and up */
       .fp3d-wv-veil {
@@ -11242,6 +13040,90 @@ export class Fp3dEditor extends LitElement {
       .fp3d-wv-runpt.fp3d-on {
         fill: var(--fp3d-accent);
       }
+      .fp3d-wv-fitmode .fp3d-wv-run line {
+        cursor: copy;
+        stroke-width: 0.05 !important;
+      }
+      .fp3d-wv-fitmode .fp3d-wv-run line:hover {
+        stroke: #ffb547 !important;
+      }
+      .fp3d-tech-step {
+        border: 1px solid #ffb547;
+        background: rgba(255, 181, 71, 0.1);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        line-height: 1.35;
+      }
+      .fp3d-tech-step b {
+        display: block;
+        color: #ffb547;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin-bottom: 2px;
+      }
+      .fp3d-tech-step.fp3d-done {
+        border-color: #4dff9a;
+        background: rgba(77, 255, 154, 0.08);
+      }
+      .fp3d-tech-step.fp3d-done b {
+        color: #4dff9a;
+      }
+      .fp3d-wv-dry line {
+        stroke-dasharray: 0.04 0.03;
+      }
+      .fp3d-wv-erase {
+        cursor: not-allowed;
+      }
+      .fp3d-wv-erase .fp3d-wv-run:hover line,
+      .fp3d-wv-erase .fp3d-wv-valve:hover circle,
+      .fp3d-wv-erase .fp3d-wv-sight:hover,
+      .fp3d-wv-erase .fp3d-wv-joint:hover circle {
+        stroke: #ff4d6d;
+      }
+      .fp3d-tech-step.fp3d-tech-erasing {
+        border-color: #ff4d6d;
+        background: rgba(255, 77, 109, 0.12);
+      }
+      .fp3d-tech-undo {
+        justify-self: start;
+      }
+      .fp3d-tech-kit .fp3d-tech-pen {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      .fp3d-tech-kit .fp3d-tech-pen button {
+        display: grid;
+        justify-items: center;
+        gap: 2px;
+        padding: 6px 2px;
+        font-size: 0.82em;
+        white-space: nowrap;
+      }
+      .fp3d-tech-feed {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .fp3d-tech-feed i {
+        font-style: normal;
+      }
+      .fp3d-tech-feed small {
+        margin-left: auto;
+        color: #4dff9a;
+      }
+      .fp3d-tech-feed.fp3d-on {
+        opacity: 0.75;
+      }
+      .fp3d-tech-ok {
+        color: #4dff9a;
+        font-weight: 600;
+      }
+      .fp3d-tech-issues {
+        color: #ffb547;
+        font-size: 12.5px;
+      }
       .fp3d-wv-end {
         fill: none;
         stroke: var(--fp3d-warm);
@@ -11404,7 +13286,7 @@ export class Fp3dEditor extends LitElement {
       }
       .fp3d-wv-kit {
         flex: none;
-        width: 150px;
+        width: 236px;
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -11421,6 +13303,180 @@ export class Fp3dEditor extends LitElement {
       .fp3d-wv-kit .fp3d-btn {
         justify-content: flex-start;
         text-align: left;
+      }
+      .fp3d-wv-cats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+      }
+      .fp3d-wv-cat {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--fp3d-line, rgba(91, 124, 255, 0.25));
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--fp3d-text, #d6ecff);
+        font: inherit;
+        font-size: 12px;
+        text-align: left;
+        cursor: pointer;
+        line-height: 1.15;
+      }
+      .fp3d-wv-cat span {
+        font-size: 15px;
+        width: 18px;
+        text-align: center;
+        flex: none;
+      }
+      .fp3d-wv-cat.fp3d-on {
+        border-color: var(--fp3d-accent);
+        background: rgba(55, 224, 255, 0.14);
+        color: #fff;
+      }
+      .fp3d-wv-tiles {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      .fp3d-wv-tile {
+        display: grid;
+        grid-template-rows: auto auto auto;
+        justify-items: center;
+        gap: 2px;
+        padding: 6px 4px;
+        border-radius: 12px;
+        border: 1px solid var(--fp3d-line, rgba(91, 124, 255, 0.25));
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--fp3d-text, #d6ecff);
+        font: inherit;
+        cursor: pointer;
+        text-align: center;
+      }
+      .fp3d-wv-tile:hover {
+        border-color: var(--fp3d-accent);
+        background: rgba(55, 224, 255, 0.08);
+      }
+      .fp3d-wv-tile-pic {
+        width: 72px;
+        height: 60px;
+        display: grid;
+        place-items: center;
+      }
+      .fp3d-wv-tile-pic img {
+        max-width: 72px;
+        max-height: 60px;
+      }
+      .fp3d-wv-tile-pic i {
+        width: 36px;
+        height: 28px;
+        border-radius: 6px;
+        border: 1px dashed var(--fp3d-muted);
+        opacity: 0.4;
+      }
+      .fp3d-wv-tile-name {
+        font-size: 11.5px;
+        font-weight: 600;
+        line-height: 1.15;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .fp3d-wv-tile small {
+        font-size: 10.5px;
+        color: var(--fp3d-muted);
+      }
+      .fp3d-wv-tile small.fp3d-wv-fit {
+        color: var(--fp3d-accent);
+      }
+      .fp3d-wv-kit .fp3d-search {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .fp3d-wv-kit .fp3d-wv-pick {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+        height: auto;
+        min-height: 32px;
+        line-height: 1.2;
+        font-size: 12.5px;
+      }
+      .fp3d-wv-pick small {
+        color: var(--fp3d-muted);
+        white-space: nowrap;
+      }
+      .fp3d-wv-gapnote {
+        color: var(--fp3d-accent);
+      }
+      .fp3d-wv-setframe rect {
+        fill: none;
+        stroke: var(--fp3d-accent);
+        stroke-width: 0.012;
+        stroke-dasharray: 0.05 0.03;
+        pointer-events: none;
+      }
+      .fp3d-wv-setblock rect {
+        stroke: #ffb547;
+      }
+      .fp3d-wv-setframe text {
+        fill: var(--fp3d-accent);
+        pointer-events: none;
+      }
+      .fp3d-wv-setblock text {
+        fill: #ffb547;
+      }
+      .fp3d-wv-gap rect {
+        fill: rgba(55, 224, 255, 0.1);
+        stroke: var(--fp3d-accent);
+        stroke-width: 0.01;
+        stroke-dasharray: 0.04 0.03;
+        pointer-events: none;
+      }
+      .fp3d-wv-gap text {
+        fill: var(--fp3d-accent);
+        text-anchor: middle;
+        pointer-events: none;
+      }
+      .fp3d-wv-handle {
+        fill: var(--fp3d-accent);
+        stroke: #06101c;
+        stroke-width: 0.006;
+        cursor: ew-resize;
+      }
+      .fp3d-wv-handle.fp3d-wv-ns {
+        cursor: ns-resize;
+      }
+      .fp3d-wv-size {
+        fill: var(--fp3d-accent);
+        text-anchor: middle;
+        font-weight: 600;
+        pointer-events: none;
+      }
+      .fp3d-wv-fixnote {
+        color: #ffb547;
+        font-size: 12.5px;
+      }
+      .fp3d-pool-depth {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--fp3d-muted);
+      }
+      .fp3d-pool-depth input {
+        width: 58px;
+        padding: 3px 5px;
+      }
+      .fp3d-wv-marquee {
+        fill: rgba(55, 224, 255, 0.08);
+        stroke: var(--fp3d-accent);
+        stroke-width: 0.008;
+        stroke-dasharray: 0.03 0.02;
+        pointer-events: none;
       }
       @media (max-width: 700px) {
         .fp3d-wv-body {
@@ -11439,6 +13495,116 @@ export class Fp3dEditor extends LitElement {
         position: relative;
         min-height: 0;
         padding: 0 60px;
+      }
+      /* a group with a menu lets it hang out below (the others scroll sideways on a narrow screen) */
+      .fp3d-seg.fp3d-seg-menu {
+        overflow: visible;
+        /* too narrow for a group: its buttons wrap (they never reach over the sidebar) */
+        flex-wrap: wrap;
+        max-width: 100%;
+      }
+      .fp3d-seg > button.fp3d-undo {
+        font-size: 20px;
+        line-height: 1;
+        padding-inline: 12px;
+      }
+      .fp3d-menu-wrap {
+        position: relative;
+        display: inline-flex;
+      }
+      .fp3d-menu-veil {
+        position: fixed;
+        inset: 0;
+        z-index: 29;
+      }
+      .fp3d-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 30;
+        min-width: 230px;
+        max-height: 70vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 6px;
+        border-radius: 14px;
+        background: var(--fp3d-chrome-solid, #0d1628);
+        box-shadow: var(--fp3d-shadow);
+        border: 1px solid var(--fp3d-line, rgba(120, 190, 255, 0.22));
+      }
+      .fp3d-menu-right {
+        left: auto;
+        right: 0;
+      }
+      .fp3d-seg .fp3d-menu .fp3d-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        text-align: left;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 9px 12px;
+        border-radius: 10px;
+        color: var(--fp3d-text);
+        background: none;
+      }
+      .fp3d-seg .fp3d-menu .fp3d-menu-item:hover {
+        background: rgba(120, 190, 255, 0.12);
+      }
+      .fp3d-seg .fp3d-menu .fp3d-menu-on {
+        color: var(--fp3d-accent);
+        font-weight: 700;
+      }
+      .fp3d-menu-icon {
+        width: 22px;
+        text-align: center;
+      }
+      .fp3d-menu-more {
+        margin-left: auto;
+        color: var(--fp3d-muted);
+      }
+      .fp3d-caret {
+        font-size: 0.8em;
+        opacity: 0.7;
+      }
+      .fp3d-menu-label {
+        color: var(--fp3d-muted);
+        font-weight: 500;
+      }
+      .fp3d-menu-sep {
+        height: 1px;
+        margin: 4px 6px;
+        background: var(--fp3d-line, rgba(120, 190, 255, 0.22));
+      }
+      .fp3d-menu-sub {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 2px 8px 8px 16px;
+      }
+      .fp3d-seg .fp3d-menu-sub .fp3d-chip {
+        min-height: 30px;
+        padding: 5px 11px;
+        font-size: 0.92em;
+      }
+      .fp3d-seg .fp3d-menu-sub .fp3d-menu-on {
+        background: var(--fp3d-accent);
+        color: var(--fp3d-accent-text);
+      }
+      .fp3d-wv-zoom {
+        position: absolute;
+        right: 64px;
+        bottom: 6px;
+        z-index: 1;
+        display: flex;
+        gap: 4px;
+      }
+      .fp3d-wv-zoom .fp3d-btn {
+        min-width: 34px;
+        padding: 4px 8px;
       }
       .fp3d-wv-side {
         position: absolute;
@@ -12274,6 +14440,48 @@ export class Fp3dEditor extends LitElement {
         fill: rgba(55, 224, 255, 0.16);
         stroke: var(--fp3d-accent);
         stroke-width: 2;
+      }
+      /* furniture blocks and multi selections: a dashed frame with its name, the frame being drawn */
+      .fp3d-selframe rect {
+        fill: none;
+        stroke: var(--fp3d-accent);
+        stroke-width: 1.5;
+        stroke-dasharray: 6 4;
+        pointer-events: none;
+      }
+      .fp3d-selframe-block rect {
+        stroke: #ffb547;
+      }
+      .fp3d-selframe text {
+        fill: var(--fp3d-accent);
+        font-size: 11px;
+        font-weight: 600;
+        pointer-events: none;
+      }
+      .fp3d-selframe-block text {
+        fill: #ffb547;
+      }
+      .fp3d-marquee {
+        fill: rgba(55, 224, 255, 0.08);
+        stroke: var(--fp3d-accent);
+        stroke-width: 1;
+        stroke-dasharray: 4 3;
+        pointer-events: none;
+      }
+      .fp3d-block-parts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 6px 0 10px;
+      }
+      .fp3d-block-note {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .fp3d-multi-toggle {
+        margin-top: 8px;
       }
       .fp3d-open {
         cursor: grab;

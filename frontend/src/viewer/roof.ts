@@ -8,7 +8,7 @@ import type { Building, Floor, RoofSection, SolarField, Vec2 } from "../model.ts
 import { polygonArea } from "../model.ts";
 import { cutHole, sectionFloor, dormerHoles, dormerParent, effectiveDormer, offsetPolygon, sectionGeometry, sectionHeightAt, sectionPolygon, sectionFrame, sectionOverhang, sectionProfile, sectionUV, type Q, type SectionOverhang } from "../roof-sections.ts";
 import { DEG, GeoBuffer, LineBuffer, pushPrism, shade } from "./geo.ts";
-import { fieldModules, roofFaces, windowCorners, type RoofFace } from "../solar.ts";
+import { fieldModules, roofFaces, roofWindowRoom, windowCorners, type RoofFace } from "../solar.ts";
 
 const ROOF = 0x1a2338;
 const ROOF_TOP = 0x222d48;
@@ -32,6 +32,8 @@ const WINDOW_FRAME = shade(0xc9d3e6, 0.85);
 const WINDOW_WARM = shade(0xffb347, 0.95);
 const WINDOW_GLASS = new Color(0x2b6b8f);
 const WINDOW_BLIND = new Color(0x3a4258);
+/** The frame's sides between the roof and the sash: they close the gap a low view looked through (#490). */
+const WINDOW_CURB = new Color(0x4a566f);
 
 /** Live state of a roof window: how far its sash is open (1 = open, tilt counts less) and how far its blind is down. */
 export interface RoofWindowState {
@@ -52,6 +54,18 @@ export interface RoofGeometry {
   sections?: string[];
   /** False for canopies: they stand on posts on their floor and do not lift off with the roof when the floors are pulled apart. */
   lift?: boolean;
+  /**
+   * The roof windows of this part, apart from the roof: they stay when the roof fades out over a room, so the
+   * room shows its windows in the slope, open or shut, the blind down or up (#482).
+   */
+  win?: { solid: GeoBuffer; lines: LineBuffer };
+  /** The roof windows that only show in the roof: they fade out with it (the default). */
+  winRoof?: { solid: GeoBuffer; lines: LineBuffer };
+  /**
+   * Floating roof windows over a room of a LOWER floor (a slope reaching down over it, #482): they belong to that
+   * floor and show with it, in its own heights (its floor at 0).
+   */
+  winBelow?: Map<string, { floor: Floor; solid: GeoBuffer; lines: LineBuffer }>;
 }
 
 /** The floor the roof sits on: the highest one with rooms. */
@@ -81,16 +95,34 @@ function pushRoofWindows(b: Building, parts: RoofGeometry[], states: ReadonlyMap
     if (!face || !corners) continue;
     const part = face.section ? parts.find((p) => p.sections?.includes(face.section!)) : parts[0];
     if (!part) continue;
-    const dy = part.floor.elevation + part.base;
+    // a floating window stays over its room when the roof fades: over a room of the roof's own floor it rides with
+    // the roof's part; over a room of a lower floor (the slope reaches down over it) it belongs to that floor and
+    // shows with it – riding with the roof's floor it would hang in the air when only the lower floor shows (#482)
+    const room = w.float ? roofWindowRoom(b, face, w) : null;
+    const below = room && room.floor.id !== part.floor.id && room.floor.elevation < part.floor.elevation ? room.floor : null;
+    const dy = below ? below.elevation : part.floor.elevation + part.base;
     const L = (p: number[]): number[] => [p[0], p[1] - dy, p[2]];
     const [a, c, d, e] = corners.map(L);
     const st = states.get(w.id) ?? { open: 0, tilt: 0, cover: 0 };
+    const float = !!room && (below !== null || room.floor.id === part.floor.id);
+    const win = below
+      ? ((part.winBelow ??= new Map()).get(below.id) ?? part.winBelow.set(below.id, { floor: below, solid: new GeoBuffer(), lines: new LineBuffer() }).get(below.id)!)
+      : float
+        ? (part.win ??= { solid: new GeoBuffer(), lines: new LineBuffer() })
+        : (part.winRoof ??= { solid: new GeoBuffer(), lines: new LineBuffer() });
     const up = (p: number[], k: number) => [p[0] + face.n[0] * k, p[1] + face.n[1] * k, p[2] + face.n[2] * k];
     const mix = (p: number[], q: number[], t: number) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
     // the fixed frame in the roof; it glows warm while the window is open or tilted
     const frame = st.open > 0.02 || st.tilt > 0.02 ? WINDOW_WARM : WINDOW_FRAME;
     const ring = [a, c, d, e].map((p) => up(p, 0.06));
-    for (let i = 0; i < 4; i++) part.lines.seg(ring[i], ring[(i + 1) % 4], frame);
+    const foot = [a, c, d, e].map((p) => up(p, -0.02));
+    for (let i = 0; i < 4; i++) {
+      win.lines.seg(ring[i], ring[(i + 1) % 4], frame);
+      // the curb: from just below the roof's surface up to the frame, all round
+      const j = (i + 1) % 4;
+      win.solid.tri(foot[i], foot[j], ring[j], WINDOW_CURB);
+      win.solid.tri(foot[i], ring[j], ring[i], WINDOW_CURB);
+    }
     // the sash, hinged at the top: its lower edge swings out along the normal (open up to 30°, as far
     // as a motor reports; tilted 12°)
     const angle = (st.open > 0.02 ? 30 * Math.min(1, st.open) : st.tilt > 0.5 ? 12 : 0) * DEG;
@@ -103,9 +135,9 @@ function pushRoofWindows(b: Building, parts: RoofGeometry[], states: ReadonlyMap
     const top1 = up(d, 0.065);
     const bot0 = swing(top0);
     const bot1 = swing(top1);
-    part.solid.tri(bot0, bot1, top1, WINDOW_GLASS);
-    part.solid.tri(bot0, top1, top0, WINDOW_GLASS);
-    for (const [p, q] of [[bot0, bot1], [bot1, top1], [top1, top0], [top0, bot0]]) part.lines.seg(p, q, frame);
+    win.solid.tri(bot0, bot1, top1, WINDOW_GLASS);
+    win.solid.tri(bot0, top1, top0, WINDOW_GLASS);
+    for (const [p, q] of [[bot0, bot1], [bot1, top1], [top1, top0], [top0, bot0]]) win.lines.seg(p, q, frame);
     // the blind comes down from the top over the sash
     if (st.cover > 0.02) {
       const k = Math.min(1, st.cover);
@@ -113,8 +145,8 @@ function pushRoofWindows(b: Building, parts: RoofGeometry[], states: ReadonlyMap
       const b1 = up(mix(top1, bot1, k), 0.01);
       const t0 = up(top0, 0.01);
       const t1 = up(top1, 0.01);
-      part.solid.tri(b0, b1, t1, WINDOW_BLIND);
-      part.solid.tri(b0, t1, t0, WINDOW_BLIND);
+      win.solid.tri(b0, b1, t1, WINDOW_BLIND);
+      win.solid.tri(b0, t1, t0, WINDOW_BLIND);
     }
   }
 }

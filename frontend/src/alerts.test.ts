@@ -153,3 +153,23 @@ test("Pool Pro warns when pH or chlorine are far off or the water freezes while 
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }
 });
+
+test("Haushalt Pro warns when a fridge door stands open too long", () => {
+  const open = new Date(Date.now() - 5 * 60_000).toISOString();
+  const hass = {
+    language: "de",
+    states: { "binary_sensor.kuehlschrank": { entity_id: "binary_sensor.kuehlschrank", state: "on", attributes: { friendly_name: "Kühlschranktür" }, last_changed: open } },
+    entities: {},
+  } as unknown as HomeAssistant;
+  const b = emptyBuilding();
+  const floor = newFloor("eg", "EG", 0);
+  floor.rooms = [{ id: "k", name: "Küche", area_id: null, points: [[0, 0], [4, 0], [4, 3], [0, 3]], floor_material: "tiles" }];
+  floor.furniture = [{ id: "f1", type: "fridge", x: 1, z: 1, rotation: 0, w: 0.6, d: 0.65, h: 1.8, variant: null, door_left: "binary_sensor.kuehlschrank" }];
+  b.floors = [floor];
+  // unlocked without any pack
+  const sources = alertSources(hass, b);
+  assert.ok(alertEntities(sources).includes("binary_sensor.kuehlschrank"));
+  const alerts = findAlerts(hass, b, sources, new Map());
+  assert.deepEqual(alerts.map((a) => [a.kind, a.roomId]), [["fridge_door", "k"]]);
+  assert.equal(alertText(hass, b, alerts[0]), "Küche · Nevera abierta: Kühlschranktür");
+});

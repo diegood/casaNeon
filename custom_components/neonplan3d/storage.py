@@ -6,6 +6,7 @@ stores so frequent saves from the editor never rewrite the large image data.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 from typing import Any
@@ -79,11 +80,18 @@ async def async_migrate_legacy_stores(hass: HomeAssistant) -> None:
         _LOGGER.info("Took over the data of %s: %s", LEGACY_DOMAIN, ", ".join(copied))
 
 
+# newer Home Assistant turns a store's data into JSON in the event loop unless told otherwise; the background images
+# and the restore points can be megabytes, so they are serialised in the executor (older versions always did that)
+_OFF_LOOP: dict[str, Any] = {}
+if "serialize_in_event_loop" in inspect.signature(Store.__init__).parameters:
+    _OFF_LOOP["serialize_in_event_loop"] = False
+
+
 def _stores(hass: HomeAssistant) -> tuple[Store, Store, Store, Store]:
     return (
         _BuildingStore(hass, STORAGE_VERSION, STORAGE_KEY_BUILDING, minor_version=STORAGE_MINOR_VERSION),
-        Store(hass, STORAGE_VERSION, STORAGE_KEY_IMAGES),
-        Store(hass, STORAGE_VERSION, STORAGE_KEY_HISTORY),
+        Store(hass, STORAGE_VERSION, STORAGE_KEY_IMAGES, **_OFF_LOOP),
+        Store(hass, STORAGE_VERSION, STORAGE_KEY_HISTORY, **_OFF_LOOP),
         Store(hass, STORAGE_VERSION, STORAGE_KEY_PACKS),
     )
 
@@ -159,7 +167,8 @@ class FloorplanData:
             }
         )
         self._history = self._history[-HISTORY_MAX:]
-        await self._history_store.async_save({"snapshots": self._history})
+        # copies: the JSON is written in the executor while the loop may change the originals
+        await self._history_store.async_save({"snapshots": list(self._history)})
 
     def history(self) -> list[dict[str, Any]]:
         """Restore points, newest first, without their buildings."""
@@ -219,4 +228,4 @@ class FloorplanData:
             await self._save_images()
 
     async def _save_images(self) -> None:
-        await self._image_store.async_save({"images": self._images})
+        await self._image_store.async_save({"images": dict(self._images)})

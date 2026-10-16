@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { emptyBuilding, newFloor, type Building, type RoofSection, type SolarField } from "./model.ts";
-import { bestFace, clampField, faceAt, faceCompass, fieldFace, fieldModules, fieldPlan, fieldCenter, groundFace, groundFloor, moveField, proposeField, proposeGroundField, proposeWallField, roofFaces, turnGroundField, wallFaces } from "./solar.ts";
+import { bestFace, clampField, proposeWindow, roofWindowsOver, faceAt, faceCompass, fieldFace, fieldModules, fieldPlan, fieldCenter, groundFace, groundFloor, moveField, proposeField, proposeGroundField, proposeWallField, roofFaces, turnGroundField, wallFaces } from "./solar.ts";
 
 /** A 10 × 8 m house of one floor (walls 2.5 m high) with the given roof. */
 function house(roof: Building["settings"]["roof"]): Building {
@@ -251,4 +251,20 @@ test("a field moved to a short wall keeps what fits and stays visible, walls nam
   const long = moveField(south, f);
   assert.equal(long.portrait, false);
   assert.equal(fieldModules(south, long).length, 4);
+});
+
+test("a roof window belongs to the room under its middle, so the room's card shows it (#482)", () => {
+  const b = house({ type: "gable", pitch: 35, overhang: 0.4 });
+  // two rooms side by side along the ridge: left 0–5 m, right 5–10 m
+  b.floors[0].rooms = [
+    { id: "left", name: "L", area_id: null, points: [[0, 0], [5, 0], [5, 8], [0, 8]], floor_material: "wood" },
+    { id: "right", name: "R", area_id: null, points: [[5, 0], [10, 0], [10, 8], [5, 8]], floor_material: "wood" },
+  ];
+  const face = roofFaces(b)[0];
+  const w = { ...proposeWindow(face, "w1"), u: 1, cover: "cover.roof" };
+  b.settings.roof = { ...b.settings.roof!, windows: [w] };
+  const x = face.o[0] + face.eu[0] * (1 + 0.39);
+  const inLeft = x < 5;
+  assert.deepEqual(roofWindowsOver(b, inLeft ? "left" : "right").map((x) => x.id), ["w1"]);
+  assert.deepEqual(roofWindowsOver(b, inLeft ? "right" : "left"), []);
 });

@@ -1,9 +1,9 @@
 // Devices of a room: which entities belong to an area, what kind they are, how they are placed and
 // what their state looks like. Pure functions (no Lit, no three.js) so they can be tested directly.
 
-import type { Furniture, EntityRef, Floor, LampMount, Opening, Placement, Room, Vec2 } from "./model.ts";
+import type { Furniture, EntityRef, Floor, LampMount, Opening, Placement, RoofWindow, Room, Vec2 } from "./model.ts";
 import { centroid, pointInPolygon } from "./model.ts";
-import { packScreen } from "./packs.ts";
+import { isRobotVacuum, packMotion, packScreen } from "./packs.ts";
 import type { HassEntity, HomeAssistant } from "./types.ts";
 
 export type DeviceKind =
@@ -327,7 +327,7 @@ export function isUnavailable(st: HassEntity | undefined): boolean {
 }
 
 /** States of a status sensor (a 3D printer, a washing machine's programme) that mean "it is working". */
-const WORKING_STATES = new Set(["running", "printing", "prepare", "preparing", "slicing", "heating", "busy", "working", "active", "washing", "rinsing", "spinning", "drying", "cleaning", "in_progress", "in progress", "on"]);
+const WORKING_STATES = new Set(["run", "cooking", "running", "printing", "prepare", "preparing", "slicing", "heating", "busy", "working", "active", "washing", "rinsing", "spinning", "drying", "cleaning", "in_progress", "in progress", "on"]);
 
 /** Whether an entity is a status sensor (enum states such as running / idle / finish) that furniture can follow. */
 export function isStatusSensor(st: HassEntity | undefined): boolean {
@@ -368,6 +368,56 @@ export function isActive(st: HassEntity | undefined): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * A cooktop's operating state (Home Connect and others: "run" cooking, "ready" switched on, "inactive" off):
+ * the burners glow while it cooks, faintly while it is ready, not at all when it is off.
+ */
+export function cooktopLevel(st: HassEntity | undefined, running: boolean): number {
+  if (!st || isUnavailable(st)) return running ? 1 : 0;
+  const s = String(st.state).toLowerCase();
+  if (running || s === "run" || s === "cooking" || s === "on") return 1;
+  if (s === "ready" || s === "standby" || s === "pause" || s === "paused") return 0.3;
+  return 0;
+}
+
+/**
+ * An air conditioner by its mode: red heating, blue cooling, green automatic, yellow drying, white fan only –
+ * bright while it works (hvac_action), dimmer while it only stands by in that mode; null when off.
+ */
+export function climateModeGlow(st: HassEntity | undefined): { color: [number, number, number]; level: number } | null {
+  if (!st || isUnavailable(st)) return null;
+  const mode = String(st.state).toLowerCase();
+  if (mode === "off") return null;
+  const action = String(st.attributes.hvac_action ?? "").toLowerCase();
+  const color: [number, number, number] =
+    mode === "heat" ? [1, 0.32, 0.12] : mode === "cool" ? [0.3, 0.65, 1] : mode === "dry" ? [1, 0.85, 0.3] : mode === "fan_only" ? [0.85, 0.92, 1] : [0.3, 1, 0.5];
+  const working = ["heating", "cooling", "drying", "fan"].includes(action);
+  return { color, level: working || !action ? 1 : 0.45 };
+}
+
+/**
+ * A lamp that only shows one colour of its light (#mail 10.10.): the glow stays when the light's colour is close to
+ * the chosen one (hue within 30°, both clearly coloured), else the lamp stays dark.
+ */
+export function onlyColor<T extends { color: [number, number, number] }>(glow: T | null, hex: string | null | undefined): T | null {
+  if (!glow || !hex || !/^#[0-9a-f]{6}$/i.test(hex)) return glow;
+  const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const hs = (c: readonly number[]): [number, number] => {
+    const max = Math.max(...c);
+    const min = Math.min(...c);
+    const d = max - min;
+    if (max <= 0 || d / max < 0.25) return [-1, 0];
+    const h = max === c[0] ? ((c[1] - c[2]) / d + 6) % 6 : max === c[1] ? (c[2] - c[0]) / d + 2 : (c[0] - c[1]) / d + 4;
+    return [h * 60, d / max];
+  };
+  const [hw] = hs(want);
+  const [hl] = hs(glow.color);
+  // a white (unsaturated) choice matches a white light, a colour only a colour
+  if (hw < 0 || hl < 0) return hw < 0 && hl < 0 ? glow : null;
+  const diff = Math.abs(hw - hl);
+  return Math.min(diff, 360 - diff) <= 30 ? glow : null;
 }
 
 /** Colour (0..1 channels) and level (0..1) of a light that is on; null when off. */
@@ -657,8 +707,14 @@ export function openingState(
     if (e.coverInvert) cover = 1 - cover;
   } else if (e.cover) cover = 0;
   if (type === "door") {
-    // a door with a roller shutter (front door, French window, sliding door): the blind comes down over it
     const p = pos(e.contact);
+    // a cover that is a gate, garage door or door is the door itself (a sliding gate on a sliding door): it moves the
+    // leaf – as far as its position says – and no blind is drawn (#544); the contact still wins when there is one
+    if (cover !== null && c && DOOR_COVERS.has(String(c.attributes.device_class ?? ""))) {
+      const leaf = p === null ? 1 - cover : p === "closed" ? 0 : 1;
+      return { open: leaf, open2: pos(e.contact2) === "open" ? 1 : 0, tilt: 0, tilt2: 0, cover: null, sensed: true };
+    }
+    // a door with a roller shutter (front door, French window, sliding door): the blind comes down over it
     return { open: p === null ? (e.shut ? 0 : DOOR_DEFAULT_OPEN) : p === "closed" ? 0 : 1, open2: pos(e.contact2) === "open" ? 1 : 0, tilt: 0, tilt2: 0, cover, sensed: p !== null || cover !== null };
   }
   if (type === "garage") {
@@ -703,7 +759,9 @@ export function groupByDevice(hass: HomeAssistant, ids: readonly string[]): Devi
   const byDevice = new Map<string, string[]>();
   const order: string[] = [];
   for (const id of ids) {
-    const device = hass.entities?.[id]?.device_id ?? `entity:${id}`;
+    // a camera is never folded under another entity of its device: a UniFi camera names all its entities, so its
+    // status light or motion sensor would become the main one and the camera land behind "+N more" (#517)
+    const device = kindOf(id) === "camera" ? `camera:${id}` : (hass.entities?.[id]?.device_id ?? `entity:${id}`);
     let list = byDevice.get(device);
     if (!list) {
       byDevice.set(device, (list = []));
@@ -744,6 +802,8 @@ const FURNITURE_NAMES: Record<string, RegExp> = {
   island: /(kochfeld|herd|induktion|cooktop)/i,
   sink: /(spülmaschine|geschirrspül|dishwasher)/i,
   radiator: /(heiz|radiator|thermostat|climate|hk|trv)/i,
+  ac_unit: /(klima|air ?con|aircon|airco|split|\bac\b|clim)/i,
+  awning: /(markise|awning|sonnensegel|beschattung|store|zonnescherm)/i,
 };
 const MEDIA_FURNITURE = new Set(["tv_board", "tv_wall"]);
 
@@ -793,6 +853,47 @@ export function invertedCovers(hass: HomeAssistant, floors: readonly Floor[]): S
   const out = new Set<string>();
   if (!floors.some((f) => f.openings.some((o) => o.cover_invert))) return out;
   for (const e of openingEntities(hass, floors).values()) if (e.coverInvert && e.cover) out.add(e.cover);
+  return out;
+}
+
+/** An awning's cover right now: how far it is out (0 … 1, when known) and whether it is running out or in. */
+export interface AwningState {
+  /** Position 0 (in) … 1 (fully out); null while only "opening"/"closing" is known. */
+  out: number | null;
+  /** Running: +1 out, -1 in, 0 standing. */
+  moving: -1 | 0 | 1;
+  /** Seconds for a full run (to move along while no position is reported). */
+  time: number;
+}
+
+/**
+ * Awnings: their cover's position (or that of a separate position sensor), and whether they run. A cover that only
+ * reports open/closed and opening/closing moves along in 3D at its set run time.
+ */
+export function awningStates(hass: HomeAssistant, floors: readonly Floor[]): Map<string, AwningState> {
+  const out = new Map<string, AwningState>();
+  for (const floor of floors)
+    for (const f of floor.furniture) {
+      // a motorised curtain or roll-down screen from a pack follows its cover the same way (#511)
+      if (f.type !== "awning" && !packMotion(f.type)) continue;
+      const id = f.entity && f.entity !== "none" ? f.entity : null;
+      const st = id ? hass.states[id] : undefined;
+      const time = f.awning_time ?? 20;
+      if (!st || isUnavailable(st)) {
+        out.set(f.id, { out: 0, moving: 0, time });
+        continue;
+      }
+      const flip = (v: number) => (f.awning_invert ? 1 - v : v);
+      // a live position sensor (0–100 % or 0–1, like a blind's) wins over the cover's own position
+      const live = livePosition(hass, f.awning_position && f.awning_position !== "none" ? f.awning_position : null);
+      const raw = st.attributes.current_position;
+      const moving: -1 | 0 | 1 = st.state === "opening" ? (f.awning_invert ? -1 : 1) : st.state === "closing" ? (f.awning_invert ? 1 : -1) : 0;
+      if (live !== null) out.set(f.id, { out: flip(live), moving: 0, time });
+      else if (typeof raw === "number" && Number.isFinite(raw)) out.set(f.id, { out: flip(Math.min(1, Math.max(0, raw / 100))), moving: 0, time });
+      else if (moving) out.set(f.id, { out: null, moving, time });
+      // without a position: open (a cover) or on (a switch that drives it) is fully out
+      else out.set(f.id, { out: flip(st.state === "open" || st.state === "on" ? 1 : 0), moving: 0, time });
+    }
   return out;
 }
 
@@ -852,7 +953,7 @@ export function furnitureEntities(hass: HomeAssistant, floors: readonly Floor[])
     const used = new Set<string>([...floor.furniture.flatMap((f) => [f.entity, f.power]), ...floor.placements.map((p) => p.entity_id)].filter((v): v is string => !!v && v !== "none"));
     for (const f of floor.furniture) {
       const lamp = f.type in LAMP_NAMES;
-      const pattern = lamp ? LAMP_NAMES[f.type] : FURNITURE_NAMES[f.type];
+      const pattern = lamp ? LAMP_NAMES[f.type] : (FURNITURE_NAMES[f.type] ?? (isRobotVacuum(f.type) ? FURNITURE_NAMES.robot_vacuum : undefined));
       if (!pattern && f.entity == null && f.power == null) continue;
       const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
       const ids = room ? primaryEntities(hass, areaEntities(hass, room.area_id)) : [];
@@ -863,11 +964,11 @@ export function furnitureEntities(hass: HomeAssistant, floors: readonly Floor[])
         if (lamp) {
           const lights = free.filter((id) => kindOf(id) === "light");
           entity = lights.find((id) => pattern.test(name(id))) ?? lights[0] ?? null;
-        } else if (f.type === "robot_vacuum") {
+        } else if (isRobotVacuum(f.type)) {
           // vacuums are no device kind of their own: look them up in the room's area directly
           const area = room?.area_id ?? null;
           entity = Object.keys(hass.entities ?? {}).find((id) => id.startsWith("vacuum.") && !used.has(id) && entityAreaId(hass, id) === area) ?? null;
-        } else if (f.type === "radiator") {
+        } else if (f.type === "radiator" || f.type === "ac_unit") {
           const climates = free.filter((id) => kindOf(id) === "climate");
           entity = climates.find((id) => pattern.test(name(id))) ?? climates[0] ?? null;
         } else if (isMediaFurniture(f.type)) {
@@ -916,7 +1017,7 @@ export function appColor(st: HassEntity | undefined): [number, number, number] |
  * with their entities, blinds and contacts of its doors and windows) plus the ones picked for the
  * panel. `more` are the other entities of the room's area, offered on request.
  */
-export function roomPanelEntities(hass: HomeAssistant, floor: Floor, room: Room): { shown: string[]; more: string[] } {
+export function roomPanelEntities(hass: HomeAssistant, floor: Floor, room: Room, roofWindows: readonly RoofWindow[] = []): { shown: string[]; more: string[] } {
   const inRoom = (x: number, z: number) => pointInPolygon([x, z], room.points);
   const furniture = furnitureEntities(hass, [floor]);
   const openings = openingEntities(hass, [floor]);
@@ -927,6 +1028,8 @@ export function roomPanelEntities(hass: HomeAssistant, floor: Floor, room: Room)
       const e = openings.get(o.id);
       return e ? [e.cover, e.contact, e.tilt, e.contact2] : [];
     }),
+    // the roof windows over the room (#482)
+    ...roofWindows.flatMap((w) => [w.window, w.cover, w.contact, w.tilt]),
     ...(room.panel ?? []),
   ].filter((id): id is string => !!id && !!hass.states[id]);
   // entities the editor hid for this room stay out of the panel altogether

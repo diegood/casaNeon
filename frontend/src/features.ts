@@ -3,18 +3,20 @@
  * (UNRELEASED) stay hidden unless the lab switch is on.
  */
 
-export type Feature = "camera_cockpit" | "weather" | "screens" | "energy_pro" | "sound" | "auto_pro" | "time_travel" | "pool" | "fridge_smart";
+export type Feature = "camera_cockpit" | "weather" | "screens" | "energy_pro" | "sound" | "auto_pro" | "time_travel" | "pool" | "household" | "fridge_smart" | "fun_pets" | "fun_halloween";
 
 /** The add-ons shown on the extensions page. */
-export const FEATURES: readonly Feature[] = ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "pool"];
+export const FEATURES: readonly Feature[] = ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "pool", "household"];
+/** Fun packs: free extras, shown in their own section of the extensions page and switched on and off there. */
+export const FUN: readonly Feature[] = ["fun_pets", "fun_halloween"];
+
 /**
  * Pro add-ons built but not released yet: they show nowhere (extensions page, teasers) unless the lab
- * switch is on (localStorage "neonplan3d.lab" = "1").
- * A release takes a feature off this list.
+ * switch is on (localStorage "neonplan3d.lab" = "1"). A release takes a feature off this list.
  */
 export const UNRELEASED: readonly Feature[] = ["pool"];
 
-function labOn(): boolean {
+export function labOn(): boolean {
   try {
     return localStorage.getItem("neonplan3d.lab") === "1";
   } catch {
@@ -32,7 +34,7 @@ const HIDDEN: readonly Feature[] = ["fridge_smart"];
 
 /** Whether this frontend knows a feature key at all (an older bundle does not know newer Pro add-ons). */
 export function knownFeature(key: string): boolean {
-  return (FEATURES as readonly string[]).includes(key) || (HIDDEN as readonly string[]).includes(key);
+  return (FEATURES as readonly string[]).includes(key) || (HIDDEN as readonly string[]).includes(key) || (FUN as readonly string[]).includes(key);
 }
 
 /** The manual on GitHub (English). */
@@ -48,6 +50,7 @@ const MANUAL_ANCHOR: Record<string, string> = {
   auto_pro: "66-car-pro",
   time_travel: "67-time-travel",
   pool: "6-pro-add-ons",
+  household: "68-household-pro-beta",
   extensions: "7-extensions-shop-and-furniture-packs",
 };
 
@@ -59,7 +62,7 @@ export function manualUrl(topic?: Feature | "extensions"): string {
 
 /** The unlocked features: all of them, except add-ons not released yet. */
 export function unlockedFeatures(): Set<Feature> {
-  return new Set([...FEATURES, ...HIDDEN].filter(released));
+  return new Set([...FEATURES, ...HIDDEN, ...FUN].filter(released));
 }
 
 export function hasFeature(feature: Feature): boolean {

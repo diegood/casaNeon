@@ -1,7 +1,7 @@
 // Warnings shown in 3D: smoke, gas, carbon monoxide and water sensors of a room, a triggered alarm,
 // a window open while it rains, a power outage, (Pool Pro) a pool's pH or chlorine far off or frost in the
-// water, and Proxmox VE: a node down, a disk turned unhealthy, a VM or container stopped. The rooms concerned
-// pulse in the warning's colour.
+// water, (Haushalt Pro) a fridge door standing open too long, and Proxmox VE: a node down, a disk turned
+// unhealthy, a VM or container stopped. The rooms concerned pulse in the warning's colour.
 
 import { areaEntities, entityName, openingState, type OpeningEntities } from "./devices.ts";
 import { translate } from "./i18n.ts";
@@ -9,8 +9,9 @@ import type { Building } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
 import { stationRain, weatherEntity } from "./weather.ts";
 import { hasFeature } from "./features.ts";
-import { poolAreas, poolEntities, poolState } from "./pool.ts";
+import { poolAreas, poolEntities, poolLinksWithDevices, poolState } from "./pool.ts";
 import { isOutage } from "./outage.ts";
+import { doorsOf, fridgeOpenTooLong } from "./household.ts";
 import { pointInPolygon } from "./model.ts";
 import { instanceLabel, newDiskProblems, proxmoxModel, proxmoxWatched, stoppedInstances } from "./proxmox.ts";
 
@@ -28,6 +29,7 @@ export type AlertKind =
   | "pool_ph"
   | "pool_chlorine"
   | "pool_frost"
+  | "fridge_door"
   | "pve_node_down"
   | "pve_disk"
   | "pve_stopped";
@@ -51,6 +53,8 @@ export interface AlertSources {
   rain?: string | null;
   /** Pool Pro: the pools whose water values are watched. */
   pools: { floorId: string; areaId: string; ids: string[] }[];
+  /** Haushalt Pro: the fridges with door sensors (their doors may not stand open too long). */
+  fridges?: { floorId: string; roomId: string | null; furnitureId: string; ids: string[] }[];
   /** Proxmox VE: the entities watched, and the room of the server rack in the plan (if there is one). */
   proxmox?: { ids: string[]; roomId: string | null; floorId: string | null } | null;
 }
@@ -74,11 +78,18 @@ export function alertSources(hass: HomeAssistant, building: Building, weatherId?
   const pools = hasFeature("pool")
     ? poolAreas(building.floors).map(({ floor, area }) => ({ floorId: floor.id, areaId: area.id, ids: Object.values(poolEntities(hass, area.pool)).filter((x): x is string => !!x) }))
     : [];
+  const fridges = hasFeature("household")
+    ? building.floors.flatMap((floor) =>
+        floor.furniture
+          .filter((f) => (f.type === "fridge" || f.type === "fridge_smart") && doorsOf(f).length)
+          .map((f) => ({ floorId: floor.id, roomId: floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points))?.id ?? null, furnitureId: f.id, ids: doorsOf(f) })),
+      )
+    : [];
   const rainId = building.settings.rain_warning === false ? null : building.settings.rain_entity;
   const rain = rainId && hass.states[rainId] ? rainId : null;
   const pve = proxmoxWatched(proxmoxModel(hass));
   const proxmox = pve.length ? { ids: pve, ...rackRoom(building) } : null;
-  return { rooms, alarms: ids.filter((id) => id.startsWith("alarm_control_panel.")), weather, outage, pools, rain, proxmox };
+  return { rooms, alarms: ids.filter((id) => id.startsWith("alarm_control_panel.")), weather, outage, pools, rain, fridges, proxmox };
 }
 
 /** The room a server rack stands in (a pack item with the id "server_rack"): Proxmox warnings point there. */
@@ -93,7 +104,7 @@ function rackRoom(building: Building): { roomId: string | null; floorId: string 
 
 /** Entities whose state changes may raise or clear a warning. */
 export function alertEntities(sources: AlertSources): string[] {
-  return [...sources.rooms.flatMap((r) => r.sensors), ...sources.alarms, ...(sources.weather ? [sources.weather] : []), ...(sources.outage ? [sources.outage] : []), ...(sources.rain ? [sources.rain] : []), ...(sources.pools ?? []).flatMap((p) => p.ids), ...(sources.proxmox?.ids ?? [])];
+  return [...sources.rooms.flatMap((r) => r.sensors), ...sources.alarms, ...(sources.weather ? [sources.weather] : []), ...(sources.outage ? [sources.outage] : []), ...(sources.rain ? [sources.rain] : []), ...(sources.pools ?? []).flatMap((p) => p.ids), ...(sources.fridges ?? []).flatMap((f) => f.ids), ...(sources.proxmox?.ids ?? [])];
 }
 
 /** The active warnings, rooms first, then the house-wide alarm. */
@@ -126,11 +137,17 @@ export function findAlerts(hass: HomeAssistant, building: Building, sources: Ale
   for (const p of sources.pools ?? []) {
     const area = building.floors.find((f) => f.id === p.floorId)?.outdoor?.find((a) => a.id === p.areaId);
     if (!area) continue;
-    const s = poolState(hass, area.pool);
+    const s = poolState(hass, poolLinksWithDevices(area.pool, building.floors));
     if (s.ph?.range === "bad" && s.entities.ph) out.push({ kind: "pool_ph", entity: s.entities.ph, roomId: null, floorId: p.floorId });
     if (s.chlorine?.range === "bad" && s.entities.chlorine) out.push({ kind: "pool_chlorine", entity: s.entities.chlorine, roomId: null, floorId: p.floorId });
     const celsius = s.temp === null ? null : s.unit.includes("F") ? ((s.temp - 32) * 5) / 9 : s.temp;
     if (celsius !== null && celsius <= 3 && !s.pump?.on) out.push({ kind: "pool_frost", entity: s.entities.temperature ?? s.entities.heater ?? p.areaId, roomId: null, floorId: p.floorId });
+  }
+  // Haushalt Pro: a fridge door open longer than its limit
+  for (const fr of sources.fridges ?? []) {
+    const f = building.floors.find((x) => x.id === fr.floorId)?.furniture.find((m) => m.id === fr.furnitureId);
+    const door = f ? fridgeOpenTooLong(f, hass) : null;
+    if (door) out.push({ kind: "fridge_door", entity: door, roomId: fr.roomId, floorId: fr.floorId });
   }
   if (sources.proxmox) {
     const { roomId, floorId } = sources.proxmox;
@@ -163,6 +180,8 @@ export function alertColor(kind: AlertKind): [number, number, number] {
       return [1, 0.62, 0.2];
     case "pool_frost":
       return [0.55, 0.8, 1];
+    case "fridge_door":
+      return [0.45, 0.85, 1];
     case "pve_stopped":
       return [1, 0.62, 0.2];
     default:

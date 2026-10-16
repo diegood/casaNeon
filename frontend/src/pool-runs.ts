@@ -2,7 +2,7 @@
 // level pipe into one with a height per point, splitting a pipe for a T-piece, and drawing them on a wall.
 // Pure functions shared by the 3D view and the editor's wall view.
 
-import { POOL_DEVICES, POOL_VALVE_Y, poolWaterY, type Building, type Floor, type OutdoorArea, type PoolJoint, type PoolPipe, type Vec2 } from "./model.ts";
+import { pointInPolygon, POOL_DEVICES, POOL_VALVE_Y, poolFloorY, poolWaterY, type Building, type Floor, type OutdoorArea, type PoolJoint, type PoolPipe, type Vec2 } from "./model.ts";
 import { mountBase } from "./packs.ts";
 import { nearestOnPath, pathLength, pipePath, pointAlong, PIPE_HEIGHT, type NodeAt, type P3 } from "./geometry/runs.ts";
 import { toWall, type WallFrame } from "./geometry/wall-frame.ts";
@@ -17,8 +17,8 @@ export function poolNodeAt(b: Building, floor: Floor, area: OutdoorArea): NodeAt
     if (kind === "port") {
       const q = links.ports?.find((x) => x.id === id);
       if (!q) return null;
-      // skimmer at the water line, the drain at the bottom, inlets a little below the water, the waste drain in the floor
-      const y = q.kind === "skimmer" ? water : q.kind === "drain" ? water - 1.2 : q.kind === "inlet" ? water - 0.3 : 0.02;
+      // skimmer at the water line, the drain on the pool's floor, inlets as deep as set (30 cm), the waste drain in the floor
+      const y = q.kind === "skimmer" ? water - (q.depth ?? 0) : q.kind === "drain" ? poolFloorY(floor, area) + 0.03 : q.kind === "inlet" ? water - (q.depth ?? 0.3) : 0.02;
       return { x: q.x, z: q.z, y };
     }
     if (kind === "joint") {
@@ -30,12 +30,114 @@ export function poolNodeAt(b: Building, floor: Floor, area: OutdoorArea): NodeAt
       const f = fl.furniture.find((m) => m.id === id);
       if (!f || !(POOL_DEVICES as readonly string[]).includes(f.type)) continue;
       const at = port ? portAt(f, port) : null;
-      if (at) return { ...at, y: at.y + mountBase(fl, f) };
+      // a device on another floor (pump and filter in the basement): its height in the pool floor's coordinates
+      const shift = fl.elevation - floor.elevation;
+      if (at) return { ...at, y: at.y + mountBase(fl, f) + shift };
       const y = f.type === "pool_filter" ? f.h * 0.88 : f.type === "pool_dosing" ? 0.95 : f.type === "pool_valve" ? POOL_VALVE_Y : f.type === "pool_pump" ? 0.2 : 0.3;
-      return { x: f.x, z: f.z, y: y + mountBase(fl, f) };
+      return { x: f.x, z: f.z, y: y + mountBase(fl, f) + shift };
     }
     return null;
   };
+}
+
+/**
+ * A pipe at the bottom drain leaves under the pool's floor, not up through the water: from the drain down a little,
+ * under the floor to the pool's edge, and only there up to the pipe's own height. Other paths stay as they are.
+ */
+export function underBasin(path: P3[], p: Pick<PoolPipe, "from" | "to">, area: OutdoorArea, floor: Floor): P3[] {
+  const portKind = (node: string) => {
+    const { kind, id } = splitNode(node);
+    return kind === "port" ? area.pool?.ports?.find((q) => q.id === id)?.kind : undefined;
+  };
+  const drainAt = (node: string) => portKind(node) === "drain";
+  const wallPort = (node: string) => portKind(node) === "inlet" || portKind(node) === "skimmer";
+  // an inlet or the skimmer sits in the wall: its pipe leaves straight out through the wall at its height, and only
+  // outside the basin turns to its own height (not up through the water)
+  const through = (pts: P3[]): P3[] => {
+    if (pts.length < 2) return pts;
+    const d = pts[0];
+    const n = poolWallNormal(area, [d[0], d[2]]);
+    if (!n) return pts;
+    const out: P3 = [d[0] + n[0] * 0.35, d[1], d[2] + n[1] * 0.35];
+    // drop the riser at the port itself (same place in the plan), keep the rest
+    let k = 1;
+    while (k < pts.length && Math.hypot(pts[k][0] - d[0], pts[k][2] - d[2]) < 0.01) k++;
+    // points drawn along the wall itself (or inside the basin) move out with it, onto a line 35 cm behind the wall,
+    // up to the first one already that far out: no zigzag back to the wall
+    const rest = pts.slice(k).map((q) => [...q] as P3);
+    for (let i = 0; i < rest.length - 1; i++) {
+      const behind = (rest[i][0] - d[0]) * n[0] + (rest[i][2] - d[2]) * n[1];
+      if (behind >= 0.35 - 1e-6) break;
+      rest[i][0] += n[0] * (0.35 - behind);
+      rest[i][2] += n[1] * (0.35 - behind);
+    }
+    const next = rest[0] ?? pts[pts.length - 1];
+    return [d, out, [out[0], next[1], out[2]], ...rest];
+  };
+  const fix = (pts: P3[]): P3[] => {
+    if (pts.length < 2) return pts;
+    const d = pts[0];
+    if (!pointInPolygon([d[0], d[2]], area.points)) return pts;
+    const low = poolFloorY(floor, area) - 0.15;
+    // the first point beyond the drain in the plan, and where the way there leaves the pool
+    const k = pts.findIndex((q, i) => i > 0 && Math.hypot(q[0] - d[0], q[2] - d[2]) > 0.01);
+    if (k < 0) return pts;
+    const q = pts[k];
+    let exit: Vec2 = [q[0], q[2]];
+    for (let i = 0; i < area.points.length; i++) {
+      const a = area.points[i];
+      const b = area.points[(i + 1) % area.points.length];
+      const hit = segHit([d[0], d[2]], [q[0], q[2]], a, b);
+      if (hit) exit = hit;
+    }
+    const out = (Math.hypot(exit[0] - d[0], exit[1] - d[2]) > 1e-6 ? [exit[0] + (exit[0] - d[0]) * 0.02, exit[1] + (exit[1] - d[2]) * 0.02] : exit) as Vec2;
+    return [d, [d[0], low, d[2]], [out[0], low, out[1]], [out[0], q[1], out[1]], ...pts.slice(k)];
+  };
+  let out = path;
+  if (p.from && drainAt(p.from)) out = fix(out);
+  if (p.to && drainAt(p.to)) out = fix([...out].reverse()).reverse();
+  if (p.from && wallPort(p.from)) out = through(out);
+  if (p.to && wallPort(p.to)) out = through([...out].reverse()).reverse();
+  return out;
+}
+
+/** The outward direction of the pool wall nearest to a point (the wall an inlet or skimmer sits in). */
+export function poolWallNormal(area: Pick<OutdoorArea, "points">, at: Vec2): Vec2 | null {
+  const pts = area.points;
+  if (pts.length < 3) return null;
+  // the outline's turning sense decides which side of an edge is outside
+  let sum = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    sum += a[0] * b[1] - b[0] * a[1];
+  }
+  let best: { d: number; n: Vec2 } | null = null;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const dx = b[0] - a[0];
+    const dz = b[1] - a[1];
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-6) continue;
+    const t = Math.max(0, Math.min(1, ((at[0] - a[0]) * dx + (at[1] - a[1]) * dz) / (len * len)));
+    const d = Math.hypot(a[0] + dx * t - at[0], a[1] + dz * t - at[1]);
+    // left normal (-dz, dx) points inside a counter-clockwise outline in x/z
+    const n: Vec2 = sum > 0 ? [dz / len + 0, -dx / len + 0] : [-dz / len + 0, dx / len + 0];  // (+ 0: no negative zero)
+    if (!best || d < best.d) best = { d, n };
+  }
+  return best ? best.n : null;
+}
+
+/** Where two segments cross (null: they do not). */
+function segHit(a: Vec2, b: Vec2, c: Vec2, d: Vec2): Vec2 | null {
+  const r: Vec2 = [b[0] - a[0], b[1] - a[1]];
+  const s: Vec2 = [d[0] - c[0], d[1] - c[1]];
+  const den = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den;
+  const u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [a[0] + r[0] * t, a[1] + r[1] * t] : null;
 }
 
 /** A pipe with a height per point: an older level one gets its risers as points (the path stays the same). */

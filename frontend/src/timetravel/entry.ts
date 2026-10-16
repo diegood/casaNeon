@@ -314,7 +314,7 @@ export class Session implements TimeTravelSession {
   }
 
   private motion(): string[] {
-    return [...this.roles].filter(([, r]) => r === "motion").map(([id]) => id);
+    return [...this.roles].filter(([, r]) => r === "motion" || r === "camera").map(([id]) => id);
   }
 
   private updateNights(): void {

@@ -110,6 +110,13 @@ export const controls = css`
     padding: 0;
     accent-color: var(--fp3d-accent);
   }
+  /* a colour picker shows its colour as a full swatch, not a line inside the text field's padding */
+  .fp3d-field input[type="color"] {
+    padding: 3px;
+    height: 36px;
+    width: 100%;
+    cursor: pointer;
+  }
   .fp3d-field select option,
   select option {
     /* the opened list keeps the dark look (else light text on the browser's white list) */

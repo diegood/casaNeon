@@ -130,3 +130,11 @@ test("the filter's connections: filtering leaves by the return, backwashing by t
   assert.deepEqual(active(back), ["p", "s", "w", "w2"]);
   assert.equal(back.get("w2")!.waste, true);
 });
+
+test("the bypass shut: with the heat pump off the water goes through it anyway, cold (Torsten's garage)", () => {
+  const shut = (id: string) => (id === "by" ? { fittings: [{ id: "f", kind: "valve" as const, at: 0.2, open: false }] } : {});
+  const withShutBypass = pipes.map((p) => ({ ...p, ...shut(p.id) }));
+  const m = poolFlow({ pipes: withShutBypass, ports, devices, pumpOn: true, heaterOn: false, heating: false });
+  assert.deepEqual(active(m), ["d1", "d2", "f1", "p1", "r1", "r2", "s1", "s2", "w1", "w2"]);
+  assert.ok([...m.values()].every((f) => !f.warm));
+});

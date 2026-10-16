@@ -52,6 +52,7 @@ export class Floorplan3dPanel extends LitElement {
     route: { attribute: false },
     panel: { attribute: false },
     _mode: { state: true },
+    _showOpen: { state: true },
     _editorReady: { state: true },
     _floorId: { state: true },
     _roomId: { state: true },
@@ -85,6 +86,8 @@ export class Floorplan3dPanel extends LitElement {
   declare route: unknown;
   declare panel: unknown;
   private declare _mode: Mode;
+  /** The view's "Show" menu (walls, floors, heat map, names, trail, cameras, weather) is open. */
+  private declare _showOpen: boolean;
   /** The editor bundle is loaded (it is fetched the first time the editor opens). */
   private declare _editorReady: boolean;
   private declare _floorId: string | null;
@@ -133,6 +136,7 @@ export class Floorplan3dPanel extends LitElement {
     super();
     this.narrow = false;
     this._mode = "view";
+    this._showOpen = false;
     this._editorReady = !!customElements.get("fp3d-editor");
     this._floorId = null;
     this._roomId = null;
@@ -656,6 +660,8 @@ export class Floorplan3dPanel extends LitElement {
       class="fp3d-body"
       .hass=${this.hass}
       .packs=${this.data.packs}
+      .building=${this.data.building}
+      @building-edit=${(e: CustomEvent<Building>) => this.data.edit(e.detail)}
       @packs-changed=${() => void this.data.reloadPacks()}
     ></fp3d-extensions>`;
   }
@@ -778,7 +784,7 @@ export class Floorplan3dPanel extends LitElement {
             this._clean = !this._clean;
             prefs.set("clean", this._clean ? "1" : "0");
           }}
-          ?weather=${this._weather}
+          .weather=${this._weather}
           .panelOpen=${!!this._roomId}
           .floorId=${b.floors.length > 1 ? this._floorId : (b.floors[0]?.id ?? null)}
           .roomId=${this._roomId}
@@ -813,12 +819,18 @@ export class Floorplan3dPanel extends LitElement {
               ?readOnly=${tt}
               .room=${b.floors.flatMap((f) => f.rooms).find((r) => r.id === this._roomId) ?? null}
               .floor=${b.floors.find((f) => f.rooms.some((r) => r.id === this._roomId)) ?? null}
+              .building=${b}
               .confirmEntities=${confirmEntities(this.hass, b.floors)}
               @close=${() => (this._roomId = null)}
             ></fp3d-room-panel>`
           : nothing}
         ${this.tt.session ? html`<fp3d-time-bar .session=${this.tt.session}></fp3d-time-bar>` : nothing}
         ${this._clean ? nothing : html`<div class="fp3d-overlay">
+          <div class="fp3d-show-wrap">
+            <button class="fp3d-chip" aria-haspopup="true" aria-expanded=${this._showOpen} @click=${() => (this._showOpen = !this._showOpen)}>${this.t("show_menu")} <span class="fp3d-caret">▾</span></button>
+            ${this._showOpen
+              ? html`<div class="fp3d-show-veil" @click=${() => (this._showOpen = false)}></div>
+                  <div class="fp3d-show-panel">
           <div class="fp3d-seg">
             <button aria-pressed=${this._wallMode === "auto"} @click=${() => this.setWallMode("auto")}>${this.t("walls_auto")}</button>
             <button aria-pressed=${this._wallMode === "cut"} @click=${() => this.setWallMode("cut")}>${this.t("walls_cut")}</button>
@@ -920,6 +932,9 @@ export class Floorplan3dPanel extends LitElement {
           >
             ${hasFeature("weather") ? "" : "🔒 "}${this.t("weather_short")}
           </button>
+                  </div>`
+              : nothing}
+          </div>
           <button class="fp3d-chip fp3d-tt-chip" aria-pressed=${tt} title=${this.t("tt_hint")} @click=${() => this.toggleTimeTravel()}>
             ${hasFeature("time_travel") ? "⏪" : "🔒"} ${this.t("tt_chip")}
           </button>
@@ -956,9 +971,11 @@ export class Floorplan3dPanel extends LitElement {
     css`
       :host {
         display: block;
-        /* HA gives the custom panel's parent no explicit height, so 100% collapses. */
-        height: 100vh;
-        height: 100dvh;
+        /* HA gives the custom panel's parent no explicit height, so 100% collapses. The parent may pad itself by the
+           screen's safe areas (notches; some themes set them on every screen): those are taken off, or the panel is
+           taller than the window and its bottom is cut off (#529). */
+        height: calc(100vh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
+        height: calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
         background: var(--fp3d-bg);
       }
       .fp3d-app {
@@ -1073,41 +1090,36 @@ export class Floorplan3dPanel extends LitElement {
         font-size: 12.5px;
         color: var(--fp3d-muted);
       }
-      .fp3d-view-opts {
-        display: contents;
-      }
+      /* the view options (quality, look, symbols, side) fold behind ⚙ on every screen: a tidy header */
       .fp3d-opts-btn {
+        display: grid;
+        place-items: center;
+        order: 3;
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--fp3d-line);
+        border-radius: 10px;
+        background: transparent;
+        color: var(--fp3d-text);
+        font-size: 17px;
+        cursor: pointer;
+      }
+      .fp3d-opts-btn[aria-expanded="true"] {
+        color: var(--fp3d-accent);
+        border-color: var(--fp3d-accent);
+      }
+      .fp3d-view-opts {
         display: none;
       }
-      /* phones: the view options fold behind ⚙ (one header row instead of three) */
+      .fp3d-view-opts.fp3d-opts-open {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        order: 5;
+        width: 100%;
+      }
+      /* phones: version and grow move with it */
       @media (max-width: 700px) {
-        .fp3d-opts-btn {
-          display: grid;
-          place-items: center;
-          order: 3;
-          width: 36px;
-          height: 36px;
-          border: 1px solid var(--fp3d-line);
-          border-radius: 10px;
-          background: transparent;
-          color: var(--fp3d-text);
-          font-size: 17px;
-          cursor: pointer;
-        }
-        .fp3d-opts-btn[aria-expanded="true"] {
-          color: var(--fp3d-accent);
-          border-color: var(--fp3d-accent);
-        }
-        .fp3d-view-opts {
-          display: none;
-        }
-        .fp3d-view-opts.fp3d-opts-open {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          order: 5;
-          width: 100%;
-        }
         .fp3d-version {
           order: 4;
         }
@@ -1311,6 +1323,43 @@ export class Floorplan3dPanel extends LitElement {
       }
       .fp3d-overlay > * {
         pointer-events: auto;
+      }
+      /* the view's switches in one "Show" menu that opens upwards */
+      .fp3d-show-wrap {
+        position: relative;
+        display: inline-flex;
+      }
+      .fp3d-show-veil {
+        position: fixed;
+        inset: 0;
+        z-index: 29;
+      }
+      .fp3d-show-panel {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 30;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: min(470px, 92vw);
+        padding: 10px;
+        border-radius: 16px;
+        background: var(--fp3d-chrome-solid, #0d1628);
+        border: 1px solid var(--fp3d-line, rgba(120, 190, 255, 0.22));
+        box-shadow: var(--fp3d-shadow);
+      }
+      .fp3d-show-panel > .fp3d-seg {
+        flex-wrap: wrap;
+      }
+      .fp3d-show-panel > .fp3d-chip {
+        box-shadow: none;
+      }
+      .fp3d-caret {
+        font-size: 0.8em;
+        opacity: 0.7;
       }
       .fp3d-quality button {
         padding: 5px 11px;

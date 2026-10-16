@@ -50,7 +50,8 @@ export const DEMO_AREAS = {
 
 export const DEMO_BUILDING = {
   version: 1,
-  settings: { wall_exterior: 0.24, wall_interior: 0.12, grid: 0.05 },
+  settings: {
+    pets: { on: true, list: [{ id: "pet_mia", kind: "cat", name: "Mia", fur: "orange" }, { id: "pet_bello", kind: "dog", breed: "labrador", name: "Bello", fur: "golden" }, { id: "pet_kruemel", kind: "dog", breed: "dachshund", name: "Krümel", fur: "brown" }] }, wall_exterior: 0.24, wall_interior: 0.12, grid: 0.05 },
   floors: [
     floor("eg", "Erdgeschoss", 0, [
       rect("wohnen", "Wohnzimmer", "wohnzimmer", 0, 0, 6, 4.6),
@@ -208,6 +209,12 @@ const DEVICES = [
   entity("switch.pool_filterpumpe", null, "on", { friendly_name: "Pool Filterpumpe" }),
   entity("sensor.pool_ph", null, "7.32", { friendly_name: "Pool pH" }),
   entity("sensor.pool_redox", null, "712", { friendly_name: "Pool Redox", unit_of_measurement: "mV" }),
+  // Haushalt Pro: an invented waste calendar and a "post" flag set by an automation
+  entity("calendar.abfallkalender", null, "off", { friendly_name: "Abfallkalender", message: "Papier", all_day: true }),
+  entity("input_boolean.post_da", null, "on", { friendly_name: "Post da" }),
+  entity("sensor.monstera_feuchte", null, "14", { friendly_name: "Monstera Feuchte", device_class: "moisture", unit_of_measurement: "%" }),
+  entity("sensor.waschmaschine_restzeit", null, "23", { friendly_name: "Waschmaschine Restzeit", unit_of_measurement: "min" }),
+  entity("binary_sensor.kuehlschrank_filter", null, "on", { friendly_name: "Kühlschrank Wasserfilter", device_class: "problem" }),
   entity("cover.pool_abdeckung", null, "open", { friendly_name: "Pool Abdeckung", current_position: 70, supported_features: 15 }),
   entity("binary_sensor.wohnzimmer_terrasse", "wohnzimmer", "on", { friendly_name: "Terrassentür", device_class: "opening" }),
   entity("vacuum.saugi", "wohnzimmer", "cleaning", { friendly_name: "Saugi", battery_level: 64 }),

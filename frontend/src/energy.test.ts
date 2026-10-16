@@ -266,7 +266,8 @@ test("today's solar statistics add up over the sensors: energy, peak and the cur
     "sensor.pv2": [slot(100, 500), slot(101, 500), slot(102, -5)],
   };
   const day = solarDayFromStats(rows, now);
-  assert.equal(day.curve.length, 12 * 12 + 3 + 1);
+  // up to now, less the last minutes the recorder has no mean for yet
+  assert.equal(day.curve.length, 12 * 12 + 1);
   assert.equal(day.curve[100], 1500);
   assert.equal(day.curve[101], 2500);
   assert.equal(day.curve[102], 0);
@@ -276,7 +277,7 @@ test("today's solar statistics add up over the sensors: energy, peak and the cur
   const path = solarCurvePath(day.curve, day.peak);
   assert.ok(path.line.startsWith("M0.0 42.0"));
   assert.ok(path.area.endsWith("L0 44 Z"));
-  assert.ok(path.endX > 110 && path.endX < 115);
+  assert.ok(path.endX > 108 && path.endX < 115);
 });
 
 test("a battery with separate charging and discharging sensors: the charging is taken off", () => {

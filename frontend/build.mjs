@@ -34,11 +34,13 @@ const editorConfig = (viewerHash) => ({
 });
 // the time travel (Pro) only loads when it starts; its texts come from the main bundle
 const timeTravelConfig = { ...common, entryPoints: ["src/timetravel/entry.ts"], outfile: `${out}/neonplan3d-timetravel.js` };
+// the fun packs (pets …) only load when one is unlocked and switched on; three.js is lent by the 3D bundle
+const funConfig = { ...common, entryPoints: ["src/fun/entry.ts"], outfile: `${out}/neonplan3d-fun.js` };
 // The main bundle loads the 3D bundle with a hash of its content in the URL, so a new 3D bundle is
 // never taken from the browser cache (the integration version only changes after a restart).
 // the frontend knows its own version, to notice a backend that still runs an older one
 const version = JSON.parse(readFileSync("../custom_components/neonplan3d/manifest.json", "utf8")).version;
-const mainConfig = (viewerHash, editorHash, cardEditorHash, timeTravelHash) => ({
+const mainConfig = (viewerHash, editorHash, cardEditorHash, timeTravelHash, funHash) => ({
   ...common,
   entryPoints: ["src/main.ts"],
   outfile: `${out}/neonplan3d.js`,
@@ -47,6 +49,7 @@ const mainConfig = (viewerHash, editorHash, cardEditorHash, timeTravelHash) => (
     __FP3D_EDITOR_HASH__: JSON.stringify(editorHash),
     __FP3D_CARD_EDITOR_HASH__: JSON.stringify(cardEditorHash),
     __FP3D_TIMETRAVEL_HASH__: JSON.stringify(timeTravelHash),
+    __FP3D_FUN_HASH__: JSON.stringify(funHash),
     __FP3D_VERSION__: JSON.stringify(version),
   },
 });
@@ -79,21 +82,44 @@ function copyFonts() {
 // main 510 KB, 3D 760 KB, editor 680 KB, card editor 196 KB on 2026-10-10 for pipes on walls (Pool Pro: runs with a height per point,
 // T-pieces, ball valves, real tubes in 3D) and their texts – the doors and windows of the wall view come next
 // editor 730 KB, card editor 205 KB on 2026-10-10 for the parts' cards (connections, drawings, joining) and their texts
+// editor 760 KB, card editor 210 KB on 2026-10-12 for furniture blocks, the wall view side bar and "Technik zeichnen"
 // main 530 KB on 2026-10-11 for the walk through the house (its controls and texts; the walking itself lives in the 3D bundle)
-const BUDGET = { "neonplan3d.js": 530 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 760 * 1024, "neonplan3d-editor.js": 730 * 1024, "neonplan3d-card-editor.js": 205 * 1024 };
+// editor 770 KB on 2026-10-12 for the fun packs on the extensions page (the pets: kinds, breeds, furs, floors)
+// card editor 215 KB on 2026-10-12 (it carries the German and English texts, now with the pets)
+// main 540 KB on 2026-10-12 for the fun packs' switch (pets: the loader, settings and texts; the animals live in their own bundle)
+// main 550 KB and editor 780 KB on 2026-10-13 for the customer wishes (air conditioner, cooktop states, one-colour lamps, watt threshold) and roof windows in the room card
+// card editor 220 KB on 2026-10-13 for the cellar and ground texts (the card editor shares the language table)
+// card editor 225 KB on 2026-10-13 for the floor menu texts
+// main 560 KB on 2026-10-13 for the Halloween gift notice, the extension badge and the cellar texts
+// editor 790 KB on 2026-10-13 for the tidied toolbar (tool and view menus)
+// editor 800 KB on 2026-10-14 for the awning (form, sensors) and the 1.18.2 fixes
+// main 570 KB, 3D 770 KB and card editor 230 KB on 2026-10-14 for the awnings (five kinds) and their texts
+// main 590 KB, editor 820 KB, card editor 235 KB on 2026-10-15 for the household (bins, mailboxes, Haushalt Pro) and its texts
+// 3D 790 KB on 2026-10-16: this fork targets Chrome 87 (optional chaining lowered for old Fire-tablet WebViews)
+const BUDGET = { "neonplan3d.js": 600 * 1024, "neonplan3d-fun.js": 40 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 790 * 1024, "neonplan3d-editor.js": 820 * 1024, "neonplan3d-card-editor.js": 240 * 1024 };
 
 copyFonts();
 if (watch) {
   // in watch mode the hash is not tracked; a dev reload fetches the bundle anyway
-  for (const c of [viewerConfig, editorConfig("dev"), cardEditorConfig, timeTravelConfig, mainConfig("dev", "dev", "dev", "dev")]) await (await context(c)).watch();
+  for (const c of [viewerConfig, editorConfig("dev"), cardEditorConfig, timeTravelConfig, funConfig, mainConfig("dev", "dev", "dev", "dev", "dev")]) await (await context(c)).watch();
 } else {
   await build(viewerConfig);
   const editor = editorConfig(hashOf(viewerConfig.outfile));
   await build(editor);
   await build(cardEditorConfig);
   await build(timeTravelConfig);
-  await build(mainConfig(hashOf(viewerConfig.outfile), hashOf(editor.outfile), hashOf(cardEditorConfig.outfile), hashOf(timeTravelConfig.outfile)));
+  await build(funConfig);
+  await build(mainConfig(hashOf(viewerConfig.outfile), hashOf(editor.outfile), hashOf(cardEditorConfig.outfile), hashOf(timeTravelConfig.outfile), hashOf(funConfig.outfile)));
   let over = false;
+  // old Fire-tablet WebViews (Chrome before 91, e.g. Fully Kiosk on a Fire 7) throw on an optional call with spread
+  // arguments, `a?.b(...x)` – the roof failed there; lowering the target for it would cost ~11 KB, so it is banned
+  for (const file of Object.keys(BUDGET)) {
+    const hit = readFileSync(`${out}/${file}`, "utf8").match(/\?\.(?:[\w$]+)?\(\.\.\./);
+    if (hit) {
+      over = true;
+      console.log(`OLD-WEBVIEW ${file}: "${hit[0]}" breaks Chrome < 91 – write it as "if (a.b) a.b(...x)"`);
+    }
+  }
   for (const [file, limit] of Object.entries(BUDGET)) {
     const size = statSync(`${out}/${file}`).size;
     const ok = size <= limit;

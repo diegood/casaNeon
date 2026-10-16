@@ -3,6 +3,7 @@
 import type { Building, Floor, Furniture, Opening } from "../model.ts";
 import type { HomeAssistant } from "../types.ts";
 import type { HistorySpec } from "./types.ts";
+import { cameraMotionSensors } from "../markers.ts";
 
 /** Never replayed: people and their trackers (presence stays private), and what has no past worth showing. */
 const EXCLUDED = new Set(["person", "device_tracker", "zone", "camera", "scene", "script", "button", "input_button", "update", "event", "image", "tts", "stt", "notify", "conversation", "automation", "calendar", "todo"]);
@@ -80,7 +81,9 @@ export function historyRequest(
     fromAreas.push(id);
   }
   const weather = Object.keys(hass.states).filter((id) => id.startsWith("weather."));
-  const wanted = [...new Set([...cars, ...spec.entities, "sun.sun", ...(building.settings.weather_entity ? [building.settings.weather_entity] : []), ...(building.settings.outage_entity ? [building.settings.outage_entity] : []), ...weather.slice(0, 1), ...fromAreas])];
+  // what the placed cameras detect: their events (a camera outside often has no area of the plan)
+  const cameraSensors = building.floors.flatMap((f) => f.placements.filter((p) => p.entity_id.startsWith("camera.")).flatMap((p) => cameraMotionSensors(hass, p.entity_id)));
+  const wanted = [...new Set([...cars, ...spec.entities, ...cameraSensors, "sun.sun", ...(building.settings.weather_entity ? [building.settings.weather_entity] : []), ...(building.settings.outage_entity ? [building.settings.outage_entity] : []), ...weather.slice(0, 1), ...fromAreas])];
   const hidden: string[] = [];
   const all = wanted.filter((id) => {
     if (!id.includes(".") || (!cars.has(id) && EXCLUDED.has(domainOf(id))) || privateIds.has(id) || !hass.states[id]) return false;
@@ -98,7 +101,7 @@ export function historyRequest(
   return { entities: ids.filter((id) => !statSet.has(id)), stats, overflow: all.slice(max), cars: ids.filter((id) => cars.has(id)), hidden };
 }
 
-export type Role = "door" | "garage" | "lock" | "alarm" | "smoke" | "gas" | "co" | "water" | "window" | "window_more" | "motion" | "robot" | "washer" | "weather";
+export type Role = "door" | "garage" | "lock" | "alarm" | "smoke" | "gas" | "co" | "water" | "window" | "window_more" | "motion" | "camera" | "robot" | "washer" | "weather";
 
 const SAFETY: Record<string, Role> = { smoke: "smoke", gas: "gas", carbon_monoxide: "co", moisture: "water" };
 const FRONT_STYLES = new Set(["front", "front_glass", "sidelight", "sidelights"]);
@@ -174,6 +177,9 @@ export function eventRoles(hass: HomeAssistant, building: Building, spec: Histor
       }
     }
   for (const id of appliancePower(hass, building, spec).keys()) set(id, "washer");
+  // what a placed camera detects (motion, a person, a car) counts day and night (Alex, beta)
+  for (const floor of building.floors)
+    for (const p of floor.placements) if (p.entity_id.startsWith("camera.")) for (const id of cameraMotionSensors(hass, p.entity_id)) set(id, "camera");
   for (const id of fetched) {
     if (roles.has(id)) continue;
     const domain = domainOf(id);

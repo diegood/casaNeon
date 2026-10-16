@@ -35,6 +35,158 @@ earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastersho
 
 - **Live development page:** `npm run live` serves `preview/live.html` against a real Home Assistant (states, services, history through a local proxy) with the plan from a NeonPlan backup file; settings in the untracked `live.local.json`.
 
+## 1.19.2
+
+### New
+
+- Motorised curtain: **Opens to** both sides, or only to the left or right (#511, wish of frops83).
+- Extensions: customers with a shop key who have not subscribed to the newsletter see a small box – signing up (double opt-in) brings the four taster packs (living room, kitchen, bedroom, bathroom, 4 items each) to their key; the shop sends the link only while they are not subscribed, "Don't show again" hides it.
+
+### Improved
+
+- Several packs that turn up at once (e.g. the four taster packs) are announced in one Home Assistant notification instead of one each.
+- The "new" badge on the Extensions tab only shows shop offers to customers who have bought something; gifts (fun and taster packs) do not count.
+
+### Fixed
+
+- Heatmap: the warm patch of sunlight under a window no longer covers a room's temperature colour (#558, thanks frops83).
+
+## 1.19.1
+
+### New
+
+- A garage door can follow a switch or input_boolean that drives it (on = open, a tap switches it) – idea from diegood's fork.
+- Motorised curtains (Architecture pack) open to both sides and the roll-down projection screen (Home cinema pack) rolls up and down with their cover's position; a screen can now be linked to its motor's cover; both take a live position sensor, a run time and "Reverse direction" (#511).
+
+### Fixed
+
+- Old wall tablets (Fire tablets with a WebView before Chrome 91, e.g. Fully Kiosk) no longer fail on the roof; the build now refuses code those WebViews can't run – reported in diegood's fork.
+- The room light on the floor reaches every wall: no dark strips along walls off the light grid, e.g. in L-shaped rooms – found by Thundras.
+- Background images and restore points are written to JSON outside Home Assistant's event loop on newer HA versions – pointed out by hohoanganh.
+- A flat roof no longer floats about 13 cm above the walls once it is fully shown (#556, found by Cle2301).
+- An awning already out, or a smart fridge door already open, shows so as soon as the card opens (#546).
+- A blind in an outer wall always sits outside, even when the window was filed under the neighbouring room (#542).
+- A gate or garage-door cover on a door moves the door's leaf instead of drawing a roller shutter over it (#544).
+- The supporter code's copy button copies the code alone, and the hint explains how to use /supporter in Discord.
+
+## 1.19.0
+
+### New
+
+- Awnings: folding-arm, drop-arm, vertical/ZIP, pergola/conservatory, side awning; run out and in with their cover (D170, D274, D502).
+- Waste bins and mailboxes for everyone (Furniture → Household): bin shapes, colours by country, mailbox shapes.
+- Household Pro (beta, first for supporters): bins from the waste calendar or a sensor with tags on their lids, post in the mailbox, thirsty plants, time left and "done" of washer, dryer and dishwasher, services due, fridge door warning, smart fridge, glass card "Today in the household".
+- Import page (beta): plans from Sweet Home 3D, RoomPlan scans, DXF, glTF/OBJ/STL, Floorplanner, Valetudo and an AI format to a NeonPlan file in the browser.
+
+### Improved
+
+- Colour pickers show their colour as a swatch.
+
+## 1.18.2
+
+### New
+
+- Light wells: per window off (*Light well*) and *Rim above the ground* (#524).
+- A solar string can end at a battery with its own solar input (power station) (D410).
+- Right (or middle) mouse button pans the plan; a right click without moving still opens the menu (D518).
+- Furniture width and depth down to 1 cm (D520).
+
+### Fixed
+
+- Sound rings on upper floors floated above the speakers (#521).
+- Energy cards' day curve stopped after the view left the page once; refresh on tablet wake; no drop to zero at the end (#527).
+- Daylight under roof windows also when the sun is on the other side or low (D340).
+- Pets sank into rugs, a dog lay half in the sofa, too little wandering (D507).
+- Double click on a cable point removes it (D410).
+- Cylinders lying along the depth looked hollow from the front, and one end of every lying cylinder was missing – e.g. the round mirror with light, a camera's lens (#534).
+- Floating roof windows in a slope over a lower floor's room show with that floor when the roof fades (#482).
+- A light well under a lawn, path or terrace drawn up to the house stands just above that surface instead of vanishing under it (#524).
+- The furniture type list offered devices of the energy tool and parts not released yet; it now offers what the library offers (#530).
+- The sidebar panel was taller than the window with themes that set safe-area insets (#529, thanks @brentgl).
+
+## 1.18.1
+
+### New
+
+- **Fun pack Halloween** released: 13 decorations and a ghost floating through the house (switch under Extensions, card option `ghost: false`).
+- **Fun packs free with every customer account** (Halloween and Pets): with a licence key they wait under Extensions to install; without one, a free account brings them. A one-time notice in the 3D view; the pets' old shop notice is gone.
+- **Chinese (Simplified) and Portuguese** as app languages (config flow too: zh-Hans, zh-Hant, pt, pt-BR).
+- All 16 extra languages complete with the texts of 1.18.
+
+## 1.18.0
+
+### New
+
+- **Cellar and ground:** section *Ground* in the editor – ground height (semi-basement), cellars shown in the earth (building-pit view when opened), plinth under a house above the ground.
+- **Cellar window** button (100 × 50 cm, 25 cm under the ceiling); light well with a grate below the ground.
+- **Tidier editor toolbar** in groups without emojis: Select, Build ▾, Outside ▾, Furniture, Energy, ↶ ↷, 3D beside, Wall view, Whole plan.
+- **Floor menu** on the far left of the toolbar in every tool: switch floors, add a floor (also from HA floors), floor settings.
+- **Tools stay in use** after placing a door, window, room, outdoor area or floor opening (Esc or Select ends them).
+- **Collapsible sidebar** in every layout; another tool unfolds it again.
+- **Whole plan** (formerly *Show all*) fits the garden too while drawing outdoors.
+- **3D view:** switches in one *Show* menu, header options behind the ⚙ on every screen.
+- **Extensions tab badge** ("2 ready", "3 new"); new packs in the account announced once in HA notifications.
+
+### Changed
+
+- *Lock floor plan* moved to the floor settings (still in a room's right-click menu).
+
+### Fixed
+
+- UniFi cameras folded under another entity of their device (#517).
+- Front door sidelight frame, mullion and glass plane (#519).
+- Media buttons the player cannot serve are greyed out (#400).
+- Flickering corner bathtub, outdoor kitchen and network rack (pack updates Bath R4, Garden R4, Smart Home R3) (#516).
+
+## 1.17.2
+
+### New
+
+- **Air conditioner (wall)** item with a glow in the colour of its mode (heat red, cool blue, auto green, dry yellow, fan white).
+- **Cooktops glow** while they cook (built-in stove and the Kitchen pack's hobs and cookers); operating-state sensors (`run` / `ready` / `inactive`) supported. Kitchen pack R4: no zone painted red for ever.
+- **Lamps in one colour only** (*Glow in one colour only*): a colour light used as a signal shows only that colour.
+- **Running from (watts):** own power threshold for appliances behind smart plugs (default 10 W).
+- **Roof windows in the room card** and sunlight through them (#482).
+
+### Changed
+
+- Roof windows fade out with the roof again; *Show over the room without the roof* keeps one over its room (#482).
+
+### Fixed
+
+- Weather outside switched off stayed on after a reload (panel and card) (#509).
+- Echo speakers: play after pause works while the speaker still reports playing (#400).
+
+## 1.17.1
+
+### New
+
+- **Pets (fun pack, a present):** cat, rabbit and five dog breeds walk through the house, take the stairs, rest on sofas and beds, stop at shut doors (contact sensors), sleep at night; fish in the Pets pack's aquariums. Free in the shop for customers; *Extensions → Fun packs*, card option `pets: false`, a one-time note in the editor.
+- **Extensions page:** the shop's packs and the installed packs fold into summary bars (installed, updates, missing) with *Install/update all*.
+- **Wall view zoom:** mouse wheel towards the pointer, two fingers, ＋ / − / ⤢ and arrows in *Wall from the front*.
+- **Pools with depth:** basin depth and rim above the lawn; see-through water onto the basin's walls and floor (when the pool lies in a lawn or other area; without ground around it, it stays flat).
+- **Terrace doors** can open outwards (*Reverse opening direction*), sashes swing outside in 3D (#492).
+
+### Fixed
+
+- **Robot vacuum with dock** (Smart Home pack): current-room sensor, auto link and driving in 3D like the built-in robot (#470, #490).
+- **Smoke detectors** take binary sensors; other items alarm-class binary sensors (#490).
+- **Roof windows** stay in the slope when the roof fades over a floor or room; closed rim between roof and frame (#482, #490).
+- **Wall view:** Del no longer reaches the item chosen in the plan behind it.
+- **Pool warnings** no longer make every room pulse; they show at the top only.
+
+## 1.17.0
+
+### New
+
+- **Furniture blocks:** Shift + click (or *Select several* on a tablet) and Shift + drag (a frame) select several pieces; move, turn about their centre, copy, fix or delete them together, or **join them into a block** – a click on any part then selects the whole kitchen or wall unit, a double click edits one part alone, *Break up block* undoes it. Blocks move together in 3D beside the plan too. Ctrl+D duplicates the selected furniture.
+- **Wall view:** blocks there too (shift-click or a frame, join, drag the whole block along the wall, *Whole block / This part only*); the side bar **Onto the wall** shows a few categories, a search and recently used pieces instead of a long list – tap a free spot on the wall and it offers only what fits that gap, cabinets built to measure taking its width. Pieces can be resized in the wall view: handles left/right (width), top and bottom (height), snapping to neighbours, width and height to type in; picture tiles in the side bar, delete button and Del key, blocks in 3D in the room too. A block with a fixed part stays put everywhere and says so, with *Release all*.
+- **Time travel for everyone:** out of the supporter beta; what a placed camera detects (motion, person, car) is an event day and night.
+
+### Fixed
+
+- **Lights:** effect names that are a light's mode (white, colour, rgb, manual, default) no longer start the colour effect in 3D (LocalTuya bulbs).
+
 ## 1.16.0
 
 ### New

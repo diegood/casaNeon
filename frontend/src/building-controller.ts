@@ -57,6 +57,8 @@ export class BuildingController implements ReactiveController {
   draft: Draft | null = null;
   /** Imported furniture packs. */
   packs: FurniturePack[] = [];
+  /** The packs were fetched once (what is installed is known). */
+  packsLoaded = false;
 
   private readonly host: ReactiveControllerHost;
   private hass: HomeAssistant | null = null;
@@ -193,6 +195,7 @@ export class BuildingController implements ReactiveController {
       this.packs = [];
     }
     setPacks(this.packs);
+    this.packsLoaded = true;
     this.host.requestUpdate();
   }
 

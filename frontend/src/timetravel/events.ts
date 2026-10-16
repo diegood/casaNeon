@@ -19,6 +19,7 @@ export type EventKind =
   | "lock"
   | "garage"
   | "motion"
+  | "camera"
   | "washer"
   | "outage"
   | "robot_start"
@@ -45,6 +46,7 @@ export const RANK: Record<EventKind, number> = {
   door: 50,
   lock: 45,
   garage: 40,
+  camera: 38,
   motion: 35,
   washer: 25,
   robot_done: 20,
@@ -70,6 +72,7 @@ export const CATEGORY: Record<EventKind, Category> = {
   water: "safety",
   outage: "safety",
   motion: "safety",
+  camera: "safety",
   door: "openings",
   lock: "openings",
   garage: "openings",
@@ -282,6 +285,10 @@ export function findEvents({ timeline, roles, weather, night = sleepTime, energy
           break;
         case "motion":
           if (c.to === "on" && c.from === "off" && night(c.t)) add(c.t, "motion", id);
+          break;
+        case "camera":
+          // a camera's detection: always (a motion sensor only at night), the same camera again after 5 minutes
+          if (c.to === "on" && c.from !== "on") add(c.t, "camera", id);
           break;
         case "robot":
           if (c.to === "cleaning" && c.from !== "cleaning" && c.from !== "paused") add(c.t, "robot_start", id);

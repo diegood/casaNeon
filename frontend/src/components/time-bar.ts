@@ -34,6 +34,7 @@ const COLOR: Record<EventKind, string> = {
   garage: "#ffb020",
   window: "#ffd27a",
   motion: "#b48cff",
+  camera: "#e07aff",
   washer: "#4dff9a",
   robot_start: "#4dff9a",
   robot_done: "#4dff9a",

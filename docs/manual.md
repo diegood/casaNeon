@@ -4,7 +4,7 @@
 
 NeonPlan 3D draws your home right inside Home Assistant and shows it as a 3D model in a neon look. Lights glow in their colours, blinds move, windows tilt, doors swing open, cameras look into the room and the TV shows what is playing. Everything runs locally in Home Assistant, without a cloud or external programs, and it is built for wall tablets.
 
-This manual describes every feature of the current version. What changed in which version is in the [changelog](../CHANGELOG.md) and on the [releases page](https://github.com/Mastershort/neonplan3d/releases). The pictures come from the demo with invented data. The app follows the language of your Home Assistant user (profile → language); the labels below are the English ones. German and English are built in; French, Spanish, Dutch, Italian, Hungarian, Danish, Swedish, Norwegian (Bokmål and Nynorsk), Finnish, Czech, Polish, Romanian and Slovenian are fetched when needed, so the bundles stay small for wall tablets. A text missing in a language shows in English.
+This manual describes every feature of the current version. What changed in which version is in the [changelog](../CHANGELOG.md) and on the [releases page](https://github.com/Mastershort/neonplan3d/releases). The pictures come from the demo with invented data. The app follows the language of your Home Assistant user (profile → language); the labels below are the English ones. German and English are built in; French, Spanish, Dutch, Italian, Hungarian, Danish, Swedish, Norwegian (Bokmål and Nynorsk), Finnish, Czech, Polish, Romanian, Slovenian, Portuguese and Chinese (Simplified) are fetched when needed, so the bundles stay small for wall tablets. A text missing in a language shows in English.
 
 ![The house in the 3D view](images/view-house.jpg)
 
@@ -65,7 +65,7 @@ HACS reports new versions by itself. Restart Home Assistant after every update. 
 
 1. Open **NeonPlan 3D** in the sidebar and switch to **Editor** at the top.
 2. Choose **Add floor** on the right. If you have floors in Home Assistant, NeonPlan 3D offers them directly.
-3. If the floor has areas, **"Add … rooms from HA areas"** creates a room for each area. Drag the rooms into place and adjust the corners. Or draw with **Rectangle** or **Free shape**.
+3. If the floor has areas, **"Add … rooms from HA areas"** creates a room for each area. Drag the rooms into place and adjust the corners. Or draw under **Build → Room** with **Rectangle**, **Free shape** or **By measure**.
 4. Tap a wall with **Doors & windows** to add doors and windows.
 5. Tap a room and tap **Place** under **Devices** on the right for the devices you want, e.g. the lights, covers, thermostats, media players and sensors of the area. Below the list, **Place all …** puts all main devices in at once after asking.
 6. Furnish the room with **Furniture** and **Furnish …**.
@@ -99,30 +99,35 @@ Drawing works best on a PC or tablet. On a phone you can look around and control
 
 ### 4.1 Tools
 
-| Tool | What it does |
+The toolbar at the top is grouped. On its far left is always the floor you are working on, see [4.2](#42-floors).
+
+| Button | What it does |
 |---|---|
 | **Select** | Tap rooms, furniture, doors, windows and devices, move them, drag corners |
-| **Rectangle** | Draw a rectangular room |
-| **Free shape** | Draw a room corner by corner |
-| **Wall** | Draw a single free-standing wall, e.g. a partition |
-| **Doors & windows** | Tap a wall to add an opening |
+| **Build ▾** | A menu with **Room** (drag a **Rectangle**, a **Free shape** corner by corner or **By measure** with typed wall lengths), **Wall** (a free-standing wall, e.g. a partition), **Doors & windows** (tap a wall), **Floor opening** (a hole in the floor, e.g. above the staircase) and **Roof** (see [4.19](#419-roof)) |
+| **Outside ▾** | **Outdoor** (its type such as lawn, path or terrace and its shape, rectangle or free form, right in the menu) and **Pool** (Rectangular, Round, Oval or Free), see [4.17](#417-outdoor-areas-and-outdoor-lights) |
 | **Furniture** | Open the furniture library |
-| **Outdoor** | Draw outdoor areas such as lawn, terrace or pool |
-| **Floor opening** | Draw a hole into the floor, e.g. above the staircase |
-| **Roof** | Draw, move and set up roof sections, see [4.19](#419-roof) |
-| **Energy** | Solar fields on the roof and in the garden, strings, see [4.20](#420-energy-solar-fields) |
+| **Energy** | Solar fields on the roof and in the garden, strings and energy devices, see [4.20](#420-energy-solar-fields) |
+| **↶ / ↷** | Undo and redo (Ctrl+Z / Ctrl+Y) |
+| **3D beside** | The 3D view next to the plan, see [4.18](#418-3d-beside) |
+| **Wall view** | See a wall from the front, see [4.8](#48-furniture) |
+| **Whole plan** | Brings the floor's whole plan into view; with the garden while drawing outdoor areas or a pool |
 
-Next to them are **Undo**, **Redo**, **Show all** and **3D beside**. A short hint for the active tool is always shown at the bottom of the plan.
+A group's button names the tool in use, e.g. "Room: Free shape" or "Outdoor: Lawn". **A tool stays in use** after you placed something, so you can set several doors, windows, rooms or areas in a row. **Esc** or **Select** ends it. A short hint for the active tool is always shown at the bottom of the plan.
 
-**Mouse and touch:** Two fingers pan and zoom. With a mouse, the wheel zooms and dragging an empty spot pans. **Ctrl+Z** undoes, **Ctrl+Y** or **Ctrl+Shift+Z** redoes, **Del** deletes the selection, **Esc** cancels. The **arrow keys** nudge the selection (room, corner, furniture, device, wall, outdoor area) by one grid step, with **Shift** by 10 cm, with **Alt** by 1 cm; doors and windows slide along their wall.
+**Collapsing the sidebar:** **Collapse ›** at the top of the sidebar folds it to a narrow strip – the plan gets all the room, e.g. for moving furniture. **‹** unfolds it, a glowing **⚙** in the strip opens the settings of the selection. Choosing another tool unfolds it again by itself. The browser remembers the choice.
 
-**Locking the floor plan and fixing:** **🔒 Floor plan** in the toolbar locks all rooms, walls, doors, windows and outdoor areas, newly drawn ones too; a selected room then shows "🔒 Floor plan locked", a click on it unlocks. Furniture and devices are fixed one by one once they are in place: with the lock **🔓 Fix** at the top of the form, with the key **L** or by **right-click** (long press on a tablet). The right-click menu also offers **Duplicate**, **Turn 90°** and **Delete**. Locked items can be selected and edited in their form, but not dragged, not nudged with the arrow keys and only deleted after asking; dragging then moves the view. Fixed furniture and devices also stay put in the 3D half.
+**Mouse and touch:** Two fingers pan and zoom. With a mouse, the wheel zooms; drag an empty spot or anywhere with the **right or middle mouse button** to pan (a right click without dragging still opens the menu). **Ctrl+Z** undoes, **Ctrl+Y** or **Ctrl+Shift+Z** redoes, **Del** deletes the selection, **Esc** cancels. The **arrow keys** nudge the selection (room, corner, furniture, device, wall, outdoor area) by one grid step, with **Shift** by 10 cm, with **Alt** by 1 cm; doors and windows slide along their wall.
+
+**Locking the floor plan and fixing:** **Lock floor plan** in the floor settings (see [4.2](#42-floors)) or by right-clicking a room locks all rooms, walls, doors, windows and outdoor areas, newly drawn ones too; a selected room then shows "🔒 Floor plan locked", a click on it unlocks. Furniture and devices are fixed one by one once they are in place: with the lock **🔓 Fix** at the top of the form, with the key **L** or by **right-click** (long press on a tablet). The right-click menu also offers **Duplicate**, **Turn 90°** and **Delete**. Locked items can be selected and edited in their form, but not dragged, not nudged with the arrow keys and only deleted after asking; dragging then moves the view. Fixed furniture and devices also stay put in the 3D half.
 
 ### 4.2 Floors
 
 ![Floor settings](images/editor-ha-floors.jpg)
 
-Without a selection, the sidebar shows the floors:
+On the far left of the toolbar is **Floor: Ground floor ▾** – the floor you are working on. The menu is there in every tool: it lists all floors (the top one first, the current one with ✓), below them **Add floor** and **Floor settings**. If Home Assistant has floors that are still missing, **Add floor** unfolds them to choose from, plus **Empty floor**. **Floor settings** opens the current floor's settings on the right; the sidebar shows the same when nothing is selected:
+
+- **Lock floor plan** locks all rooms, walls, doors, windows and outdoor areas, see [4.1](#41-tools).
 
 - **Add floor** creates a floor. Home Assistant floors that are still missing are offered.
 - **Name**, **height above the ground** and **ceiling height** set where the floor sits in the 3D house and how tall its walls are. **Turn 90°** turns everything on the floor about the middle of its rooms when a floor was drawn the wrong way round. **Shift the floor** moves everything on the floor (rooms, furniture, devices, outdoor areas, free walls, background image) by X and Z when a floor sits offset against the others; roof sections and cables stay. With **Take every floor along** ticked, shift and turn act on the whole house: every floor with the roof sections, outdoor areas, cables, meter and hologram. **View as this floor's start** remembers how the 3D pane beside stands right now – this floor then opens from that side, with that zoom and framing, e.g. the ground floor from the front and the upper floor from the back; ↺ removes it.
@@ -194,7 +199,7 @@ Under **Template (floor plan image)** you load a photo or scan of your floor pla
 
 ![A selected door](images/editor-opening.jpg)
 
-With **Doors & windows** you tap a wall, a room wall or a single wall. Then you choose the **Type** on the right: door, window or garage door. A window with a sill of 0 is a terrace door. The preset **Glass wall** sets fixed floor-to-ceiling glazing with slim mullions and no sashes – for an indoor glass wall or partition; width and height are free, and any window can take it under **Style**.
+With **Doors & windows** you tap a wall, a room wall or a single wall. Then you choose the **Type** on the right: door, window or garage door. A window with a sill of 0 is a terrace door; like a door, **⇅ Reverse opening direction** turns it outwards (in 3D its sashes then swing outside; tilting stays inwards). The preset **Glass wall** sets fixed floor-to-ceiling glazing with slim mullions and no sashes – for an indoor glass wall or partition; width and height are free, and any window can take it under **Style**.
 
 ![Kinds of openings](images/editor-opening-kinds.jpg)
 
@@ -222,7 +227,7 @@ Doors and windows can also be tapped in a wide band around the opening in the pl
 | **Tilt contact** | A second sensor that reports "tilted" |
 | **Tilt angle sensor** | Optional: a sensor reporting the tilt angle in degrees (e.g. the "Rotation" of a Shelly BLU Door/Window). The sash tilts exactly that far in 3D; **Angle that counts as fully tilted** (15° by default), an **Offset** for the value while closed and **counts the other way round** adapt it to the mounting. Above a small angle the window counts as tilted, also for the rain warning |
 | **Contact second leaf** | For double windows and doors |
-| **Garage door** | A garage door follows a cover entity or a contact (on = open; sensors reporting “open”/“closed” work too). Its open part lies under the ceiling |
+| **Garage door** | A garage door follows a cover entity or a contact (on = open; sensors reporting “open”/“closed” work too). A **switch or input_boolean** that drives the door works as the contact too: on = open, a tap in 3D switches it. Its open part lies under the ceiling. A gate or garage-door cover on a **door** (e.g. a sliding gate) moves the door leaf instead of a roller shutter |
 
 NeonPlan 3D matches covers and contacts through the area automatically. You can change them by hand at any time.
 
@@ -243,7 +248,7 @@ The **Furniture** tool opens the library with more than 50 built-in models in th
 - **Drag** to move it. Near a wall it turns its back to the wall and sits flush. **Alt** moves freely.
 - The **handle in front of the item** turns it in 15° steps, the **corners** resize it.
 - On the right you set width, depth, height, rotation and **Height above the floor**. **Mirror** swaps left and right – the L-sofa the other way round, the cabinet with its door on the other side; the item is in the right-click menu and in the furnish bar of the 3D view as well. That is how a network cabinet or a shelf hangs on the wall, or a dryer stands on the washing machine. It always counts from the floor: a wall cabinet sits at 1.45 m by default, a wall TV is centred at 1.3 m; you can set both higher or lower. **Automatic height** resets it.
-- **Wall view:** **▦ Wall view** at the top of the toolbar, then click into a room (near a wall opens exactly that wall) – or **▦ See this room's walls from the front** in the room form, **▦ Wall view** in the furniture form and the right-click menu, **▦** beside each wall under *Wall heights* – shows the wall from the front – with its doors and windows and everything standing or hanging on it, as a real front view of the furniture: cabinets, shelves, wall cabinets, TVs, wall lights. Drag a piece along the wall there and, when it hangs, up or down; dimension lines show the distance to the wall's ends and to the floor, and edges snap to the wall's ends, doors, windows and other furniture (**Alt** drags freely). Arrow keys move by 1 cm, with **Shift** by 10 cm; below, **Distance from the left** and **Height above the floor** can be typed in. The arrows **‹** and **›** at the left and right (and **←** **→** when no piece is chosen) turn you to the wall joining on that side – once round the room. A double click opens the piece in the plan. At the top right you switch between **3D in the room** and **Wall from the front**: in 3D you stand in the middle of the room at eye height looking at the wall – with everything in the room, the table in front of the corner bench too. Tap a piece to choose it, drag to move it on the floor, the round **↕** handle above the chosen piece lifts or lowers it (with its height shown), the mouse wheel or two fingers walk closer or back, the middle or right mouse button (two fingers on a tablet) looks around – so the left button is kept for the furniture; below, **Distance from the left**, **Distance from the wall** and **Height above the floor** can be typed in, with **↺ 45°** / **↻ 45°** and the **Rotation** in degrees – turned at a wall, the piece moves back into the room by itself. A fixed piece shows **🔒 Release** at the bottom: release it first, then it can be dragged. **Wall from the front** is the flat view for lining things up on the wall to the centimetre. With **Energie Pro**, a side bar on the left puts the meter, inverter, home battery and wallbox straight onto the wall shown.
+- **Wall view:** **Wall view** at the top of the toolbar, then click into a room (near a wall opens exactly that wall) – or **▦ See this room's walls from the front** in the room form, **▦ Wall view** in the furniture form and the right-click menu, **▦** beside each wall under *Wall heights* – shows the wall from the front – with its doors and windows and everything standing or hanging on it, as a real front view of the furniture: cabinets, shelves, wall cabinets, TVs, wall lights. Drag a piece along the wall there and, when it hangs, up or down; dimension lines show the distance to the wall's ends and to the floor, and edges snap to the wall's ends, doors, windows and other furniture (**Alt** drags freely). Arrow keys move by 1 cm, with **Shift** by 10 cm; below, **Distance from the left** and **Height above the floor** can be typed in. The arrows **‹** and **›** at the left and right (and **←** **→** when no piece is chosen) turn you to the wall joining on that side – once round the room. A double click opens the piece in the plan. At the top right you switch between **3D in the room** and **Wall from the front**: in 3D you stand in the middle of the room at eye height looking at the wall – with everything in the room, the table in front of the corner bench too. Tap a piece to choose it, drag to move it on the floor, the round **↕** handle above the chosen piece lifts or lowers it (with its height shown), the mouse wheel or two fingers walk closer or back, the middle or right mouse button (two fingers on a tablet) looks around – so the left button is kept for the furniture; below, **Distance from the left**, **Distance from the wall** and **Height above the floor** can be typed in, with **↺ 45°** / **↻ 45°** and the **Rotation** in degrees – turned at a wall, the piece moves back into the room by itself. A fixed piece shows **🔒 Release** at the bottom: release it first, then it can be dragged. **Wall from the front** is the flat view for lining things up on the wall to the centimetre. Zoom there with the mouse wheel (towards the pointer), two fingers on a tablet or **＋** / **−** at the bottom right; **⤢** shows the whole wall again, and while zoomed the arrows beside them move the view. With **Energie Pro**, a side bar on the left puts the meter, inverter, home battery and wallbox straight onto the wall shown.
 
 ![Wall view: 3D in the room and wall from the front](images/wall-view.jpg)
 
@@ -251,6 +256,16 @@ The **Furniture** tool opens the library with more than 50 built-in models in th
 - **Duplicate** and **Delete** are there too.
 
 ![A selected item](images/editor-furniture.jpg)
+
+**Furniture blocks** (a kitchen, a wall unit): place the pieces one by one as they fit, then join them into a block.
+
+- **Shift + click** adds a piece to the selection or takes it out again, **Shift + drag** over an empty spot draws a frame – everything whose centre lies inside is selected. On a tablet without a Shift key, switch on **Select several** in the furniture form: a tap then adds and a drag draws the frame.
+- Several selected pieces move, turn (**R**, ↺/↻ 90° – about their common centre), copy (**Ctrl+D**), fix or delete together. **Join into a block** makes them a lasting block (orange frame labelled "Furniture block").
+- From then on, a click on any part selects the **whole block**; dragging moves it, in **3D beside** too. Edit a **single part** with a **double click** (double tap on a tablet) or by its name in the list on the right – a wall cabinet 2 cm higher, say. **Select the whole block** goes back, **Break up block** makes single pieces again. If a part is fixed, the whole block stays put – a note says so, **Release all** frees it.
+- **In the wall view** blocks work the same way – in **Wall from the front** and in **3D in the room**: **Shift + click** (*Select several* on a tablet) or **Shift + drag** (a frame, front view only) selects several parts, **Join into a block** at the bottom. Dragging slides the whole block along the wall (it snaps with its outer sides); at the bottom you switch between **Whole block** and **This part only** – to line up a single cabinet without breaking up the block. A double click on a part of a block selects just that part too.
+- **Onto the wall** (side bar on the left of the wall view): a few symbols instead of a long list – base cabinets & boards, hanging, tall cabinets, seating & beds, lights, your packs (and energy with Energie Pro) – plus a search and **Recently used**. **Tap a free spot on the wall:** NeonPlan measures the gap (low: standing, high: hanging) and shows only what fits – what fills it best first. Cabinets built to measure (kitchen unit, wall cabinet, tall cabinet, sideboard, shelf …) take the gap's width (↔), anything else goes to the gap's left end in its own size. Every piece shows a small picture. **Resize** in *Wall from the front*: on the chosen piece the handles **left and right** change its width, the **top** one its height and, for hanging pieces, the **bottom** one its lower edge – the other side stays put, edges snap to neighbours, the wall's ends, doors and windows (**Alt** freely), and the size shows live above it. Below, **Width** and **Height** can be typed in too (in *3D in the room* as well). Delete a chosen part (or several) with **Delete** at the bottom or the **Del** key.
+
+![A furniture block: the kitchen](images/editor-block.jpg)
 
 ### 4.9 Furnishing rooms
 
@@ -296,6 +311,7 @@ Lamps are furniture with a linked light: ceiling light, downlight, surface spot,
 - Table lamps stand on the item below, wall lights and LED strips snap to the wall, a pendant's height is how far it hangs below the ceiling.
 - **Height above floor:** wall lights hang at 1.75 m by default, LED strips right under the ceiling. Under a sloped roof, ceiling lamps, spots and pendants hang from the roof's underside instead of in the air. In the form you set a **Height above floor** of their own, e.g. for a strip under the wall cabinets or behind the TV unit. **Automatic height** resets it. Recessed and surface spots have the field as well: by default they sit under the ceiling, with a height of their own e.g. under the wall cabinets – model and light then shine down from there onto the worktop. A strip below 1 m (skirting board, behind a cabinet) shines up the wall, higher strips shine down. A strip below the cut height stays visible with cut walls. **Tilt about its length** lays the strip against a roof slope or turns it sideways (90° = its face points to the side); **Upright** stands it on end: it then runs up from the height above the floor, along a door frame or as a light column, and shines all around.
 - **Colour and brightness from:** when a relay (Shelly, switch actuator) switches the lamp while the bulb itself knows its colour and brightness, on/off comes from the switch and the colour from this second entity.
+- **Glow in one colour only:** the lamp only glows while the light shows about the chosen colour. A colour light can serve as a signal this way – yellow for "water" at the washbasin – without its other colours (red, green, blue for other alerts) showing there.
 - **Glow in 3D (%):** how strongly the lamp glows in 3D. Below 100 % tones down bright LED strips so the room does not burn out, above 100 % makes a weak lamp glow more. Works for lights placed as devices too; it switches nothing in Home Assistant.
 - A switch works instead of a light too, e.g. a relay for the ceiling light.
 - Several lamps may follow the same light.
@@ -308,8 +324,8 @@ Lamps are furniture with a linked light: ceiling light, downlight, surface spot,
 
 TVs, media walls, the wall unit with a TV (the wall unit without a TV is a lamp: vitrines and LED strips glow with the linked light), desks with monitors, washing machines, dryers, dishwashers, radiators, robot vacuums and many pack items link to entities:
 
-- **Device** or **TV (media player or smart plug)**: A **status sensor** works as a device too, e.g. the print status of a 3D printer (Bambu Lab and others); the item then counts as active while the status reports "running", "printing", "prepare" or similar. A TV glows while it is on. An older TV on a smart plug simply takes the plug's switch; the screen glows while the plug is on, and a tap switches it. Washing machine, dryer and dishwasher glow while they run. A radiator with a thermostat glows while it heats.
-- **Power sensor (W)**: The item shows its watts.
+- **Device** or **TV (media player or smart plug)**: A **status sensor** works as a device too, e.g. the print status of a 3D printer (Bambu Lab and others); the item then counts as active while the status reports "running", "printing", "prepare" or similar. A TV glows while it is on. An older TV on a smart plug simply takes the plug's switch; the screen glows while the plug is on, and a tap switches it. Washing machine, dryer and dishwasher glow while they run. A radiator with a thermostat glows while it heats. The **air conditioner (wall)** hangs high on the wall and glows at its air outlet in the colour of its mode: red heating, blue cooling, green automatic, yellow drying, white fan only – bright while it works, dimmed on standby. A **stove** glows on its cooking zones while it cooks; an operating-state sensor (e.g. Home Connect: "run", "ready", "inactive") makes it glow faintly at "ready" and stay dark at "inactive".
+- **Power sensor (W)**: The item shows its watts. **Running from (watts)** sets from how many watts it counts as running and glows (empty: 10 W) – handy for appliances behind a smart plug that draw a few watts on standby, e.g. 100 W.
 - **Ask before switching** and **Marker in 3D** as with devices.
 - **Pictures by state** on screens: a Pro add-on, see [6.3](#63-live-screens).
 
@@ -343,7 +359,7 @@ The item **Parking spot** in the Parking group marks where a car stands: in the 
 
 ### 4.15 Robot vacuum
 
-The robot vacuum item links to the `vacuum` entity. While the robot cleans, it drives lanes through the room of its dock in 3D and then returns. The lanes are simulated because Home Assistant usually does not know the real position.
+The robot vacuum item – and the **robot vacuum with dock** from the Smart Home pack just the same – links to the `vacuum` entity. While the robot cleans, it drives lanes through the room of its dock in 3D and then returns. The lanes are simulated because Home Assistant usually does not know the real position.
 
 Many robots do report the room they are cleaning, for example Roborock and Dreame with a "current room" sensor. NeonPlan 3D finds this sensor on the robot's device by itself; the **Current room (sensor)** field lets you pick another one. The reported name is compared with the room name and the Home Assistant area, ignoring case and the spelling of umlauts ("Kueche" matches "Küche"). When the robot changes rooms it appears there in 3D and drives its lanes. If no room matches, it stays in the room of its dock.
 
@@ -360,7 +376,7 @@ Its lanes keep clear of furniture standing on the floor: cabinets, sofas, beds, 
 
 ### 4.17 Outdoor areas and outdoor lights
 
-With **Outdoor** you draw lawn, terrace, path, driveway, pool, flower bed, hedge or fence. At the top, under **Draw**, choose first what you draw – a pool is a pool right away; the type can still be changed in the form afterwards. Beside it choose **▭ Rectangle** (drag it open) or **✎ Free form**: then you place the corners one by one like a free-form room – for curved beds, slanted plot borders or an L-shaped path; a tap on the first corner or **Enter** closes the area. A selected outdoor area is resized at its corners; a rectangle stays a rectangle. Hedges and fences take a **height** in the form (a 2.5 m thuja screen, a 0.5 m bed border); **Show the outline** unticked leaves out the glowing line along the edge, say on a plot made of several lawns. **Height offset** lowers an area below the ground or raises it – the driveway down to a lower garage, a raised terrace; lamps on it follow. **Slope** tilts an area: the height difference in metres and the direction it falls towards (the high edge sits at the height offset) – a driveway falling to the street, a sloping garden; fence posts and lamps stand on the sloped surface. **Wild patch** is a type for unmown corners. **Balcony** is for upper floors: a thin slab at the floor's level with a see-through railing of bars (height in the form); edges along a house wall get no railing – balcony doors behind it stay in view. **Cut out of the areas beneath** turns an area into a hole in every area drawn before it that contains it whole – a pond or a wild patch in the middle of one single big lawn. **Pergola / frame** draws corner posts, beams and rafters at the set height, with **X-bracing** on the sides – for pergolas, carport frames or the support of a roll-off roof. Fences and pergolas can stay **open**: the edge from the last point back to the first is left out, so the fence leans against the house. Trees, shrubs and brush come as furniture from the **Garden & Terrace** pack (from release 3: oak, lime, birch, maple, fruit tree, spruce, pine, thuja, shrub, flowering shrub, brush, group of trees); width and height in the furniture form set crown and growth. Path lights, garden spots and outdoor wall lights light the outdoor areas and the facade. **Pool:** pools are drawn with their own **Pool** tool; at the top you choose the shape – **Rectangular**, **Round**, **Oval** or **Free** – and then draw it (round: as wide as the short side of the box). A round or oval pool is resized at the four corners of its box (a circle stays round) or in the form by diameter or width and depth; the shape itself stays. A pool cuts itself out of the lawn around it. **Above-ground pool** stands it on the ground as a tub, with a **pool height**; otherwise it is let into the ground and the water lies below the rim.
+With **Outside → Outdoor** you draw lawn, terrace, path, driveway, flower bed, hedge or fence. Choose in the menu first what you draw; the type can still be changed in the form afterwards. There you also choose **Rectangle** (drag it open) or **Free form**: then you place the corners one by one like a free-form room – for curved beds, slanted plot borders or an L-shaped path; a tap on the first corner or **Enter** closes the area. A selected outdoor area is resized at its corners; a rectangle stays a rectangle. Hedges and fences take a **height** in the form (a 2.5 m thuja screen, a 0.5 m bed border); **Show the outline** unticked leaves out the glowing line along the edge, say on a plot made of several lawns. **Height offset** lowers an area below the ground or raises it – the driveway down to a lower garage, a raised terrace; lamps on it follow. **Slope** tilts an area: the height difference in metres and the direction it falls towards (the high edge sits at the height offset) – a driveway falling to the street, a sloping garden; fence posts and lamps stand on the sloped surface. **Wild patch** is a type for unmown corners. **Balcony** is for upper floors: a thin slab at the floor's level with a see-through railing of bars (height in the form); edges along a house wall get no railing – balcony doors behind it stay in view. **Cut out of the areas beneath** turns an area into a hole in every area drawn before it that contains it whole – a pond or a wild patch in the middle of one single big lawn. **Pergola / frame** draws corner posts, beams and rafters at the set height, with **X-bracing** on the sides – for pergolas, carport frames or the support of a roll-off roof. Fences and pergolas can stay **open**: the edge from the last point back to the first is left out, so the fence leans against the house. Trees, shrubs and brush come as furniture from the **Garden & Terrace** pack (from release 3: oak, lime, birch, maple, fruit tree, spruce, pine, thuja, shrub, flowering shrub, brush, group of trees); width and height in the furniture form set crown and growth. Path lights, garden spots and outdoor wall lights light the outdoor areas and the facade. **Pool:** pools are drawn with **Outside → Pool**; in the menu you choose the shape – **Rectangular**, **Round**, **Oval** or **Free** – and then draw it (round: as wide as the short side of the box). A round or oval pool is resized at the four corners of its box (a circle stays round) or in the form by diameter or width and depth; the shape itself stays. A pool cuts itself out of the lawn around it. **Above-ground pool** stands it on the ground as a tub, with a **pool height**; otherwise it is let into the ground. **Basin depth** is the depth from the rim down to the floor (1.50 m by default), **Rim above the lawn** how far the rim stands out – a 1.50 m deep pool standing 20 cm out of the lawn: depth 1.50, rim 0.20. The water stands 15 cm below the rim; you look through the water onto the basin's walls and floor. The depth shows when the pool lies in a lawn, terrace or other area – without ground around it the basin would show from outside, so it stays flat.
 
 ![The garden at night](images/view-garden.jpg)
 
@@ -371,7 +387,7 @@ With **Outdoor** you draw lawn, terrace, path, driveway, pool, flower bed, hedge
 - Drag the **divider between plan and 3D** to change the ratio. The browser remembers it.
 - At the top of the 3D half you switch between **Tall walls** and **Cut**.
 - You can also tap and drag an item or device in the 3D half. A bar with width, depth, height, height above the floor, rotation and delete appears at the bottom.
-- The sidebar folds away beside the 3D view. Small buttons at the right edge open it again, the pin keeps it open.
+- Without the pin, the sidebar folds away beside the 3D view as soon as you tap something there, and opens over the 3D half; **‹** at the right edge brings it back. With **📌 Pinned** it stays beside it and only folds with **Collapse**.
 
 ### 4.19 Roof
 
@@ -381,7 +397,7 @@ A simple house gets a flat or gable roof over the whole top floor under **Settin
 
 - Choose **Roof sections (custom)** under **Roof**, or the **Roof** tool. The first time, NeonPlan 3D proposes the sections from your rooms: per floor the parts no higher floor covers, each with a gable roof. Then you adjust them.
 - In the **Roof** tool you drag a new section in the plan. Tap selects one, dragging moves it, the corners resize it. At the top you choose the floor whose rooms the plan shows. The 3D view opens beside it with the whole house, so you see every change at once.
-- With the lock **🔓 Fix** (or the key **L**) a finished section stays put and no longer slips when you tap it; **🔒 Floor plan** locks all sections too.
+- With the lock **🔓 Fix** (or the key **L**) a finished section stays put and no longer slips when you tap it; **Lock floor plan** locks all sections too.
 - Each section has a **shape** – gable, hip, half-hip (a gable hipped at the top), pyramid (four slopes to a point), mansard (steep below, flatter above), pent, flat and parapet (a flat roof with a wall ring) – and a **ridge direction** (↔ or ↕).
 - **Eave** and **pitch** are set for both sides separately. All heights count from the ground. A side with a lower eave reaches further down, e.g. a catslide over a low extension. A pent roof rises from the first side; **Swap sides** turns it round.
 - **Top of walls** is the height where the walls below the roof end. A new section takes it from the rooms below, whatever floor the plan shows. Gables and knee walls are built from there up under the roof, so the space under a pent roof is closed too.
@@ -403,7 +419,7 @@ A simple house gets a flat or gable roof over the whole top floor under **Settin
 
 Below the roof sections, **+ Roof window** puts a window into a roof face (78 × 118 cm by default). Drag it in the plan, also onto another roof face. Like a window it has a **Blind**, a **Contact** and a **Tilt contact**: open, the sash swings out, hinged at the top; tilted, a little; the blind comes down over the glass from the top.
 
-Every roof window has a **name** (optional), a **blind**, a **contact** and a **tilt contact** – and a **window motor**: Velux, Roto or Fakro report the window's position as a cover, and the sash opens in 3D as far as the motor stands. Open or tilted, the frame glows warm like a wall window's. In a roof section the window cuts a hole into the slope, so the attic looks out through it.
+Every roof window has a **name** (optional), a **blind**, a **contact** and a **tilt contact** – and a **window motor**: Velux, Roto or Fakro report the window's position as a cover, and the sash opens in 3D as far as the motor stands. Open or tilted, the frame glows warm like a wall window's. In a roof section the window cuts a hole into the slope, so the attic looks out through it. When the roof fades out as you zoom in on a floor or a room, the roof windows fade out with it. With **Show over the room without the roof** a window stays where it is over the room – open, tilted, with its blind. Where the slope reaches over a room of the floor below, the window belongs to that floor and shows with it. Every roof window belongs to the room below it: tap the room and its blind, contact and window motor are in the room card, and when the sun shines on that roof face, its light falls through the window onto the room's floor (less with the blind down).
 
 ### 4.20 Energy: solar fields
 
@@ -420,7 +436,7 @@ Drag fields in the plan and in the **3D view beside it**, also onto another roof
 | **Full black** / **Blue** | Look of the modules: all black (default) or classic blue |
 | **Module width** / **Module height** | Size of one module in portrait, 1.13 × 1.72 m by default |
 | **Module power (Wp)** | Peak power of one module, 400 by default – sets the kWp of the field and its string and how bright the living modules (Energy Pro) glow |
-| **String** | Fields wired together, also on different roofs: e.g. 5 modules on the house and 5 on the garage in "String 1". A string has a name, a PV sensor and an inverter (added under **Devices**) |
+| **String** | Fields wired together, also on different roofs: e.g. 5 modules on the house and 5 on the garage in "String 1". A string has a name, a PV sensor and is **connected to** an inverter – or to a battery with a solar input of its own (a power station such as EcoFlow); add both under **Devices** |
 | **PV power of this field** | The power sensor of its string, for the coming Pro add-on |
 | **Portrait** / **Landscape** | How the modules (1.13 × 1.72 m) lie |
 | **Distance from the edge** / **from the eave** | Position of the field. Drag it in the plan, also onto another roof face; it does not slide beyond the edge of its face |
@@ -436,6 +452,33 @@ Below the field you see its power, counted with 400 W per module. The plan lock 
 **Energy balance:** NeonPlan takes grid, solar and battery from the devices in the plan (meter, inverters, batteries; several add up, charges are averaged). In the **Energy balance** section you choose other sensors, flip signs and set the house consumption. **Take over from the energy dashboard** fetches the sensors you set up in Home Assistant's energy dashboard: for every energy statistic the power sensor of the same device, plus the gas and water meters. Check the signs afterwards. **Gas meter** and **water meter** are counters (a meter reading, e.g. in m³); with Energy Pro the house card shows how much was used today.
 
 At the bottom, a card announces the coming Pro add-on **Energy Pro**. Everything you set up here stays free and is used by it directly.
+
+### 4.21 Cellar and ground
+
+A **cellar** is a floor with a negative **elevation**, e.g. −2.6 m. Without a selection, the sidebar shows the section **Ground** at the bottom:
+
+- **Ground height** (in metres, ground floor = 0) says where the ground lies around the house. Lawns, paths and terraces lie on it. For a **semi-basement** or raised ground floor you lower it as far as the cellar should show, e.g. to −1.2 m. If the house then stands higher than the ground, it gets a **plinth** down to the ground in 3D – nothing floats.
+- **Show cellars in the earth:** floors below the ground sit in the earth in 3D. Open the cellar and you see it as in a building pit, with the earth walls around it. Unticked, they stand free as before.
+- **Reset the ground** sets everything back.
+
+**Cellar window:** in a window's form, **Cellar window** sets the right size – 100 × 50 cm, 25 cm under the ceiling. A window below the ground gets a **light well** with a grate in 3D by itself. In the window form, the tick **Light well** takes it away again (e.g. where a path runs past outside); **Rim above the ground** raises the rim and grate so a gravel or paved path around the house does not cover them. Where a lawn, path or terrace of the garden tool reaches over the well up to the house, its rim stands just above that surface by itself.
+
+### 4.22 Awnings
+
+Under **Furniture → Terrace & balcony** there is the **Awning**. In 3D it runs out and in with its cover – like a blind.
+
+- **Kind:** **Folding-arm** (the classic over a terrace), **Drop-arm** (balcony, window – the arms swing out and down), **Vertical / ZIP** (the fabric runs straight down in side rails), **Pergola / conservatory** (a fixed frame with posts, the fabric runs out on top) and **Side awning** (a privacy screen pulled out sideways from a post). Choosing a kind sets its usual sizes, which you then adjust.
+- **Size:** width is the awning along the wall, depth its projection fully out (for a drop-arm the arm length, for a pergola up to the posts). The back of the frame goes against the house wall; **Height above the floor** is the cassette's underside (for a side awning the fabric's height). **Fall** is the fabric's slope.
+- **Awning (cover):** the cover from Home Assistant. If it reports its position while it runs, the awning runs out slowly in 3D; if it only says opening/closing, it moves at its **Run time fully out**. A separate **Position sensor** works too. **Reverse direction** helps with covers that report 100 % while the awning is in.
+- **Valance:** the fabric edge hanging at the front, can be switched off.
+
+### 4.23 Waste bins and mailboxes
+
+Under **Furniture → Household** you find the **waste bin** and the **mailbox**.
+
+- **Waste bin – shape:** wheelie bin 120 l or 240 l, 1100 l container, multi-compartment bin, bag, caddy / pail or underground container (only its column stands out of the ground). The shape sets the usual size.
+- **Waste:** general, food / organic, paper, packaging, glass, garden, recycling or other. It gives the bin the colours usual in your country (by the country set in Home Assistant: in Germany paper is blue and food waste brown, in the US recycling is blue; in Australia the lid tells the kind). **Colour** and **lid** can be changed freely afterwards.
+- **Mailbox – shape:** wall mailbox (hanging at 1 m), mailbox on a post with a flag, post box with a newspaper holder, parcel box or mailbox bank.
 
 ---
 
@@ -461,6 +504,8 @@ The 3D view has three levels:
 
 ### 5.2 The switches at the bottom
 
+The switches for walls, floors, roof, heat map and the Pro displays are in the **Show ▾** menu at the bottom left; a tap beside it closes it.
+
 | Switch | Effect |
 |---|---|
 | **Tall walls** / **Cut** | Walls at full height, the front ones as tinted glass, or all walls cut at hip height – tall furniture (wardrobe, stairs, tall units) is cut with them, so it hides nothing behind it. Each device remembers the choice |
@@ -473,7 +518,7 @@ The 3D view has three levels:
 | **Weather** | Weather outside, Pro, see [6.2](#62-weather-outside) |
 | **⏪ Time travel** | Replay the last 24 hours in the house, view only, Pro, see [6.7](#67-time-travel) |
 | **≡ / ↔** (right end of the floor and room bar) | Wrap the bar at the top onto several lines when many rooms do not fit in one, or back to one line; in one line it scrolls sideways, on a PC with the mouse wheel too. In the house view the rooms of every floor follow its name |
-| **⚙** (phones only, top, next to the version) | Opens and folds the view options quality, look, markers and FPS; so the header takes only two lines on a phone |
+| **⚙** (at the top next to the version) | Unfolds and folds the view options quality, look, icons and FPS; so the header stays slim |
 | **Eye** (bottom left, next to the magnifier) | Hides everything that is not the 3D view: header, floor and room bar, energy values, floor pictures, switches. The stage alone remains – half a screen more on a phone. A tap on the eye brings it all back; rooms can still be tapped. The device remembers the choice |
 
 ![Cut view](images/view-cut.jpg)
@@ -732,7 +777,7 @@ Car Pro lives on the **parking spot**, not on the vehicle furniture. If your car
 
 ![Time travel: the floor at 07:42 with the time bar](images/view-timetravel.jpg)
 
-> **🧪 Supporter beta:** Time travel is the first add-on that comes as a beta with the [Supporter Pass](https://mastershort.de/en/neonplan3d/supporters/) first. Supporters test it early and give feedback in the Discord channel **#beta-feedback** (button **Feedback on Discord** under *Extensions*, or **🧪 BETA** at the top of the time bar). Once it is finished, everyone can buy it on its own in the shop. Until then *Extensions* marks it "Beta · supporters first".
+> **For everyone in the shop:** since 1.17, time travel is sold on its own in the shop; the [Supporter Pass](https://mastershort.de/en/neonplan3d/supporters/) includes it. Thanks to all supporters who tested it in the beta.
 
 Time travel replays the last 24 hours – or, if you like, the last 7 days – in the house, from the history Home Assistant records anyway (the recorder): lights with brightness and colour, doors and windows, blinds, motion, heating, TV and speakers, temperatures, power, weather and the sun's position. Everything stays in Home Assistant, and **nothing is switched** – time travel only shows.
 
@@ -753,7 +798,7 @@ Time travel replays the last 24 hours – or, if you like, the last 7 days – i
 
 On a PC: **space** plays or pauses, the **arrow keys** jump 5 minutes (with Shift one hour).
 
-**Events:** the front door (a door with a contact in an outer wall or with the front door look), garage door and gate, a lock is unlocked, the alarm goes off, smoke, gas, carbon monoxide, water, a power outage (the entity under **Report a power outage with**), a window is open while it rains, motion at night (11 pm to 5 am, motion sensors only – by day motion gets no dot, or the bar would fill up; scrubbing still shows it), the robot vacuum starts and is done, washing machine, dryer and dishwasher are done (the power drops after a run; the power sensor is linked to the item or placed as a device right next to it). The same thing again shortly after counts once. **People are never an event**, and time travel does not show where anyone was.
+**Events:** the front door (a door with a contact in an outer wall or with the front door look), garage door and gate, a lock is unlocked, the alarm goes off, smoke, gas, carbon monoxide, water, a power outage (the entity under **Report a power outage with**), a window is open while it rains, motion at night (11 pm to 5 am, motion sensors only – by day motion gets no dot, or the bar would fill up; scrubbing still shows it), what a **camera placed in the plan** detects (motion, person, car – day and night; the same camera again only after five minutes), the robot vacuum starts and is done, washing machine, dryer and dishwasher are done (the power drops after a run; the power sensor is linked to the item or placed as a device right next to it). The same thing again shortly after counts once. **People are never an event**, and time travel does not show where anyone was.
 
 **View only:** a tap on a device shows its state at that moment ("On · 35 % · since 19:29"). The room panel shows the values of the moment but takes no input. The star menu, scene buttons, swiping, double tap, quick menu, camera wall and the buttons on the glass cards rest until you are live again.
 
@@ -791,6 +836,20 @@ Not included are camera pictures (the recorder keeps none) and people and their 
 
 **Requirements:** Home Assistant's recorder (it runs by default) and Home Assistant restarted once after the update. How far back the history reaches is set by the recorder's `purge_keep_days` (default 10 days); time travel needs 24 hours of it, the whole week at least 7 days. If you want the week, keep `purge_keep_days` at 7 or more.
 
+### 6.8 Household Pro (beta)
+
+> **Beta, first for supporters:** Household Pro is tested by supporters first (it comes with the [Supporter Pass](https://mastershort.de/en/neonplan3d/supporters/)). Feedback is welcome on Discord in **#beta-feedback** or on GitHub.
+
+Household Pro shows what is due in the household, right where it happens. The waste bins and mailboxes themselves are for everyone (chapter 4.23); Household Pro brings them and other appliances to life. Its fields are in the item's form under **🏠 Household Pro**.
+
+- **Waste bins:** under **Waste calendar or sensor** pick a calendar (e.g. from *Waste Collection Schedule*) or a sensor. In a calendar NeonPlan finds the entries by the words of the bin's waste (paper, food, packaging, PMD, recycling … in many languages); if that does not fit, enter a **word** of your own. A sensor may report the days to the pickup, a date or "tomorrow"/"in 3 days". Every bin with a pickup wears a small **tag** on its lid – "Today", "Tomorrow", "in 3 days" – in its colour; today and tomorrow stand out. A tap on the bin shows its next pickups. **Glow from / until** sets from when the day before until when on pickup day a bin counts as due (for all bins).
+- **Mailbox:** a **post sensor** – a flag (e.g. an input_boolean "post" set by an automation) or the letter flap – and optionally the **sensor of the emptying door**. While post is in it, the mailbox glows and shows "Post" until it is emptied.
+- **Plants:** a plant (plant.*) or a moisture sensor; below the set value (default 20 %) it shows "Thirsty".
+- **Washer, dryer, dishwasher:** with a **time-left sensor** the pin shows "23 min left"; afterwards "Done!" until the door opens (**door sensor**) or it runs again. NeonPlan tells "done" from the appliance's state (finished, done …) or from it having stopped running.
+- **Service and consumables:** any electric item can have a sensor for a filter, salt or rinse aid – a binary sensor (on = due), a number (percent or days left, due at the set value) or a date. When due the item glows yellow.
+- **Fridge:** when a door stands open longer than set (default 2 minutes), NeonPlan warns at the top of the view. The **smart fridge** (side-by-side with moving doors) in the furniture library comes with it.
+- **Today in the household:** a glass card at the top right lists what is due – bins today and tomorrow, post, finished appliances, thirsty plants, services due, open fridge doors. A tap opens the device, its header folds it. In the dashboard card `household_card: false` switches it off.
+
 ---
 
 ## 7. Extensions, shop and furniture packs
@@ -813,8 +872,9 @@ After that:
 - **Everything keeps working offline.** Installed packs are checked locally, the shop is never needed for that.
 - **Disconnect** removes the key. Installed packs stay.
 - **Pack updates:** When a bought pack grows, the page shows once what was added.
-- **New in the shop:** With a shop connection the page shows the packs and Pro add-ons you do not have yet at the top, with **NEW** for fresh ones. When there is something new, a small dot lights up on the **✦ Extensions** tab. Without a key NeonPlan 3D never contacts the shop.
+- **New in the shop:** With a shop connection the page shows the packs and Pro add-ons you do not have yet at the top, with **NEW** for fresh ones. A badge on the **✦ Extensions** tab shows what is waiting: **"2 ready"** for bought or given packs that can be installed or updated, **"3 new"** for new offers in the shop (only once you have bought something; the offers are always here anyway). When a pack newly belongs to you (bought or a gift), Home Assistant also announces it once under **Notifications** (several packs at once in one notice); it is dismissed when the pack is installed. Without a key NeonPlan 3D never contacts the shop.
 - **Loyalty discount:** With your first purchase you get a personal discount code for every further pack and Pro add-on (not for bundles). It is in the order e-mail, in your account and at the top under **New in the shop**; tapping an offer puts it straight into the cart.
+- **4 furniture packs as a gift:** With a shop connection, if you have not subscribed to the NeonPlan newsletter yet, a small box shows here. After signing up and confirming by mail, the taster packs living room, kitchen, bedroom and bathroom (4 items each) appear under Extensions by themselves – at the next daily check at the latest, at once with **Check now**. **Don't show again** hides the box on this device.
 
 **Several installations:** A key is connected to at most three installations at a time. If you move to new hardware, simply connect the new installation, the oldest one then drops out. Up to five new connections are possible per year. The **Installation id** at the top is an anonymous fingerprint of your installation.
 
@@ -832,21 +892,40 @@ The middle row of tiles shows the Pro add-ons. Active ones carry a ✓, locked o
 | Bathroom | Washbasins, showers, bathtubs, WCs |
 | Kids, Office & gaming, Garden & terrace, Garage & workshop, Fitness, Smart home & tech | Furniture and devices for each area |
 | Vehicles | Cars, vans, motorbikes and more for parking spots |
-| Stairs & railings | Straight, L- and U-shaped stairs, spiral stairs, space-saver stairs, outdoor steps, landing, railings in metal, glass and wood |
-| Home cinema & hi-fi | Screen, projector, speakers, subwoofer, AV receiver, turntable, cinema seats, smart speakers and smart displays – devices glow while playing |
+| Stairs & railings (16) | Straight, L- and U-shaped stairs, straight stairs open below, with winders or with a corner landing at the foot, open U-stairs with two quarter turns, spiral stairs, space-saver stairs, outdoor steps, landing, railings in metal, glass and wood |
+| Home cinema & hi-fi | Screen, projector, speakers, subwoofer, AV receiver, turntable, cinema seats, smart speakers and smart displays – devices glow while playing; the roll-down screen goes up and down with its motor's cover (run time, position sensor and reverse direction as for the curtain) |
 | Utility & building services | Boiler, heat pump, buffer tank, ventilation, meter cabinet, water softener, chest freezer, ironing station |
 | Pets | Cat tree, dog bed, feeder, water fountain, litter box, cages, aquarium and terrarium with light |
-| Architecture & fit-out | Columns, beams, chimney, fireplace, glass partition, sliding wall, light cove, LED niche, platform |
+| Architecture & fit-out | Columns, beams, chimney, fireplace, glass partition, sliding wall, light cove, LED niche, platform, motorised curtain (opens with its cover, to both sides or, under **Opens to**, only to the left or right; under **Motor (cover)** also run time, a live position sensor as for blinds and **Reverse direction**) |
 
 Devices in packs have a small glowing part (display, status LED): linked to a media player, a switch or a light it lights up while the device runs; an aquarium glows in its light's colour.
 
-At the bottom of the page you find your installed packs with **Remove**. Below is **Import furniture packs …** for pack files: free sampler packs from the newsletter, downloads from the website or installations without internet. You can pick several files at once.
+At the bottom of the page a **bar** sums up your installed packs (furniture packs with their number of items, and add-ons); **Show the list** opens the list with **Remove**. The shop connection sums up your purchases the same way – installed, updates, not installed yet – with **Install/update all**. Below is **Import furniture packs …** for pack files: free sampler packs from the newsletter, downloads from the website or installations without internet. You can pick several files at once.
 
 **Good to know:**
 
 - Packs are digitally signed. Only packs from the publisher can be imported, changed files are refused.
 - If you remove a pack, its furniture stays in the plan as plain boxes. Import it again and it is back, with all its links.
 - A newer version of a pack replaces the old one without losing anything in the plan.
+
+### 7.4 Fun packs
+
+**Fun packs** are free extras just for fun – for everyone with a customer account at mastershort.de. No purchase is needed:
+
+- **With a shop connection** they are already in your account. Under **Extensions** they are among your packs with **Install**; Home Assistant also announces new fun packs once under Notifications.
+- **Without an account** you create one for free: **🎁 Create a free customer account** under **🎈 Fun packs** (or in the notice in the 3D view), confirm your e-mail, paste the licence key from the mail under **Shop connection**. Then the fun packs show up to install – and from then on new packs too, right in the app.
+
+Switch them on and off under **🎈 Fun packs** afterwards.
+
+**Pets:** a cat, a rabbit or a dog – as a dachshund, pug, terrier, labrador or shepherd – lives in your 3D house. **+ Add a pet** sets one up: kind, breed (for dogs), name, fur and the floor it starts on. **Show the pets** switches all of them on and off; in the dashboard card the option **Show the pets** (YAML `pets: false`) leaves them out of that card, e.g. on the wall tablet.
+
+- The pets walk through the doors from room to room and **up and down the stairs** – they get around the whole house. A door whose contact reports it shut stops them; doors without a sensor count as open.
+- They rest at their favourite places: a cat walks up to a **sofa, an armchair or a bed** and jumps on from the front, a dog lies down in front of it. From the Pets pack, cats like the cat bed, cave and scratching tree, dogs the dog bed, basket and kennel; they drop by the **bowls**, the feeder and the water fountain.
+- **At night** (the sun in Home Assistant has set) they sleep curled up, with a little "z Z".
+- Colourful **fish** swim in the Pets pack's **aquariums**.
+- They are only drawn while one moves – resting, they cost nothing, even on old wall tablets.
+
+**Halloween:** 13 decorations in the furniture library under **Fun pack: Halloween** – a jack-o'-lantern, a small pumpkin, a pumpkin trio, a cobweb (for the corner under the ceiling), a bat garland, two gravestones, a skeleton, a witch's cauldron, a candelabra, orange string lights, a ghost figure and a witch's broom. Pumpkin, cauldron and candles glow when you link a light. A little **ghost** floats through the house now and then – right through the walls, more often at night. **Let the ghost float** under **🎈 Fun packs** switches it off; in the dashboard card the option **Show the Halloween ghost** (YAML `ghost: false`) leaves it out of that card. The ghost, too, is only drawn while it is on its way.
 
 ---
 
@@ -954,6 +1033,8 @@ Under **Backup** in the editor:
 - **Full backup:** **Back up everything (plan, pictures, packs)** saves one file with the plan, every background and screen picture and the installed packs. **Restore a full backup …** brings it back into the same or another installation. Every pack is checked again. Packs signed for another installation are fetched there again through the shop connection. The licence key is not in the file.
 
 Home Assistant's own backup includes NeonPlan 3D completely as well.
+
+**From other programs:** the **import page** (<https://neonplan3d.mastershort.de/import/>, also under **Backup → To the import page**) turns plans of other programs into a NeonPlan file: Sweet Home 3D (`.sh3d`), iPhone/iPad LiDAR scans (RoomPlan JSON), CAD drawings (`.dxf`), 3D models from Blender, SketchUp & co. (`.glb`, `.gltf`, `.obj`, `.stl`), Floorplanner and Valetudo robot vacuum maps. It shows a preview with rooms, doors, windows and furniture, lets you rename rooms and, depending on the format, set the unit, the layers or the floor levels; the file stays on your computer. Load the downloaded file here with **Import …**. If you would rather let an AI write the plan, the template is in [docs/ai-import.md](https://github.com/Mastershort/neonplan3d/blob/main/docs/ai-import.md); the import page checks and repairs the result.
 
 ---
 

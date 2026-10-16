@@ -13,7 +13,7 @@ test("a lamp switched by a relay takes colour and brightness from its colour ent
   // the bulb unavailable: the relay's own (plain) glow
   assert.deepEqual(lightGlow(relay as never, { ...bulb, state: "unavailable" } as never)!.color, [1, 0.71, 0.28]);
 });
-import { appColor, carLocked, invertedCovers, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
+import { climateModeGlow, cooktopLevel, onlyColor, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning, invertedCovers } from "./devices.ts";
 import type { Floor, Opening, Room } from "./model.ts";
 import { centroid, newFloor, pointInPolygon } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -212,6 +212,21 @@ test("entities are grouped by device; the entity without a name of its own is th
   assert.deepEqual(primaryEntities(hass, ids).length, groups.length);
 });
 
+test("a camera is never folded under another entity of its device, even when every entity has a name (#517)", () => {
+  const hass = hassWith();
+  const add = (id: string, name: string) => {
+    hass.entities![id] = { entity_id: id, area_id: "wohnen", device_id: "unifi_cam", name };
+    hass.states[id] = { entity_id: id, state: "on", attributes: { friendly_name: name } };
+  };
+  add("switch.binnen_status_light", "Status light");
+  add("binary_sensor.binnen_motion", "Motion");
+  add("camera.binnen_high_resolution_channel", "High resolution channel");
+  const groups = groupByDevice(hass, ["switch.binnen_status_light", "binary_sensor.binnen_motion", "camera.binnen_high_resolution_channel"]);
+  assert.ok(groups.some((g) => g.primary === "camera.binnen_high_resolution_channel"));
+  // the rest of the device stays one group
+  assert.equal(groups.length, 2);
+});
+
 test("furniture finds its entities in the room's area: the TV, and power sensors by device or name", () => {
   const hass = hassWith();
   const add = (id: string, state: string, attributes: Record<string, unknown>, device?: string) => {
@@ -385,6 +400,21 @@ test("an opening state knows whether a sensor reports it", () => {
   assert.equal(openingState(hass, none, "door").sensed, false);
   assert.equal(openingState(hass, none, "window").sensed, false);
   assert.equal(openingState(hass, { ...none, cover: "cover.tor" }, "garage").sensed, true);
+});
+
+test("a gate on a sliding door moves the leaf and draws no blind; a roller shutter on a door stays a blind (#544)", () => {
+  const hass = {
+    states: {
+      "cover.gate": { entity_id: "cover.gate", state: "open", attributes: { device_class: "gate", current_position: 40 } },
+      "cover.shutter": { entity_id: "cover.shutter", state: "open", attributes: { device_class: "shutter", current_position: 40 } },
+    },
+  } as unknown as HomeAssistant;
+  const none = { cover: null, contact: null, tilt: null, contact2: null, tilt2: null };
+  const gate = openingState(hass, { ...none, cover: "cover.gate" }, "door");
+  assert.equal(gate.cover, null);
+  assert.ok(Math.abs(gate.open - 0.4) < 1e-9);
+  const shutter = openingState(hass, { ...none, cover: "cover.shutter" }, "door");
+  assert.ok(Math.abs((shutter.cover ?? 0) - 0.6) < 1e-9);
 });
 
 test("a garage door reads its contact like a door, and an inverted contact flips open and closed (#329)", () => {
@@ -719,4 +749,34 @@ test("a room without a temperature sensor takes its thermostat's current tempera
   assert.deepEqual(roomClimateSensors(hass, floor, room, "co2"), []);
   // chosen by hand works the same
   assert.equal(roomClimateValue(hass, floor, { ...room, area_id: null, climate: { temperature: "climate.bad" } }, "temperature"), 21.5);
+});
+
+test("a cooktop glows while it runs, faintly when ready, not when inactive (customer mail)", () => {
+  const s = (state: string) => ({ entity_id: "sensor.kochfeld_betriebszustand", state, attributes: { device_class: "enum" } });
+  assert.equal(cooktopLevel(s("run"), false), 1);
+  assert.equal(cooktopLevel(s("ready"), false), 0.3);
+  assert.equal(cooktopLevel(s("inactive"), false), 0);
+  // a cooktop behind a power plug: power over the threshold counts as cooking
+  assert.equal(cooktopLevel(undefined, true), 1);
+  assert.ok(isActive(s("run")));
+});
+
+test("an air conditioner glows in the colour of its mode, dimmer while idle", () => {
+  const c = (state: string, hvac_action?: string) => ({ entity_id: "climate.klima", state, attributes: hvac_action ? { hvac_action } : {} });
+  assert.equal(climateModeGlow(c("off")), null);
+  const heat = climateModeGlow(c("heat", "heating"))!;
+  assert.ok(heat.color[0] > heat.color[2] && heat.level === 1);
+  const cool = climateModeGlow(c("cool", "idle"))!;
+  assert.ok(cool.color[2] > cool.color[0] && cool.level < 1);
+  const auto = climateModeGlow(c("heat_cool", "cooling"))!;
+  assert.ok(auto.color[1] > auto.color[0] && auto.color[1] > auto.color[2]);
+});
+
+test("a lamp with one colour only glows for that colour (customer mail: yellow = water)", () => {
+  const g = (color: [number, number, number]) => ({ color, level: 1 });
+  assert.ok(onlyColor(g([1, 0.85, 0]), "#ffd400"));
+  assert.equal(onlyColor(g([1, 0, 0]), "#ffd400"), null);
+  assert.equal(onlyColor(g([0, 0.3, 1]), "#ffd400"), null);
+  assert.equal(onlyColor(g([1, 0.95, 0.9]), "#ffd400"), null);
+  assert.ok(onlyColor(g([1, 0, 0]), null));
 });

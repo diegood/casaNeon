@@ -185,3 +185,18 @@ test("events: a power outage when the outage entity starts to report one (a grid
     [["outage", at(9 * H)]],
   );
 });
+
+test("a camera's detections count day and night, the same camera again after five minutes (Alex, beta)", () => {
+  const tl = timeline({
+    "binary_sensor.cam_person": rows([0, "off"], [12 * H, "on"], [12 * H + 60, "off"], [12 * H + 120, "on"], [12 * H + 180, "off"], [12 * H + 600, "on"], [12 * H + 660, "off"]),
+    "binary_sensor.flur_bewegung": rows([0, "off"], [12 * H, "on"], [12 * H + 60, "off"]),
+  });
+  const roles = new Map<string, Role>([
+    ["binary_sensor.cam_person", "camera"],
+    ["binary_sensor.flur_bewegung", "motion"],
+  ]);
+  const ev = findEvents({ timeline: tl, roles, weather: null });
+  // noon: the camera counts, the motion sensor does not; the camera's second detection within 2 minutes not, the third after 10 minutes again
+  assert.deepEqual(ev.filter((e) => e.kind === "camera").map((e) => (e.t / 1000 - DAY - 12 * H) / 60), [0, 10]);
+  assert.equal(ev.filter((e) => e.kind === "motion").length, 0);
+});

@@ -329,6 +329,8 @@ clearTimeout(this.cleanTimer);
               .markerNames=${this._config?.marker_names === true}
               .central=${this._config?.central !== false}
               .walkable=${this._config?.walk !== false}
+              .petsOn=${this._config?.pets !== false}
+              .ghostOn=${this._config?.ghost !== false}
               .buttons=${this._config?.buttons?.map((b, i) => ({ id: `card_${i}`, ...b })) ?? null}
               .heatMode=${heat}
               .theme=${this._config?.theme ?? "neon"}
@@ -343,6 +345,7 @@ clearTimeout(this.cleanTimer);
               .floorStack=${c?.floor_stack ?? "dim"}
               .panelOpen=${!!this._roomId && c?.room_panel !== false}
               .alerts=${c?.alerts !== false}
+              .householdCard=${c?.household_card !== false}
               .alertJump=${!!c?.alert_jump}
               .scenes=${c?.scenes !== false}
               ?trail=${!!c?.motion_trail}
@@ -356,7 +359,7 @@ clearTimeout(this.cleanTimer);
                 if (!this._clean) this.armClean();
                 else clearTimeout(this.cleanTimer);
               }}
-              ?weather=${c?.weather !== false}
+              .weather=${c?.weather !== false}
               .weatherEntityId=${c?.weather_entity ?? null}
               .dimmed=${this._night}
               .autoOrbit=${this._orbit}
@@ -387,6 +390,7 @@ clearTimeout(this.cleanTimer);
               ?readOnly=${tt}
               .room=${b.floors.flatMap((f) => f.rooms).find((r) => r.id === this._roomId) ?? null}
               .floor=${b.floors.find((f) => f.rooms.some((r) => r.id === this._roomId)) ?? null}
+              .building=${b}
               .confirmEntities=${confirmEntities(this.hass, b.floors)}
               @close=${() => (this._roomId = null)}
             ></fp3d-room-panel>`

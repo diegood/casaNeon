@@ -111,6 +111,10 @@ export interface Opening {
   contact_invert?: boolean;
   /** Windows: no rain warning for this one (it may stay open in the rain, under a canopy, D328). */
   rain_ignore?: boolean;
+  /** Windows below the ground: false leaves out the light well (a path runs past the window, #524). */
+  well?: boolean;
+  /** How far the light well's rim and grate stand above the ground in m (null = level with it), e.g. above gravel. */
+  well_rim?: number | null;
   /** Highlight in 3D while open (null, default) or while closed (a WC or a child's room door). */
   mark?: "closed" | null;
   /** Ask before moving the blind or garage door; it then does not follow a swipe either. */
@@ -134,6 +138,8 @@ export interface ScreenPicture {
 export interface Furniture {
   /** Fixed against moving by accident. */
   locked?: boolean | null;
+  /** Furniture block: items with the same group id are selected, moved and turned together (a kitchen, a wall unit). */
+  group?: string | null;
   /** Pool Pro, sand filter: the six-way valve's position (null = filter). */
   valve_position?: ValvePosition | null;
   /** Pool Pro, ball valve: closed stops the water (null / true = open). */
@@ -153,6 +159,47 @@ export interface Furniture {
   show_name?: boolean;
   /** Lamps: how strongly the lamp glows in 3D, 0.1–1.5 (1 = as bright as the light reports) – #181. */
   glow_scale?: number | null;
+  /**
+   * Lamps: glow only while the light shows this colour ("#rrggbb", similar shades count) – a colour light used as a
+   * signal (yellow: water) does not show its other colours here. Null: every colour.
+   */
+  only_color?: string | null;
+  /** With a power sensor: the item counts as running above this many watts (null = the default, 10 W). */
+  run_w?: number | null;
+  /** Awning: the fabric's fall in degrees (null = 12°). */
+  awning_pitch?: number | null;
+  /** Awning: false leaves out the valance hanging from the front bar. */
+  awning_valance?: boolean;
+  /** Awning: a sensor with the position while it moves (0–100), for covers that only report at the end. */
+  awning_position?: EntityRef;
+  /** Awning: seconds it takes to run out fully, to move along when the cover only says opening or closing (null = 20 s). */
+  awning_time?: number | null;
+  /** Awning: the cover counts the other way round (100 = in). */
+  awning_invert?: boolean;
+  /** Waste bin: what goes in (decides its usual colours and its words in the waste calendar; null = rest). */
+  bin_kind?: "rest" | "bio" | "paper" | "plastic" | "glass" | "garden" | "recycling" | "other" | null;
+  /** Waste bin: its body colour ("#rrggbb"; null = the usual one of its kind in the country). */
+  bin_color?: string | null;
+  /** Waste bin: its lid colour ("#rrggbb"; null = like the body, or the country's usual lid). */
+  bin_lid?: string | null;
+  /** Haushalt Pro: the waste calendar (calendar.*) or a sensor with the next pickup of this bin. */
+  bin_source?: EntityRef;
+  /** Haushalt Pro: own words that find this bin's entries in the calendar (comma separated; null = by its kind). */
+  bin_match?: string | null;
+  /** Haushalt Pro, mailbox: the sensor of the door it is emptied through (post counts until it opens). */
+  mailbox_door?: EntityRef;
+  /** Haushalt Pro, plant: a plant.* entity or a soil moisture sensor; thirsty below `moisture_min`. */
+  moisture?: EntityRef;
+  /** Haushalt Pro, plant: the moisture (%) below which it is thirsty (null = 20). */
+  moisture_min?: number | null;
+  /** Haushalt Pro, washer, dryer, dishwasher: the time left (minutes, an end time or "H:MM"). */
+  remaining?: EntityRef;
+  /** Haushalt Pro: a consumable or service of the item (a filter, salt, rinse aid): due when on, at or below `service_min`, or its date. */
+  service?: EntityRef;
+  /** Haushalt Pro: the number (percent or days left) at or below which the service is due (null = 10). */
+  service_min?: number | null;
+  /** Haushalt Pro, fridge: minutes a door may stand open before it warns (null = 2). */
+  door_alarm?: number | null;
   /** An own symbol for the marker: a Material Design icon name without "mdi:" (null = by kind). */
   icon?: string | null;
   /** Linked entity, e.g. the TV's media player (null = automatic, "none" = none). */
@@ -473,6 +520,11 @@ export interface RoofWindow {
   name?: string | null;
   /** Fixed: cannot be moved by accident. */
   locked?: boolean;
+  /**
+   * Stays over its room when the roof fades out (zooming in on a floor or a room), open or shut, the blind down or
+   * up (#482). Off (the default): the window shows in the roof only and fades out with it.
+   */
+  float?: boolean;
 }
 
 /** A string of solar modules: one or more fields wired together to one inverter. */
@@ -516,7 +568,32 @@ export interface MediaPreset {
   content: string;
 }
 
+/** Fun pack "pets": an animal living in the 3D house. */
+export interface Pet {
+  id: string;
+  kind: "cat" | "dog" | "rabbit";
+  name: string;
+  /** Fur colour preset (see PET_FURS). */
+  fur: string;
+  /** A dog's breed (see DOG_BREEDS; null: labrador). */
+  breed?: string | null;
+  /** The floor it lives on (null: the ground floor). */
+  floor_id?: string | null;
+}
+
+export const PET_FURS = ["orange", "tabby", "black", "white", "grey", "brown", "calico", "golden", "cream"] as const;
+/** The furs each kind comes in (the first is the default). */
+export const PET_FURS_OF: Record<Pet["kind"], readonly string[]> = {
+  cat: ["orange", "tabby", "black", "white", "grey", "calico", "cream"],
+  dog: ["golden", "cream", "brown", "black", "white", "grey"],
+  rabbit: ["white", "grey", "brown", "black", "cream"],
+};
+/** Dog breeds, small to large. */
+export const DOG_BREEDS = ["dachshund", "pug", "terrier", "labrador", "shepherd"] as const;
+
 export interface BuildingSettings {
+  /** Fun pack "pets": the animals and whether they are shown. */
+  pets?: { on: boolean; list: Pet[] } | null;
   /** Stations and playlists for the speakers' quick menu (Klang & Kino). */
   media_presets?: MediaPreset[];
   /** Favourites of the house: scenes, scripts, automations, buttons and switches in the central menu of the 3D view (#145). */
@@ -545,6 +622,12 @@ export interface BuildingSettings {
   outage_entity?: string | null;
   /** Sunlight falls through the windows as patches on the floor (default on, #266). */
   sun_patches?: boolean;
+  /** The ground around the house: its height and the earth around cellars. */
+  terrain?: Terrain | null;
+  /** Haushalt Pro: from which hour the day before a bin glows (null = 14) and until which hour on the day (null = 12). */
+  household?: { bin_from?: number | null; bin_until?: number | null } | null;
+  /** Fun pack "Halloween": the ghost that floats through the house now and then (on unless switched off). */
+  halloween?: { ghost?: boolean } | null;
   /** Plan lock: rooms, walls, doors, windows and outdoor areas cannot be moved by accident. */
   lock_plan?: boolean;
   /** The camera the house view opens with (3D view, card, kiosk); null = fitted from the front left. */
@@ -625,12 +708,50 @@ export function outdoorDrop(a: OutdoorArea, x: number, z: number): number {
 
 /** Height of the surface of an area at a point, in floor coordinates (offset and slope included). */
 export function outdoorTopAt(floor: Floor, a: OutdoorArea, x: number, z: number): number {
-  return groundLevel(floor) + (a.offset ?? 0) + OUTDOOR_TOP[a.type] - outdoorDrop(a, x, z);
+  return areaGround(floor, a) + OUTDOOR_TOP[a.type] - groundDrop(floor, a, x, z);
+}
+
+/**
+ * The ground around the house: its height (m, the ground floor at 0). Floors that reach below it stand in the
+ * earth: a cellar, the lower part of a semi-basement.
+ */
+export interface Terrain {
+  /** Null = 0.2 m under the ground floor (as before). */
+  level?: number | null;
+  /** The earth around floors below the ground (default on). */
+  earth?: boolean;
+}
+
+/** Default ground: the lawn 0.2 m under the ground floor. */
+export const DEFAULT_GROUND = -0.2;
+
+let terrainNow: { set: boolean; level: number } = { set: false, level: DEFAULT_GROUND };
+
+/** The plan's ground for the height functions below (set with the building, like the packs). */
+export function setTerrain(b: Pick<Building, "settings"> | null): void {
+  const t = b?.settings.terrain ?? null;
+  terrainNow = { set: t?.level != null, level: t?.level ?? DEFAULT_GROUND };
+}
+
+/** Height of the ground (m, the ground floor at 0). */
+export function terrainAt(_x?: number, _z?: number): number {
+  return terrainNow.level;
 }
 
 /** Ground level in floor coordinates: below the ground floor slab (0.2 m), the floor itself further up. */
 export function groundLevel(floor: Floor): number {
-  return floor.elevation > 0.3 ? 0 : -0.2;
+  if (floor.elevation > 0.3) return 0;
+  return terrainNow.set ? terrainNow.level - floor.elevation : DEFAULT_GROUND;
+}
+
+/** The level an outdoor area starts from, in floor coordinates: the ground and its own offset. */
+export function areaGround(floor: Floor, a: OutdoorArea): number {
+  return groundLevel(floor) + (a.offset ?? 0);
+}
+
+/** How far an outdoor area's surface lies below its level at a point: its own slope (pools stay level). */
+export function groundDrop(_floor: Floor, a: OutdoorArea, x: number, z: number): number {
+  return a.type === "pool" ? 0 : outdoorDrop(a, x, z);
 }
 
 /** Height outdoor lamps stand on at a point: ground level, or the top of a terrace or bed there. */
@@ -679,6 +800,10 @@ export interface OutdoorArea {
   pool_shape?: "round" | "oval" | null;
   /** Pool: an above-ground pool (a tub standing on the ground, `height` tall) instead of one let into the ground. */
   above?: boolean;
+  /** Pool: depth of the basin from the rim down to its floor (m); null = 1.5 m, an above-ground pool its wall height. */
+  depth?: number | null;
+  /** Pool in the ground: how far the rim stands above the lawn (m); null = 6 cm. */
+  rim?: number | null;
   /** Pool Pro: the pool's entities (water temperature, heat pump, filter pump, light, pH, chlorine, cover). */
   pool?: PoolLinks | null;
 }
@@ -713,6 +838,8 @@ export interface PoolPort {
   kind: "skimmer" | "drain" | "inlet" | "waste";
   x: number;
   z: number;
+  /** Skimmer and inlet: how far below the water line it sits (m); null = the skimmer at the water line, an inlet 30 cm deep. */
+  depth?: number | null;
 }
 
 /**
@@ -768,10 +895,37 @@ export interface PoolJoint {
 export type ValvePosition = "filter" | "backwash" | "rinse" | "waste" | "recirculate" | "closed";
 export const VALVE_POSITIONS: ValvePosition[] = ["filter", "backwash", "rinse", "waste", "recirculate", "closed"];
 
-/** Height of a pool's water surface in floor coordinates: below the ground, or near the rim of an above-ground pool. */
+/** Top of a pool's rim in floor coordinates: a little (or `rim` metres) above the lawn, or an above-ground pool's wall height. */
+export function poolRimY(floor: Floor, a: OutdoorArea): number {
+  const g = areaGround(floor, a);
+  return g + (a.above ? poolHeight(a) : Math.min(2, Math.max(-0.3, a.rim ?? 0.06)));
+}
+
+/** A pool's depth from the rim down to its floor (m): its own, else 1.5 m in the ground or the wall height of an above-ground pool. */
+export function poolDepth(a: OutdoorArea): number {
+  return a.depth && a.depth >= 0.3 ? Math.min(5, a.depth) : a.above ? poolHeight(a) : 1.5;
+}
+
+/**
+ * Whether a pool lies in the ground: inside a lawn, terrace or other flat area that hides its basin. Without one
+ * nothing covers the basin below the ground (the ground grid is see-through), so it is drawn shallow as before.
+ */
+export function poolSunken(floor: Floor, a: OutdoorArea): boolean {
+  if (a.above) return false;
+  return (floor.outdoor ?? []).some(
+    (b) => b !== a && b.type !== "pool" && !outdoorStanding(b.type) && !b.cut && b.points.length >= 3 && a.points.every((p) => pointInPolygon(p, b.points)),
+  );
+}
+
+/** Height of a pool's floor in floor coordinates (a pool without ground around it: just under its water). */
+export function poolFloorY(floor: Floor, a: OutdoorArea): number {
+  if (!a.above && !poolSunken(floor, a)) return poolWaterY(floor, a) - 0.05;
+  return poolRimY(floor, a) - poolDepth(a);
+}
+
+/** Height of a pool's water surface in floor coordinates: 15 cm below the rim (the middle of the skimmer). */
 export function poolWaterY(floor: Floor, a: OutdoorArea): number {
-  const g = groundLevel(floor) + (a.offset ?? 0);
-  return a.above ? g + poolHeight(a) - 0.15 : g + OUTDOOR_TOP.pool;
+  return poolRimY(floor, a) - 0.15;
 }
 
 /** Wall height of an above-ground pool (m). */
@@ -942,6 +1096,7 @@ export const FURNITURE_TYPES = [
   "lamp_bollard",
   "lamp_garden",
   "radiator",
+  "ac_unit",
   "sofa",
   "sofa_l",
   "sofa_u",
@@ -1000,6 +1155,9 @@ export const FURNITURE_TYPES = [
   "parking",
   "fridge_smart",
   "stairwell",
+  "awning",
+  "waste_bin",
+  "mailbox",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
@@ -1010,8 +1168,10 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
   sleeping: ["bed", "bunk_bed", "nightstand", "wardrobe", "dresser"],
   bath: ["bathtub", "shower", "wc", "washbasin", "washer", "dryer"],
-  work: ["desk", "worktop", "office_chair", "tall_cabinet", "coat_rack", "radiator", "stairs", "stairs_u", "robot_vacuum"],
+  work: ["desk", "worktop", "office_chair", "tall_cabinet", "coat_rack", "radiator", "ac_unit", "stairs", "stairs_u", "robot_vacuum"],
   vehicles: ["parking"],
+  outdoor: ["awning"],
+  household: ["waste_bin", "mailbox"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1146,6 +1306,15 @@ export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: strin
       return Math.max(0, 1.3 - f.h / 2);
     case "radiator":
       return 0.12;
+    case "ac_unit":
+      // an air conditioner's indoor unit hangs high on the wall
+      return 2.05;
+    case "awning":
+      // the cassette over a terrace door
+      return 2.3;
+    case "mailbox":
+      // a wall mailbox and a mailbox bank hang on the wall
+      return f.variant === "bank" ? 0.75 : f.variant === "pole" || f.variant === "pillar" || f.variant === "parcel" ? 0 : 1.0;
     case "inverter":
       return 1.1;
     case "wallbox":
@@ -1169,6 +1338,8 @@ export function surfaceHeight(floor: Floor, x: number, z: number): number {
 export const ELECTRIC_FURNITURE = new Set<string>([
   ...LAMP_TYPES,
   "radiator",
+  "ac_unit",
+  "awning",
   "robot_vacuum",
   "inverter",
   "home_battery",
@@ -1249,6 +1420,12 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   lamp_bollard: [0.16, 0.16, 0.8],
   lamp_garden: [0.12, 0.12, 0.3],
   radiator: [1.0, 0.1, 0.6],
+  ac_unit: [0.85, 0.22, 0.3],
+  // width along the wall, the projection (how far it reaches out fully extended), the cassette
+  awning: [3.0, 2.5, 0.22],
+  // a 240 l wheelie bin; a wall mailbox
+  waste_bin: [0.58, 0.73, 1.07],
+  mailbox: [0.38, 0.14, 0.34],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

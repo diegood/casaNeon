@@ -80,7 +80,8 @@ function openingItem(o: Opening, s: number): WallItem {
 }
 
 /** Furniture at this wall (inside the room, its back within WALL_REACH of the wall, overlapping its length). */
-export function furnitureOnWall(f: WallFrame, floor: Floor, room: Room): WallItem[] {
+/** `reach`: how far from the wall a piece still counts (the technical room shows pool devices further out). */
+export function furnitureOnWall(f: WallFrame, floor: Floor, room: Room, reach = WALL_REACH): WallItem[] {
   const out: WallItem[] = [];
   for (const m of floor.furniture) {
     if (m.type === "stairwell" || m.type === "parking") continue;
@@ -92,7 +93,7 @@ export function furnitureOnWall(f: WallFrame, floor: Floor, room: Room): WallIte
     // the piece's centre lies on the room's side of the wall (a sofa of the neighbouring room does not count)
     const centre = toWall(f, [m.x, m.z]);
     if (!inRoom && centre.d <= 0) continue;
-    if (centre.d <= 0 || d > WALL_REACH || d < -0.3 || s1 < 0.02 || s0 > f.length - 0.02) continue;
+    if (centre.d <= 0 || d > reach || d < -0.3 || s1 < 0.02 || s0 > f.length - 0.02) continue;
     const y0 = mountBase(floor, m);
     out.push({ kind: "furniture", id: m.id, s0, s1, y0, y1: y0 + m.h, d });
   }

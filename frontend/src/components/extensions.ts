@@ -3,7 +3,8 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import { importPack, removePack } from "../api.ts";
-import { FEATURES, knownFeature, manualUrl, released, unlockedFeatures } from "../features.ts";
+import { FEATURES, FUN, knownFeature, manualUrl, released, unlockedFeatures } from "../features.ts";
+import { DOG_BREEDS, PET_FURS_OF, type Building, type Pet } from "../model.ts";
 import { translate, type I18nKey } from "../i18n.ts";
 import { packName, type FurniturePack } from "../packs.ts";
 import { controls, tokens } from "../styles.ts";
@@ -13,16 +14,23 @@ export class Extensions extends LitElement {
   static properties = {
     hass: { attribute: false },
     packs: { attribute: false },
+    building: { attribute: false },
     _packMsg: { state: true },
   };
 
   declare hass: HomeAssistant | undefined;
   declare packs: FurniturePack[] | undefined;
+  /** The plan (the fun packs keep their settings in it, e.g. the pets). */
+  declare building: Building | null | undefined;
   private declare _packMsg: { ok: boolean; text: string } | null;
 
   constructor() {
     super();
     this._packMsg = null;
+  }
+
+  private get isAdmin(): boolean {
+    return this.hass?.user?.is_admin ?? false;
   }
 
   private t(key: I18nKey, vars?: Record<string, string | number>): string {
@@ -56,7 +64,101 @@ export class Extensions extends LitElement {
           )}
         </div>
       </section>
-      ${this.renderPacks()}
+      ${this.renderFun(unlocked)} ${this.renderPacks()}
+    </div>`;
+  }
+
+  /** A changed plan goes to the panel, which saves it. */
+  private editBuilding(fn: (b: Building) => void): void {
+    if (!this.building) return;
+    const next = structuredClone(this.building);
+    fn(next);
+    this.dispatchEvent(new CustomEvent("building-edit", { detail: next, bubbles: true, composed: true }));
+  }
+
+  /** Fun packs: free extras, switched on and off here, the pets with their names, kinds and fur. */
+  private renderFun(unlocked: Set<string>) {
+    const shown = FUN.filter((f) => unlocked.has(f));
+    if (!shown.length) return nothing;
+    const pets = this.building?.settings.pets ?? null;
+    const list = pets?.list ?? [];
+    const on = pets?.on !== false;
+    // the floors to live on, lowest first (a pet without a floor lives on the lowest)
+    const floors = (this.building?.floors ?? []).filter((f) => f.rooms.length).sort((a, b) => a.elevation - b.elevation);
+    const set = (fn: (p: { on: boolean; list: Pet[] }) => void) =>
+      this.editBuilding((b) => {
+        const p = { on: b.settings.pets?.on !== false, list: [...(b.settings.pets?.list ?? [])] };
+        fn(p);
+        b.settings.pets = p;
+      });
+    const change = (id: string, patch: Partial<Pet>) => set((p) => (p.list = p.list.map((x) => (x.id === id ? { ...x, ...patch } : x))));
+    return html`<section class="fp3d-ext-card">
+      <h3>🎈 ${this.t("fun_title")}</h3>
+      <p class="fp3d-sub">${this.t("fun_intro")}</p>
+      ${shown.map((f) =>
+        f === "fun_halloween"
+          ? this.renderHalloween()
+          : html`<div class="fp3d-ext-feature fp3d-ext-on">
+              <b>✓ ${this.t("fun_name_pets")}</b>
+              <span class="fp3d-sub">${this.t("fun_feature_pets")}</span>
+              ${this.isAdmin && this.building
+                ? html`<label class="fp3d-check"><input type="checkbox" .checked=${on} @change=${(e: Event) => set((p) => (p.on = (e.target as HTMLInputElement).checked))} /> ${this.t("pets_show")}</label>
+                    ${list.map(
+                      (pet) => html`<div class="fp3d-pet-row">
+                        <select
+                          aria-label=${this.t("pet_kind")}
+                          @change=${(e: Event) => {
+                            // another kind: a fur it comes in, a dog a breed
+                            const kind = (e.target as HTMLSelectElement).value as Pet["kind"];
+                            const furs = PET_FURS_OF[kind];
+                            change(pet.id, { kind, fur: furs.includes(pet.fur) ? pet.fur : furs[0], breed: kind === "dog" ? (pet.breed ?? "labrador") : null });
+                          }}
+                        >
+                          ${(["cat", "dog", "rabbit"] as const).map((k) => html`<option value=${k} ?selected=${pet.kind === k}>${this.t(`pet_kind_${k}`)}</option>`)}
+                        </select>
+                        ${pet.kind === "dog"
+                          ? html`<select aria-label=${this.t("pet_breed")} @change=${(e: Event) => change(pet.id, { breed: (e.target as HTMLSelectElement).value })}>
+                              ${DOG_BREEDS.map((r) => html`<option value=${r} ?selected=${(pet.breed ?? "labrador") === r}>${this.t(`pet_breed_${r}`)}</option>`)}
+                            </select>`
+                          : nothing}
+                        <input type="text" maxlength="30" .value=${pet.name} placeholder=${this.t("pet_name")} aria-label=${this.t("pet_name")} @change=${(e: Event) => change(pet.id, { name: (e.target as HTMLInputElement).value.trim() })} />
+                        <select aria-label=${this.t("pet_fur")} @change=${(e: Event) => change(pet.id, { fur: (e.target as HTMLSelectElement).value })}>
+                          ${PET_FURS_OF[pet.kind].map((c) => html`<option value=${c} ?selected=${pet.fur === c}>${this.t(`pet_fur_${c}` as I18nKey)}</option>`)}
+                        </select>
+                        ${floors.length > 1
+                          ? html`<select title=${this.t("pet_floor")} aria-label=${this.t("pet_floor")} @change=${(e: Event) => change(pet.id, { floor_id: (e.target as HTMLSelectElement).value || null })}>
+                              ${floors.map((fl, i) => html`<option value=${i === 0 ? "" : fl.id} ?selected=${(pet.floor_id ?? floors[0].id) === fl.id}>🏠 ${fl.name}</option>`)}
+                            </select>`
+                          : nothing}
+                        <button class="fp3d-btn" title=${this.t("delete")} @click=${() => set((p) => (p.list = p.list.filter((x) => x.id !== pet.id)))}>✕</button>
+                      </div>`,
+                    )}
+                    ${list.length < 8
+                      ? html`<button class="fp3d-btn" @click=${() =>
+                          set((p) => p.list.push({ id: `pet_${Date.now().toString(36)}`, kind: "cat", name: "", fur: PET_FURS_OF.cat[p.list.length % PET_FURS_OF.cat.length] }))}>+ ${this.t("pet_add")}</button>`
+                      : nothing}`
+                : nothing}
+            </div>`,
+      )}
+    </section>`;
+  }
+
+  /** Fun pack "Halloween": decorations in the furniture library, and the ghost to switch on and off. */
+  private renderHalloween() {
+    const ghost = this.building?.settings.halloween?.ghost !== false;
+    return html`<div class="fp3d-ext-feature fp3d-ext-on">
+      <b>✓ 🎃 ${this.t("fun_name_halloween")}</b>
+      <span class="fp3d-sub">${this.t("fun_feature_halloween")}</span>
+      ${this.isAdmin && this.building
+        ? html`<label class="fp3d-check"
+            ><input
+              type="checkbox"
+              .checked=${ghost}
+              @change=${(e: Event) => this.editBuilding((b) => (b.settings.halloween = { ...(b.settings.halloween ?? {}), ghost: (e.target as HTMLInputElement).checked }))}
+            />
+            ${this.t("halloween_ghost")}</label
+          >`
+        : nothing}
     </div>`;
   }
 
@@ -167,6 +269,26 @@ export class Extensions extends LitElement {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 10px;
+      }
+      .fp3d-pet-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin-top: 6px;
+      }
+      .fp3d-pet-row input[type="text"],
+      .fp3d-pet-row select {
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--fp3d-line, rgba(120, 190, 255, 0.25));
+        background: rgba(4, 8, 18, 0.6);
+        color: inherit;
+        font: inherit;
+      }
+      .fp3d-pet-row input[type="text"] {
+        flex: 1;
+        min-width: 110px;
       }
       .fp3d-ext-feature {
         display: grid;

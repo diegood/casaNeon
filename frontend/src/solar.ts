@@ -5,7 +5,7 @@
 // length); on a flat roof s runs across, level. A field's u and v place its lower left corner on the face.
 
 import type { Building, Floor, RoofSection, RoofWindow, SolarField, Vec2 } from "./model.ts";
-import { outdoorGround } from "./model.ts";
+import { outdoorGround, pointInPolygon } from "./model.ts";
 import { generateWalls } from "./geometry/walls.ts";
 import { sectionFrame, sectionOverhang, sectionProfile } from "./roof-sections.ts";
 
@@ -540,6 +540,32 @@ export function windowCorners(face: RoofFace, w: RoofWindow): [V3, V3, V3, V3] |
   // the modules ride 7 cm above the roof on rails; a roof window sits nearly flush
   const down = (p: V3): V3 => [p[0] - face.n[0] * 0.05, p[1] - face.n[1] * 0.05, p[2] - face.n[2] * 0.05];
   return [down(m.corners[0]), down(m.corners[1]), down(m.corners[2]), down(m.corners[3])];
+}
+
+/**
+ * The room under a roof window: the one holding the window's middle in the plan on the highest floor below it,
+ * so the room's card shows it like the windows in its walls and the sun falls through it into that room (#482).
+ */
+export function roofWindowRoom(b: Building, face: RoofFace | undefined, w: RoofWindow): { floor: Floor; roomId: string; corners: [V3, V3, V3, V3] } | null {
+  const c = face ? windowCorners(face, w) : null;
+  if (!c) return null;
+  const x = (c[0][0] + c[2][0]) / 2;
+  const y = (c[0][1] + c[2][1]) / 2;
+  const z = (c[0][2] + c[2][2]) / 2;
+  for (const f of [...b.floors].sort((p, q) => q.elevation - p.elevation)) {
+    if (f.elevation > y) continue;
+    const room = f.rooms.find((r) => pointInPolygon([x, z], r.points));
+    if (room) return { floor: f, roomId: room.id, corners: c };
+  }
+  return null;
+}
+
+/** The roof windows over a room (#482). */
+export function roofWindowsOver(b: Building, roomId: string): RoofWindow[] {
+  const windows = b.settings.roof?.windows ?? [];
+  if (!windows.length) return [];
+  const faces = new Map(roofFaces(b).map((f) => [f.key, f]));
+  return windows.filter((w) => roofWindowRoom(b, faces.get(w.face), w)?.roomId === roomId);
 }
 
 /** A new roof window in the middle of a face, at about head height above the floor below. */

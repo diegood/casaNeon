@@ -162,3 +162,52 @@ test("the water's direction: built from a T-piece outside to the filter's return
   // the ball valve sits in the pipe inside the room
   assert.equal(out.pipes[1].fittings?.[0].kind, "valve");
 });
+
+test("a pipe at the bottom drain leaves under the pool's floor and comes up outside the pool", async () => {
+  const { underBasin } = await import("./pool-runs.ts");
+  const floor = { id: "eg", name: "EG", elevation: 0, height: 2.5, cut_height: 1.15, rooms: [], openings: [], furniture: [], placements: [], background: null } as unknown as Parameters<typeof underBasin>[3];
+  const area = { id: "p", type: "pool", points: [[0, 0], [8, 0], [8, 4], [0, 4]], depth: 1.5, rim: 0.2, pool: { ports: [{ id: "bd", kind: "drain", x: 4, z: 2 }] } } as unknown as Parameters<typeof underBasin>[2];
+  // the pool lies in a lawn (else it is drawn shallow)
+  (floor as unknown as { outdoor: unknown[] }).outdoor = [{ id: "l", type: "lawn", points: [[-5, -5], [20, -5], [20, 10], [-5, 10]] }, area];
+  // the drain at the floor (-1.47), the pipe at -0.3 to a point outside the pool
+  const path = underBasin([[4, -1.47, 2], [4, -0.3, 2], [12, -0.3, 2]], { from: "port:bd", to: "dev:pump" }, area, floor);
+  const low = -1.5 - 0.15;
+  assert.deepEqual(path[1], [4, low, 2]);
+  // under the floor to just past the wall at x = 8, then up to -0.3
+  assert.ok(Math.abs(path[2][0] - 8.08) < 0.01 && path[2][1] === low);
+  assert.ok(Math.abs(path[3][0] - 8.08) < 0.01 && path[3][1] === -0.3);
+  assert.deepEqual(path.at(-1), [12, -0.3, 2]);
+  // a pipe that does not start at the drain stays as it is
+  const same = [[1, 0, 1], [2, 0, 1]] as [number, number, number][];
+  assert.equal(underBasin(same, { from: "port:x", to: "" }, area, floor), same);
+});
+
+test("an inlet's pipe comes straight through the pool wall at its depth, not down through the water", async () => {
+  const { poolWallNormal, underBasin } = await import("./pool-runs.ts");
+  const floor = { id: "eg", name: "EG", elevation: 0, height: 2.5, cut_height: 1.15, rooms: [], openings: [], furniture: [], placements: [], background: null } as unknown as Parameters<typeof underBasin>[3];
+  const area = { id: "p", type: "pool", points: [[0, 0], [8, 0], [8, 4], [0, 4]], pool: { ports: [{ id: "in", kind: "inlet", x: 8, z: 2 }] } } as unknown as Parameters<typeof underBasin>[2];
+  assert.deepEqual(poolWallNormal(area, [8, 2]), [1, 0]);
+  assert.deepEqual(poolWallNormal({ points: [[0, 0], [0, 4], [8, 4], [8, 0]] }, [8, 2]), [1, 0]);
+  // the pipe comes along at -0.3 and goes down into the inlet at -0.45 (the old way: a riser in the water)
+  const path = underBasin([[12, -0.3, 2], [8, -0.3, 2], [8, -0.45, 2]], { from: "dev:filter", to: "port:in" }, area, floor);
+  assert.deepEqual(path.at(-1), [8, -0.45, 2]);
+  // just before it: 35 cm outside the wall at the inlet's depth, and above that the pipe's own height
+  assert.deepEqual(path.at(-2), [8.35, -0.45, 2]);
+  assert.deepEqual(path.at(-3), [8.35, -0.3, 2]);
+});
+
+test("an inlet pipe drawn along the wall line moves out behind the wall: no zigzag (Torsten's T-piece)", async () => {
+  const { underBasin } = await import("./pool-runs.ts");
+  const floor = { id: "eg", name: "EG", elevation: 0, height: 2.5, cut_height: 1.15, rooms: [], openings: [], furniture: [], placements: [], background: null } as unknown as Parameters<typeof underBasin>[3];
+  const area = { id: "p", type: "pool", points: [[3, -7.15], [10.65, -7.15], [10.65, -3.85], [3, -3.85]], pool: { ports: [{ id: "in", kind: "inlet", x: 3, z: -6.55 }] } } as unknown as Parameters<typeof underBasin>[2];
+  // T-piece at x 2.15, the pipe along the wall line x = 3 to the inlet, which sits at -0.59
+  const path = underBasin([[2.15, -0.3, -5.65], [3, -0.3, -5.65], [3, -0.3, -6.55], [3, -0.59, -6.55]], { from: "joint:t:out1", to: "port:in" }, area, floor);
+  const r = (q: number[]) => q.map((v) => Math.round(v * 100) / 100);
+  assert.deepEqual(path.map(r), [
+    [2.15, -0.3, -5.65],
+    [2.65, -0.3, -5.65],
+    [2.65, -0.3, -6.55],
+    [2.65, -0.59, -6.55],
+    [3, -0.59, -6.55],
+  ]);
+});

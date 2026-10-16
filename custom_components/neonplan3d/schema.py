@@ -153,6 +153,9 @@ OPENING_SCHEMA = vol.Schema(
         vol.Optional("contact_invert", default=False): bool,
         # no rain warning for this window
         vol.Optional("rain_ignore", default=False): bool,
+        # a window below the ground: its light well (False: none) and how far its rim stands above the ground
+        vol.Optional("well", default=True): bool,
+        vol.Optional("well_rim", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=-0.3, max=1))),
         # highlight in 3D while open (None) or while closed ("closed": a WC or a child's room door)
         vol.Optional("mark", default=None): vol.Any(None, vol.In(["closed"])),
         # ask before moving the blind or garage door (no moving by a swipe then)
@@ -194,6 +197,9 @@ CAR_SCHEMA = vol.Schema(
 _VEHICLE_TYPE_SCHEMA = vol.Schema(
     {vol.Required("state"): vol.All(str, vol.Length(max=64)), vol.Required("vehicle"): vol.All(str, vol.Length(max=96))}
 )
+
+# the kinds of waste a bin can take (household.ts WASTE_KINDS)
+WASTE_KINDS = ["rest", "bio", "paper", "plastic", "glass", "garden", "recycling", "other"]
 
 FURNITURE_SCHEMA = vol.Schema(
     {
@@ -255,6 +261,26 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("color_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # mirrored left-right
         vol.Optional("mirror", default=False): bool,
+        # awning: the fabric's fall (degrees), the valance, a position sensor, its run time and the other direction
+        vol.Optional("awning_pitch", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=80))),
+        vol.Optional("awning_valance", default=True): bool,
+        vol.Optional("awning_position", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("awning_time", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=2, max=300))),
+        vol.Optional("awning_invert", default=False): bool,
+        # household: a waste bin's kind and colours, its calendar (Haushalt Pro); a mailbox's emptying door
+        vol.Optional("bin_kind"): vol.Any(None, vol.In(WASTE_KINDS)),
+        vol.Optional("bin_color"): vol.Any(None, vol.Match(r"^#[0-9a-fA-F]{6}$")),
+        vol.Optional("bin_lid"): vol.Any(None, vol.Match(r"^#[0-9a-fA-F]{6}$")),
+        vol.Optional("bin_source"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("bin_match"): vol.Any(None, vol.All(str, vol.Length(max=120))),
+        vol.Optional("mailbox_door"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        # Haushalt Pro: a plant's moisture, an appliance's time left, a service, a fridge's door alarm
+        vol.Optional("moisture"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("moisture_min"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=100))),
+        vol.Optional("remaining"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("service"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("service_min"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=1000))),
+        vol.Optional("door_alarm"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0.5, max=120))),
         # LED strip: tilt about its length (degrees) and standing upright
         vol.Optional("tilt", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("upright", default=False): bool,
@@ -272,6 +298,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("scale", default=1.0): vol.All(vol.Coerce(float), vol.Range(min=0.2, max=2)),
         vol.Optional("type_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("types", default=[]): vol.All([_VEHICLE_TYPE_SCHEMA], vol.Length(max=20)),
+        # furniture block: items with the same group id move and turn together (a kitchen, a wall unit)
+        vol.Optional("group", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
         # fixed against moving by accident
         vol.Optional("locked", default=None): vol.Any(None, bool),
     },
@@ -341,6 +369,8 @@ POOL_PORT_SCHEMA = vol.Schema(
         vol.Required("kind"): vol.In(["skimmer", "drain", "inlet", "waste"]),
         vol.Required("x"): vol.Coerce(float),
         vol.Required("z"): vol.Coerce(float),
+        # skimmer and inlet: how far below the water line (m)
+        vol.Optional("depth", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=5))),
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -425,6 +455,9 @@ OUTDOOR_SCHEMA = vol.Schema(
         vol.Optional("pool_shape", default=None): vol.Any(None, vol.In(["round", "oval"])),
         # pools: standing on the ground instead of let into it
         vol.Optional("above", default=False): bool,
+        # pool: depth of the basin (rim to floor) and, in the ground, the rim's height above the lawn
+        vol.Optional("depth", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=5))),
+        vol.Optional("rim", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=-0.5, max=2))),
         # Pool Pro: the pool's entities
         vol.Optional("pool", default=None): vol.Any(None, POOL_SCHEMA),
     },
@@ -530,6 +563,8 @@ ROOF_WINDOW_SCHEMA = vol.Schema(
         vol.Optional("window", default=None): _ENTITY_REF,
         vol.Optional("name", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
         vol.Optional("locked", default=False): bool,
+        # stays over its room when the roof fades out (off: shown in the roof only)
+        vol.Optional("float", default=False): bool,
     },
     extra=vol.ALLOW_EXTRA,
 )
@@ -683,8 +718,66 @@ SETTINGS_SCHEMA = vol.Schema(
         vol.Optional("outage_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # sunlight through the windows as patches on the floor
         vol.Optional("sun_patches", default=True): bool,
+        # fun pack "Halloween": the ghost floating through the house (on unless switched off)
+        # Haushalt Pro: the hours a waste bin glows (from the day before, until on the day)
+        vol.Optional("household"): vol.Any(
+            None,
+            vol.Schema(
+                {
+                    vol.Optional("bin_from"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=24))),
+                    vol.Optional("bin_until"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=24))),
+                },
+                extra=vol.ALLOW_EXTRA,
+            ),
+        ),
+        vol.Optional("halloween", default=None): vol.Any(
+            None, vol.Schema({vol.Optional("ghost", default=True): bool}, extra=vol.ALLOW_EXTRA)
+        ),
+        # the ground around the house: its height and the earth around cellars
+        vol.Optional("terrain", default=None): vol.Any(
+            None,
+            vol.Schema(
+                {
+                    vol.Optional("level", default=None): vol.Any(
+                        None, vol.All(vol.Coerce(float), vol.Range(min=-20, max=20))
+                    ),
+                    vol.Optional("earth", default=True): bool,
+                },
+                extra=vol.ALLOW_EXTRA,
+            ),
+        ),
         vol.Optional("weather_effects", default=None): vol.Any(
             None, [vol.In(["rain", "snow", "fog", "clouds", "lightning", "sky"])]
+        ),
+        # fun pack "pets": animals that live in the 3D house (switched on and off)
+        vol.Optional("pets", default=None): vol.Any(
+            None,
+            vol.Schema(
+                {
+                    vol.Optional("on", default=True): bool,
+                    vol.Optional("list", default=list): vol.All(
+                        [
+                            vol.Schema(
+                                {
+                                    vol.Required("id"): vol.All(str, vol.Length(min=1, max=64)),
+                                    vol.Required("kind"): vol.In(["cat", "dog", "rabbit"]),
+                                    vol.Optional("name", default=""): vol.All(str, vol.Length(max=30)),
+                                    vol.Optional("fur", default="orange"): vol.All(str, vol.Length(max=20)),
+                                    vol.Optional("breed", default=None): vol.Any(
+                                        None, vol.All(str, vol.Length(max=20))
+                                    ),
+                                    vol.Optional("floor_id", default=None): vol.Any(
+                                        None, vol.All(str, vol.Length(max=64))
+                                    ),
+                                },
+                                extra=vol.ALLOW_EXTRA,
+                            )
+                        ],
+                        vol.Length(max=8),
+                    ),
+                },
+                extra=vol.ALLOW_EXTRA,
+            ),
         ),
     },
     extra=vol.ALLOW_EXTRA,

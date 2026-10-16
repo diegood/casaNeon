@@ -100,6 +100,21 @@ function num(st: HassEntity | undefined): number | null {
 }
 
 /** What the pool reports right now (null for anything it does not tell). */
+/**
+ * The pool's links with what its devices in the plan know: a filter pump or heat pump linked to an entity on the
+ * device itself counts as the pool's pump or heater unless the pool names one of its own.
+ */
+export function poolLinksWithDevices(links: PoolLinks | null | undefined, floors: readonly { furniture: readonly { type: string; entity?: string | null }[] }[]): PoolLinks {
+  const l: PoolLinks = { ...(links ?? {}) };
+  const own = (type: string) => {
+    for (const f of floors) for (const m of f.furniture) if (m.type === type && m.entity && m.entity !== "none") return m.entity;
+    return undefined;
+  };
+  if (!l.pump) l.pump = own("pool_pump");
+  if (!l.heater) l.heater = own("pool_heat_pump");
+  return l;
+}
+
 export function poolState(hass: HomeAssistant, links: PoolLinks | null | undefined): PoolState {
   const e = poolEntities(hass, links);
   const st = (id: string | null) => (id ? hass.states[id] : undefined);

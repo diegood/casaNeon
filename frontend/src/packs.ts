@@ -5,6 +5,17 @@
 import { builtinBase, ELECTRIC_FURNITURE, FURNITURE_SIZE, LIFT_SPOTS, spotDepth, surfaceHeight, WALL_LAMP_Y, type Floor, type Furniture } from "./model.ts";
 import type { LampModel } from "./viewer/viewer3d.ts";
 
+/** A cooking zone of a pack cooktop: a thin disc lying on the item's top. */
+export function isCooktopZone(p: Pick<PackPart, "shape" | "y" | "h" | "axis">): boolean {
+  return p.shape === "cyl" && (p.axis ?? "y") === "y" && p.y > 0.9 && p.h < 0.02;
+}
+
+/** A pack item with a cooktop (a hob unit, a cooker, an island with a hob): its zones glow while it cooks. */
+export function isPackCooktop(type: string): boolean {
+  const item = packItem(type);
+  return !!item && /(hob|cooker|stove|herd)/.test(type) && item.parts.filter(isCooktopZone).length >= 2;
+}
+
 export interface PackPart {
   /** A box, a cylinder, or a loft: a box whose top face is another rectangle (sloped sides). */
   shape: "box" | "cyl" | "loft";
@@ -105,6 +116,29 @@ export function packType(packId: string, itemId: string): string {
 
 export function isPackType(type: string): boolean {
   return type.startsWith("pack:");
+}
+
+/**
+ * Pack items with parts that move with a cover (#511): a motorised curtain opens to both sides, a roll-down projection
+ * screen comes down from its roller. The packs stay as they are; NeonPlan knows these items by their id.
+ */
+export type PackMotion = "curtain" | "screen";
+
+export function packMotion(type: string): PackMotion | null {
+  if (!isPackType(type)) return null;
+  if (type.endsWith(":curtain_motor")) return "curtain";
+  if (type.endsWith(":screen_roll")) return "screen";
+  return null;
+}
+
+/** The parts that move: the curtain's fabric; the screen's cloth and bottom bar (everything but its roller). */
+export function packMovingPart(kind: PackMotion, p: PackPart): boolean {
+  return kind === "curtain" ? p.color === "fabric" : p.shape !== "cyl";
+}
+
+/** A robot vacuum: the built-in dock, or one from a pack (the smart home pack's robot with its dock, #470). */
+export function isRobotVacuum(type: string): boolean {
+  return type === "robot_vacuum" || (isPackType(type) && type.endsWith(":robot_vacuum"));
 }
 
 /** The pack item of a furniture type (undefined for built-in types and removed packs). */

@@ -1,5 +1,8 @@
 """Start views of the house, a floor and a room (#206, #282)."""
 
+import pytest
+import voluptuous as vol
+
 from custom_components.neonplan3d.schema import (
     FURNITURE_SCHEMA,
     HOLOGRAM_SCHEMA,
@@ -64,3 +67,70 @@ def test_length_units_follow_home_assistant_unless_set() -> None:
     base = {"wall_exterior": 0.3, "wall_interior": 0.12, "grid": 0.05}
     assert SETTINGS_SCHEMA(base)["units"] is None
     assert SETTINGS_SCHEMA({**base, "units": "imperial"})["units"] == "imperial"
+
+
+def test_furniture_block() -> None:
+    """Furniture blocks: items with the same group id move together; none by default."""
+    item = {"id": "f1", "type": "kitchen", "x": 0, "z": 0, "rotation": 0, "w": 0.6, "d": 0.6, "h": 0.9, "variant": None}
+    assert FURNITURE_SCHEMA(item)["group"] is None
+    assert FURNITURE_SCHEMA({**item, "group": "block_1"})["group"] == "block_1"
+
+
+def test_pool_depth_rim_and_port_depth() -> None:
+    """A pool's basin depth and rim, and how deep an inlet sits below the water line."""
+    from custom_components.neonplan3d.schema import OUTDOOR_SCHEMA, POOL_PORT_SCHEMA
+
+    pool = {"id": "p", "type": "pool", "points": [[0, 0], [8, 0], [8, 4], [0, 4]]}
+    assert OUTDOOR_SCHEMA(pool)["depth"] is None
+    out = OUTDOOR_SCHEMA({**pool, "depth": 1.5, "rim": 0.2})
+    assert (out["depth"], out["rim"]) == (1.5, 0.2)
+    assert POOL_PORT_SCHEMA({"id": "i", "kind": "inlet", "x": 1, "z": 0, "depth": 0.3})["depth"] == 0.3
+
+
+def test_household_fields_are_kept_and_checked() -> None:
+    """A waste bin keeps its kind, colours and calendar; a mailbox its door; wrong values are refused."""
+    base = {
+        "id": "b1",
+        "type": "waste_bin",
+        "x": 1,
+        "z": 1,
+        "rotation": 0,
+        "w": 0.58,
+        "d": 0.73,
+        "h": 1.07,
+        "variant": None,
+    }
+    out = FURNITURE_SCHEMA(
+        {
+            **base,
+            "bin_kind": "paper",
+            "bin_color": "#1f4fa8",
+            "bin_lid": None,
+            "bin_source": "calendar.abfall",
+            "bin_match": "Papier",
+        }
+    )
+    assert out["bin_kind"] == "paper" and out["bin_source"] == "calendar.abfall"
+    assert "bin_kind" not in FURNITURE_SCHEMA(base)
+    mail = FURNITURE_SCHEMA({**base, "type": "mailbox", "mailbox_door": "binary_sensor.door"})
+    assert mail["mailbox_door"] == "binary_sensor.door"
+    extras = FURNITURE_SCHEMA(
+        {
+            **base,
+            "type": "washer",
+            "remaining": "sensor.left",
+            "service": "binary_sensor.salt",
+            "service_min": 5,
+            "moisture": None,
+            "door_alarm": 3,
+        }
+    )
+    assert (extras["remaining"], extras["service"], extras["service_min"], extras["door_alarm"]) == (
+        "sensor.left",
+        "binary_sensor.salt",
+        5,
+        3,
+    )
+    for bad in ({"bin_kind": "nuclear"}, {"bin_color": "blue"}, {"moisture_min": 150}, {"door_alarm": 0}):
+        with pytest.raises(vol.Invalid):
+            FURNITURE_SCHEMA({**base, **bad})

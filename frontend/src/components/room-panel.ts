@@ -7,7 +7,8 @@ import { formatNumber, translate, type I18nKey } from "../i18n.ts";
 import { hasFeature } from "../features.ts";
 import { iconPath } from "../icons.ts";
 import { openMoreInfo, stateText } from "../markers.ts";
-import type { Floor, Room } from "../model.ts";
+import type { Building, Floor, Room } from "../model.ts";
+import { roofWindowsOver } from "../solar.ts";
 import { controls, tokens } from "../styles.ts";
 import type { HassEntity, HomeAssistant } from "../types.ts";
 
@@ -45,6 +46,7 @@ export class Fp3dRoomPanel extends LitElement {
     hass: { attribute: false },
     room: { attribute: false },
     floor: { attribute: false },
+    building: { attribute: false },
     confirmEntities: { attribute: false },
     readOnly: { type: Boolean },
     _showAll: { state: true },
@@ -55,6 +57,8 @@ export class Fp3dRoomPanel extends LitElement {
   declare room: Room | null;
   /** Floor of the room: the panel shows what the plan shows in the room. */
   declare floor: Floor | null;
+  /** The whole building: the roof windows over the room show in its card too. */
+  declare building: Building | null;
   /** Entities that ask before they are switched. */
   declare confirmEntities: Set<string> | null;
   /** Time travel: the panel shows the past and switches nothing. */
@@ -64,13 +68,14 @@ export class Fp3dRoomPanel extends LitElement {
   /** Bumped every few seconds while the panel is open, so camera snapshots refresh. */
   private declare _tick: number;
   private cameraTimer: ReturnType<typeof setInterval> | undefined;
-  private memo: { entities: HomeAssistant["entities"]; floor: Floor | null; room: Room; shown: string[]; more: string[] } | null = null;
+  private memo: { entities: HomeAssistant["entities"]; floor: Floor | null; building: Building | null; room: Room; shown: string[]; more: string[] } | null = null;
   private hasCameras = false;
 
   constructor() {
     super();
     this.room = null;
     this.floor = null;
+    this.building = null;
     this.readOnly = false;
     this._showAll = false;
     this._tick = 0;
@@ -139,9 +144,15 @@ export class Fp3dRoomPanel extends LitElement {
     // worked out once per registry, room and floor (every state change renders the panel again)
     const m = this.memo;
     const { shown, more } =
-      m && m.entities === this.hass.entities && m.floor === this.floor && m.room === room
+      m && m.entities === this.hass.entities && m.floor === this.floor && m.building === this.building && m.room === room
         ? m
-        : (this.memo = { entities: this.hass.entities, floor: this.floor, room, ...(this.floor ? roomPanelEntities(this.hass, this.floor, room) : { shown: all, more: [] }) });
+        : (this.memo = {
+            entities: this.hass.entities,
+            floor: this.floor,
+            building: this.building,
+            room,
+            ...(this.floor ? roomPanelEntities(this.hass, this.floor, room, this.building ? roofWindowsOver(this.building, room.id) : []) : { shown: all, more: [] }),
+          });
     const extra = groupByDevice(this.hass, more).map((g) => g.primary);
     const hiddenCount = extra.length;
     const ids = this._showAll ? [...shown, ...extra] : shown;

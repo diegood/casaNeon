@@ -17,6 +17,8 @@ export interface PoolPiece {
   color: [number, number, number];
   /** How strongly the water glows (0..1). */
   level: number;
+  /** Height of the pool's floor (the caustics lie there); null = no basin (only the surface glows). */
+  floorY?: number | null;
   /** The filter pump runs: the water moves. */
   flow: boolean;
   /** The heat pump heats: a warm shimmer. */
@@ -39,6 +41,7 @@ const WATER_FRAG = /* glsl */ `
   uniform float uLevel;
   uniform float uFlow;
   uniform float uHeat;
+  uniform float uSurface;
   varying vec2 vXZ;
   float wave(vec2 p, float t) {
     return sin(p.x * 3.1 + t * 1.3) * sin(p.y * 2.7 - t * 1.1) + 0.5 * sin((p.x + p.y) * 4.3 + t * 1.7);
@@ -48,7 +51,10 @@ const WATER_FRAG = /* glsl */ `
     float c = wave(vXZ, t) + wave(vXZ * 1.7 + 3.0, t * 1.3);
     // bright lines where the waves cross: the caustics of light under moving water
     float caustic = pow(clamp(1.0 - abs(c) * 0.55, 0.0, 1.0), 5.0);
-    vec3 col = uColor * uLevel * (0.55 + (0.35 + 0.6 * uFlow) * caustic);
+    // the surface of a pool with a basin is a faint shimmer, the light's pattern lies on the floor below
+    float base = mix(0.32, 0.16, uSurface);
+    float lines = mix(0.35 + 0.6 * uFlow, 0.18 + 0.3 * uFlow, uSurface);
+    vec3 col = uColor * uLevel * (base + lines * caustic);
     col += vec3(1.0, 0.42, 0.12) * uHeat * 0.07 * (0.6 + 0.4 * sin(t * 1.7 + vXZ.x * 2.0 + vXZ.y));
     gl_FragColor = vec4(col, 1.0);
   }
@@ -80,21 +86,29 @@ export function buildPools(pieces: PoolPiece[], time: { value: number }): Group 
   const group = new Group();
   for (const p of pieces) {
     if (p.points.length < 3) continue;
-    const water = new Mesh(
-      sheet(p.points, p.y + 0.004),
-      new ShaderMaterial({
-        uniforms: { uTime: time, uColor: { value: p.color }, uLevel: { value: p.level }, uFlow: { value: p.flow ? 1 : 0 }, uHeat: { value: p.heat ? 1 : 0 } },
-        vertexShader: WATER_VERT,
-        fragmentShader: WATER_FRAG,
-        transparent: true,
-        blending: AdditiveBlending,
-        depthWrite: false,
-        side: DoubleSide,
-      }),
-    );
-    water.renderOrder = 5;
-    water.frustumCulled = false;
-    group.add(water);
+    const basin = p.floorY !== undefined && p.floorY !== null && p.floorY < p.y - 0.2;
+    const layer = (y: number, surface: number) => {
+      const m = new Mesh(
+        sheet(p.points, y),
+        new ShaderMaterial({
+          uniforms: { uTime: time, uColor: { value: p.color }, uLevel: { value: p.level }, uFlow: { value: p.flow ? 1 : 0 }, uHeat: { value: p.heat ? 1 : 0 }, uSurface: { value: surface } },
+          vertexShader: WATER_VERT,
+          fragmentShader: WATER_FRAG,
+          transparent: true,
+          blending: AdditiveBlending,
+          depthWrite: false,
+          side: DoubleSide,
+        }),
+      );
+      m.renderOrder = 5;
+      m.frustumCulled = false;
+      group.add(m);
+    };
+    // a basin: the caustics on its floor, a faint shimmer on the surface; without one the surface glows as before
+    if (basin) {
+      layer(p.floorY! + 0.01, 0);
+      layer(p.y + 0.004, 1);
+    } else layer(p.y + 0.004, 0);
     if (p.cover > 0.02) {
       // the cover rolls along the pool's long side, from its first end
       const xs = p.points.map((q) => q[0]);

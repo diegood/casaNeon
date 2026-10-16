@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { hasFeature, manualUrl, unlockedFeatures } from "./features.ts";
 
 test("every released feature is unlocked without any pack", () => {
-  for (const f of ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "fridge_smart"] as const) assert.equal(hasFeature(f), true);
-  assert.deepEqual([...unlockedFeatures()].sort(), ["auto_pro", "camera_cockpit", "energy_pro", "fridge_smart", "screens", "sound", "time_travel", "weather"]);
+  for (const f of ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "household", "fridge_smart", "fun_pets", "fun_halloween"] as const) assert.equal(hasFeature(f), true);
+  assert.deepEqual([...unlockedFeatures()].sort(), ["auto_pro", "camera_cockpit", "energy_pro", "fridge_smart", "fun_halloween", "fun_pets", "household", "screens", "sound", "time_travel", "weather"]);
 });
 
 test("manual links point Pro add-ons at their section on GitHub", () => {

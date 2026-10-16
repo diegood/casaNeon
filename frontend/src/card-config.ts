@@ -33,6 +33,10 @@ export interface CardConfig {
   central?: boolean;
   /** The walk through the house at eye height (default on). */
   walk?: boolean;
+  /** Fun pack "pets": the animals set up in the extensions show in this card (default on). */
+  pets?: boolean;
+  /** Fun pack "Halloween": the ghost floats through this card's house too (default on). */
+  ghost?: boolean;
   /** Own buttons in the central menu (replace the ones set in the editor): label, icon, action, target, data (D143). */
   buttons?: { label: string; icon?: string; action: "navigate" | "more_info" | "service" | "fire_dom_event"; target?: string; data?: Record<string, unknown> }[];
   /** Heatmap of the rooms: none | temperature | humidity | co2. */
@@ -80,6 +84,8 @@ export interface CardConfig {
   weather?: boolean;
   /** The weather entity to use (default: the first one). */
   weather_entity?: string;
+  /** Haushalt Pro: the glass card "Today in the household" (bins, post, appliances, plants …; default on). */
+  household_card?: boolean;
   /** Pro: a "Time travel" button replays the last 24 hours in the card (read-only). */
   time_travel?: boolean;
   /** How far back the time travel starts: 24 hours (default) or the week ("7d" also on a wall tablet, which else holds two days). */

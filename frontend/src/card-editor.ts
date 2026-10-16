@@ -3,6 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import { fetchBuilding } from "./api.ts";
+import { labOn, UNRELEASED } from "./features.ts";
 import { CARD_CONTROLS, type CardConfig, type CardControl } from "./card-config.ts";
 import { translate, type I18nKey } from "./i18n.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -31,12 +32,15 @@ const DEFAULTS: Partial<CardConfig> = {
   scenes: true,
   motion_trail: false,
   time_travel: false,
+  household_card: true,
   weather: true,
   idle_return: 0,
   controls_hidden: false,
   controls_hide_after: 0,
   marker_names: false,
   central: true,
+  pets: true,
+  ghost: true,
   night: "off",
   idle_orbit: false,
 };
@@ -102,7 +106,7 @@ export class Floorplan3dCardEditor extends LitElement {
     </label>`;
   }
 
-  private toggle(key: "explode" | "roof_fade" | "camera_wall" | "energy" | "room_panel" | "stats" | "fullscreen_button" | "room_names" | "alerts" | "alert_jump" | "scenes" | "idle_orbit" | "motion_trail" | "time_travel" | "weather", label: I18nKey, hint?: I18nKey) {
+  private toggle(key: "explode" | "roof_fade" | "camera_wall" | "energy" | "room_panel" | "stats" | "fullscreen_button" | "room_names" | "alerts" | "alert_jump" | "scenes" | "idle_orbit" | "motion_trail" | "time_travel" | "household_card" | "weather", label: I18nKey, hint?: I18nKey) {
     const on = this.value[key];
     return html`<label class="toggle">
       <input type="checkbox" .checked=${on} @change=${(e: Event) => this.set(key, (e.target as HTMLInputElement).checked)} />
@@ -147,6 +151,18 @@ export class Floorplan3dCardEditor extends LitElement {
         <input type="checkbox" .checked=${v.central} @change=${(e: Event) => this.set("central", (e.target as HTMLInputElement).checked ? undefined : false)} />
         <span>${this.t("card_central")}<small>${this.t("card_central_hint")}</small></span>
       </label>
+      ${!UNRELEASED.includes("fun_pets") || labOn()
+        ? html`<label class="toggle">
+            <input type="checkbox" .checked=${v.pets} @change=${(e: Event) => this.set("pets", (e.target as HTMLInputElement).checked ? undefined : false)} />
+            <span>${this.t("card_pets")}<small>${this.t("card_pets_hint")}</small></span>
+          </label>`
+        : nothing}
+      ${!UNRELEASED.includes("fun_halloween") || labOn()
+        ? html`<label class="toggle">
+            <input type="checkbox" .checked=${v.ghost} @change=${(e: Event) => this.set("ghost", (e.target as HTMLInputElement).checked ? undefined : false)} />
+            <span>${this.t("card_ghost")}<small>${this.t("card_ghost_hint")}</small></span>
+          </label>`
+        : nothing}
       <label class="toggle">
         <input type="checkbox" .checked=${v.marker_names} @change=${(e: Event) => this.set("marker_names", (e.target as HTMLInputElement).checked ? true : undefined)} />
         <span>${this.t("card_marker_names")}<small>${this.t("card_marker_names_hint")}</small></span>
@@ -237,6 +253,7 @@ export class Floorplan3dCardEditor extends LitElement {
       ${this.toggle("scenes", "card_scenes", "card_scenes_hint")}
       ${this.toggle("motion_trail", "card_motion_trail", "card_motion_trail_hint")} ${this.toggle("camera_wall", "card_camera_wall", "card_camera_wall_hint")}
       ${this.toggle("time_travel", "card_time_travel", "card_time_travel_hint")}
+      ${!UNRELEASED.includes("household") || labOn() ? this.toggle("household_card", "card_household", "card_household_hint") : nothing}
       ${this.toggle("weather", "card_weather", "card_weather_hint")}
       ${v.weather !== false
         ? html`<div class="grid">

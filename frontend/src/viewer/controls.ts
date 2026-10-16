@@ -150,7 +150,7 @@ export class OrbitControls {
 
   private onDown(e: PointerEvent): void {
     this.el.setPointerCapture(e.pointerId);
-    if (this.pointers.size === 0 && e.button === 0 && this.events.grab?.(...this.local(e))) {
+    if (this.pointers.size === 0 && e.button === 0 && this.events.grab && this.events.grab(...this.local(e))) {
       this.grabbing = true;
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, type: e.pointerType });
       this.flight = null;
@@ -182,7 +182,7 @@ export class OrbitControls {
     const p = this.pointers.get(e.pointerId);
     if (!p) return;
     if (this.grabbing) {
-      this.events.drag?.(...this.local(e));
+      if (this.events.drag) this.events.drag(...this.local(e));
       return;
     }
     const dx = e.clientX - p.x;

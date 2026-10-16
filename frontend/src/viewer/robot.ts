@@ -20,6 +20,8 @@ export interface RobotInfo {
   roomId?: string | null;
   /** Footprints of the furniture standing in its way (cabinets, sofas, beds; not tables or chairs). */
   obstacles?: Vec2[][];
+  /** The dock's model shows the robot already (a pack): the moving one only shows while it is away. */
+  inModel?: boolean;
 }
 
 /** Driving speed (m/s) and turning speed (rad/s). */

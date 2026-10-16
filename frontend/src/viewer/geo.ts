@@ -40,8 +40,9 @@ export class GeoBuffer {
     this.c.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
     this.f.push(fold, fold, fold);
     // without explicit uvs, point into an empty spot of the texture
-    this.uv?.push(...(uv ?? [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]));
-    this.tile?.push(...tile, ...tile, ...tile);
+    // no `a?.b(...x)`: old Fire-tablet WebViews (before Chrome 91) fail on it (see build.mjs)
+    if (this.uv) this.uv.push(...(uv ?? [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]));
+    if (this.tile) this.tile.push(...tile, ...tile, ...tile);
   }
 
   get count(): number {
@@ -133,8 +134,8 @@ export function cutAbove(buf: GeoBuffer, fromTri: number, cut: number, fold: num
       buf.p.push(...v.p);
       buf.c.push(...v.c);
       buf.f.push(f);
-      buf.uv?.push(...(v.uv ?? [0.5, 0.5]));
-      buf.tile?.push(...(v.tile ?? [0, 1]));
+      if (buf.uv) buf.uv.push(...(v.uv ?? [0.5, 0.5]));
+      if (buf.tile) buf.tile.push(...(v.tile ?? [0, 1]));
     }
     return tri;
   };
@@ -271,6 +272,8 @@ export function pushLoft(buf: GeoBuffer, lo: Vec2[], hi: Vec2[], y0: number, y1:
  * A cylinder lying along the x or z axis (wheels, rollers, pipes): `at` maps the along-axis value
  * and the across value to world (x, z); `c` is the across-centre, `cy` the centre height.
  */
+type V3 = [number, number, number];
+
 export function pushLyingCyl(buf: GeoBuffer, at: (along: number, across: number) => Vec2, a0: number, a1: number, c: number, cy: number, r: number, side: number, cap: number, n: number): void {
   const capC = new Color(cap);
   const ring: { y: number; s: number }[] = [];
@@ -278,20 +281,39 @@ export function pushLyingCyl(buf: GeoBuffer, at: (along: number, across: number)
     const t = (i / n) * Math.PI * 2;
     ring.push({ y: cy + Math.cos(t) * r, s: c + Math.sin(t) * r });
   }
-  const P = (along: number, i: number) => {
+  const P = (along: number, i: number): V3 => {
     const p = at(along, ring[i % n].s);
     return [p[0], ring[i % n].y, p[1]];
+  };
+  const axis0 = at(a0, c);
+  const axis1 = at(a1, c);
+  // every face turned outwards, whatever way `at` maps the axes (along z the swap of x and z mirrors the winding,
+  // and the two caps need opposite windings): a face pointing inwards is culled and the part looks hollow (#534)
+  const tri = (p: V3, q: V3, w: V3, out: V3, col: Color) => {
+    const n0 = (q[1] - p[1]) * (w[2] - p[2]) - (q[2] - p[2]) * (w[1] - p[1]);
+    const n1 = (q[2] - p[2]) * (w[0] - p[0]) - (q[0] - p[0]) * (w[2] - p[2]);
+    const n2 = (q[0] - p[0]) * (w[1] - p[1]) - (q[1] - p[1]) * (w[0] - p[0]);
+    if (n0 * out[0] + n1 * out[1] + n2 * out[2] < 0) buf.tri(p, w, q, col);
+    else buf.tri(p, q, w, col);
   };
   for (let i = 0; i < n; i++) {
     const mid = ((i + 0.5) / n) * Math.PI * 2;
     const col = shade(side, 0.62 + 0.4 * Math.max(0, Math.cos(mid)));
-    buf.tri(P(a0, i), P(a1, i + 1), P(a1, i), col);
-    buf.tri(P(a0, i), P(a0, i + 1), P(a1, i + 1), col);
+    // outwards: from the axis to the middle of the strip
+    const m = at((a0 + a1) / 2, c + Math.sin(mid) * r);
+    const o = at((a0 + a1) / 2, c);
+    const out: V3 = [m[0] - o[0], Math.cos(mid) * r, m[1] - o[1]];
+    tri(P(a0, i), P(a1, i + 1), P(a1, i), out, col);
+    tri(P(a0, i), P(a0, i + 1), P(a1, i + 1), out, col);
   }
-  for (const along of [a0, a1]) {
+  for (const [along, from, to] of [
+    [a0, axis1, axis0],
+    [a1, axis0, axis1],
+  ] as const) {
     const m = at(along, c);
-    const centre = [m[0], cy, m[1]];
-    for (let i = 0; i < n; i++) buf.tri(centre, P(along, i), P(along, i + 1), capC);
+    const centre: V3 = [m[0], cy, m[1]];
+    const out: V3 = [to[0] - from[0], 0, to[1] - from[1]];
+    for (let i = 0; i < n; i++) tri(centre, P(along, i), P(along, i + 1), out, capC);
   }
 }
 

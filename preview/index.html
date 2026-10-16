@@ -70,6 +70,16 @@
             return async () => listeners.delete(cb);
           },
         },
+        // the REST calls the view makes: only the invented waste calendar (residual waste today, paper tomorrow, bio in 3 days)
+        async callApi(method, path) {
+          if (!path.startsWith("calendars/calendar.abfallkalender")) throw new Error("not in the demo");
+          const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+          return [
+            { summary: "Restmüll", start: { date: day(0) }, end: { date: day(1) } },
+            { summary: "Papiertonne", start: { date: day(1) }, end: { date: day(2) } },
+            { summary: "Biotonne", start: { date: day(3) }, end: { date: day(4) } },
+          ];
+        },
         async callService(domain, service, data) {
           // enough behaviour to see the effect of the room panel and of taps in 3D
           const states = { ...current.states };

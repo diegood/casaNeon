@@ -65,9 +65,12 @@ export function portOffset(f: { type: string; w: number; d: number; h: number; v
     return null;
   }
   if (f.type === "pool_heat_pump") {
-    if (port === "in") return [w / 2 + 0.04, h * 0.25, -d * 0.2];
-    if (port === "out") return [w / 2 + 0.04, h * 0.45, -d * 0.2];
-    return null;
+    // the connections at the right (default), the left or the back – as the heat pump stands
+    const side = f.variant === "left" || f.variant === "back" ? f.variant : "right";
+    if (port !== "in" && port !== "out") return null;
+    const y = port === "in" ? h * 0.25 : h * 0.45;
+    if (side === "back") return [port === "in" ? -w * 0.15 : w * 0.15, y, -d / 2 - 0.04];
+    return [(side === "left" ? -1 : 1) * (w / 2 + 0.04), y, -d * 0.2];
   }
   return null;
 }

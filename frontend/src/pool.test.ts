@@ -88,8 +88,29 @@ test("pool shapes keep inside their box; the water of an above-ground pool sits 
   // a stadium: 4 x 4 rectangle plus a circle of radius 2
   assert.ok(Math.abs(polygonArea(oval) - (16 + Math.PI * 4)) < 0.15);
   const floor = newFloor("eg", "EG", 0);
-  assert.equal(poolWaterY(floor, { id: "p", type: "pool", points: [] }), -0.45);
+  // in the ground (the ground floor's lawn at -0.2): the rim 6 cm above it, the water 15 cm below the rim
+  assert.ok(Math.abs(poolWaterY(floor, { id: "p", type: "pool", points: [] }) - -0.29) < 1e-9);
   assert.ok(Math.abs(poolWaterY(floor, { id: "p", type: "pool", points: [], above: true, height: 1.3 }) - 0.95) < 1e-9);
+});
+
+test("a pool's depth: 1.5 m by default, its own, a rim standing out of the lawn; an above-ground pool's floor on the ground", async () => {
+  const { poolDepth, poolFloorY, poolRimY } = await import("./model.ts");
+  const floor = newFloor("eg", "EG", 0);
+  const pool = { id: "p", type: "pool" as const, points: [[1, 1], [3, 1], [3, 2]] as [number, number][] };
+  // without ground around it the basin stays shallow (nothing would hide it), just under the water
+  floor.outdoor = [pool];
+  assert.ok(Math.abs(poolFloorY(floor, pool) - (-0.2 + 0.06 - 0.15 - 0.05)) < 1e-9);
+  // in a lawn it has its depth
+  floor.outdoor = [{ id: "l", type: "lawn", points: [[0, 0], [10, 0], [10, 10], [0, 10]] }, pool];
+  assert.equal(poolDepth(pool), 1.5);
+  assert.ok(Math.abs(poolFloorY(floor, pool) - (-0.2 + 0.06 - 1.5)) < 1e-9);
+  // Torsten's pool: 1.50 m deep, 20 cm out of the lawn
+  const his = { ...pool, depth: 1.5, rim: 0.2 };
+  floor.outdoor = [floor.outdoor[0], his];
+  assert.ok(Math.abs(poolRimY(floor, his) - 0) < 1e-9);
+  assert.ok(Math.abs(poolFloorY(floor, his) - -1.5) < 1e-9);
+  const tub = { ...pool, above: true, height: 1.2 };
+  assert.ok(Math.abs(poolFloorY(floor, tub) - -0.2) < 1e-9);
 });
 
 test("gas and water meters come from the energy dashboard (sensors only)", async () => {
@@ -98,4 +119,11 @@ test("gas and water meters come from the energy dashboard (sensors only)", async
     proposeMeters({ energy_sources: [{ type: "grid" }, { type: "gas", stat_energy_from: "sensor.gaszaehler" }, { type: "water", stat_energy_from: "external:water" }] }),
     { gas: "sensor.gaszaehler", water: null },
   );
+});
+
+test("a pump or heat pump linked on its device in the plan counts when the pool names none", async () => {
+  const { poolLinksWithDevices } = await import("./pool.ts");
+  const floors = [{ furniture: [{ type: "pool_pump", entity: "switch.garage_poolpumpe" }, { type: "pool_heat_pump", entity: "none" }] }];
+  assert.deepEqual(poolLinksWithDevices({}, floors), { pump: "switch.garage_poolpumpe", heater: undefined });
+  assert.equal(poolLinksWithDevices({ pump: "switch.other" }, floors).pump, "switch.other");
 });

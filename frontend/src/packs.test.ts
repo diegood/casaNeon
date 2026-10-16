@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isLamp, newFloor } from "./model.ts";
-import { furnitureSize, isElectric, mountBase, packDisplay, packItem, packItemName, packName, packType, setPacks, type FurniturePack } from "./packs.ts";
+import { isCooktopZone, isPackCooktop, furnitureSize, isElectric, mountBase, packDisplay, packItem, packItemName, packName, packType, setPacks, type FurniturePack } from "./packs.ts";
 
 const pack: FurniturePack = {
   id: "demo.pack",
@@ -77,5 +77,28 @@ test("a status light is no display: printers ask for a device, TVs for a media p
   ]);
   assert.equal(packDisplay("pack:t:tv"), true);
   assert.equal(packDisplay("pack:t:printer"), false);
+  setPacks([]);
+});
+
+test("a pack cooktop is found by its zones: thin discs on its top (they glow while it cooks)", () => {
+  const zone = { shape: "cyl" as const, x: -0.2, z: -0.2, w: 0.25, d: 0.25, y: 0.99, h: 0.003, color: "metal" };
+  const pack: FurniturePack = {
+    format: "fp3dpack",
+    version: 1,
+    id: "test.kitchen",
+    name: "Küche",
+    publisher: "t",
+    licensee: null,
+    items: [
+      { id: "hob_80", name: "Kochfeld", size: [0.8, 0.62, 0.92], electric: true, parts: [{ shape: "box", x: 0, z: 0, w: 1, d: 1, y: 0, h: 0.95, color: "white" }, zone, { ...zone, x: 0.2 }] },
+      { id: "sideboard", name: "Sideboard", size: [1.6, 0.45, 0.8], parts: [{ shape: "box", x: 0, z: 0, w: 1, d: 1, y: 0, h: 1, color: "wood" }, zone, { ...zone, x: 0.2 }] },
+    ],
+  } as unknown as FurniturePack;
+  setPacks([pack]);
+  assert.ok(isCooktopZone(zone));
+  assert.ok(!isCooktopZone({ ...zone, h: 0.4 }));
+  assert.ok(isPackCooktop(packType("test.kitchen", "hob_80")));
+  // only items named like a cooktop count (a round coaster on a sideboard is no hob)
+  assert.ok(!isPackCooktop(packType("test.kitchen", "sideboard")));
   setPacks([]);
 });

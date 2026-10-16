@@ -73,6 +73,8 @@ export interface FloorGeometry {
   holes: Vec2[][];
   /** Walls (with folding upper parts) and furniture. */
   walls: BufferGeometry;
+  /** Water surfaces of pools (see-through: the basin shows below). */
+  water: BufferGeometry;
   lines: BufferGeometry;
   /** Multiply layer darkening the floor along walls and under furniture (baked occlusion). */
   shadow: BufferGeometry;
@@ -226,9 +228,10 @@ export function buildFloorGeometry(
     const len = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1]);
     const width = Math.min(o.width, len);
     const s0 = Math.max(0, Math.min(len - width, s - width / 2));
-    // in a free wall the "room" side is the left of the wall as drawn
+    // in a free wall the "room" side is the left of the wall as drawn; an outer wall has its room on the left, whatever
+    // room the opening was given (a window filed under the neighbouring room had its blind inside, #542)
     const hp = host.room.points;
-    const roomLeft = wall.free ? ax[0] * (hp[1][0] - hp[0][0]) + ax[1] * (hp[1][1] - hp[0][1]) > 0 : wall.roomLeft === o.room_id;
+    const roomLeft = wall.free ? ax[0] * (hp[1][0] - hp[0][0]) + ax[1] * (hp[1][1] - hp[0][1]) > 0 : wall.exterior || wall.roomLeft === o.room_id;
     const nLeft: Vec2 = [-ax[1], ax[0]];
     const toRoom: Vec2 = roomLeft ? nLeft : [-nLeft[0], -nLeft[1]];
     const top = Math.min(lowestTop(wall.a, ax, s0, s0 + width, wallHeight(wall, floor.height)) - 0.02, o.sill + o.height);
@@ -363,7 +366,8 @@ export function buildFloorGeometry(
 
   // ---------------------------------------------------------------- furniture and shadows
   const shadow = buildShadow(outline.edges, floor.rooms, spans);
-  pushOutdoor(wallBuf, lines, floor);
+  const waterBuf = new GeoBuffer();
+  pushOutdoor(wallBuf, lines, floor, waterBuf);
   for (const s of solar) pushModules(wallBuf, lines, s.face, s.field, floor.elevation);
 
   // lamps are drawn live by the viewer (they glow with their light)
@@ -387,6 +391,7 @@ export function buildFloorGeometry(
     roomTris,
     holes: cutHoles,
     walls: wallBuf.geometry(),
+    water: waterBuf.geometry(),
     lines: lines.geometry(),
     shadow: shadow.geometry(),
     buckets,
