@@ -3,6 +3,14 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.21.0
+
+### Novedades
+
+- **Termo eléctrico** (Electricidad y Baño): un termo de pared como el Ariston Velis, de 30, 50, 80 o 100 L. Solo se elige su entidad `water_heater`; si calienta, las duchas disponibles, el tiempo restante y el interruptor de encendido se buscan en el mismo dispositivo. La pantalla brilla cian encendido y naranja mientras calienta, unos puntos muestran las duchas y el pin dice p. ej. «56 °C → 60 °C · 1 ducha · 23 min para agua caliente». Tocarlo lo enciende o apaga; mantenerlo pulsado abre su ficha para regular la temperatura y el modo.
+- **Punto de acceso Wi-Fi** (Electricidad): un disco en el techo o la pared con su anillo de LED, para los AP de UniFi Network. Se elige el AP por su nombre; estado, clientes, LED, CPU, memoria y reinicio se buscan en su dispositivo. El anillo brilla azul conectado con el LED encendido, rojo si está desconectado y ámbar mientras se actualiza; el pin muestra «14 clientes · CPU 5 %». Tocarlo enciende o apaga su LED; mantenerlo pulsado lo reinicia (pregunta antes).
+- **Escalera recta abierta por debajo**: la casilla «Abierta por debajo (losa inclinada)» pone los peldaños sobre una losa que sigue la pendiente y deja libre el hueco de debajo, con techo inclinado (cabe un mueble o el tramo de la escalera de abajo). Sin marcarla sigue maciza como antes.
+
 ## 1.20.0
 
 ### Novedades
