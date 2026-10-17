@@ -261,6 +261,8 @@ export interface ScreenState {
   faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon"; color: [number, number, number]; level: number }[];
   /** A wall switch: the colour of each key's LED (null = off), left to right. */
   keys?: ([number, number, number] | null)[];
+  /** Dots over the screen, `lit` of `n` glowing: a water heater's showers of hot water left. */
+  dots?: { n: number; lit: number; color: [number, number, number] };
   /** A wall switch with a light ring: its colour and brightness (null = off). */
   switchRing?: { color: [number, number, number]; level: number } | null;
 }
@@ -2999,6 +3001,20 @@ export class FloorplanViewer {
       const z = r.z + 0.004;
       buf.tri(P(r.x0, r.y0, z), P(r.x1, r.y0, z), P(r.x1, r.y1, z), core);
       buf.tri(P(r.x0, r.y0, z), P(r.x1, r.y1, z), P(r.x0, r.y1, z), core);
+      if (st.dots && st.dots.n > 0) {
+        // a row of dots just above the screen: the lit ones in their colour, the others faint
+        const { n, lit, color } = st.dots;
+        const on = new Color(...color);
+        const off = new Color(...color.map((v) => v * 0.12) as [number, number, number]);
+        const s = Math.min(0.013, (r.x1 - r.x0) / (n * 1.5));
+        const y = r.y1 + 0.01;
+        for (let i = 0; i < n; i++) {
+          const cx = r.x0 + ((i + 0.5) * (r.x1 - r.x0)) / n;
+          const col = i < lit ? on : off;
+          buf.tri(P(cx - s / 2, y, z), P(cx + s / 2, y, z), P(cx + s / 2, y + s, z), col);
+          buf.tri(P(cx - s / 2, y, z), P(cx + s / 2, y + s, z), P(cx - s / 2, y + s, z), col);
+        }
+      }
       if (st.plain) continue;
       // glow frame fading out around the screen
       const g = 0.18 + 0.12 * st.level;

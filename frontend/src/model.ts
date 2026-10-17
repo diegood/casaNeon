@@ -3,6 +3,7 @@
 
 import { packItem } from "./packs.ts";
 import type { LampModel } from "./viewer/viewer3d.ts";
+import { WATER_HEATER_Y } from "./water-heater.ts";
 
 export type Vec2 = [number, number];
 
@@ -1169,6 +1170,7 @@ export const FURNITURE_TYPES = [
   "mailbox",
   "wall_switch",
   "wall_socket",
+  "water_heater",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
@@ -1178,12 +1180,12 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
   sleeping: ["bed", "bunk_bed", "nightstand", "wardrobe", "dresser"],
-  bath: ["bathtub", "shower", "wc", "washbasin", "washer", "dryer"],
+  bath: ["bathtub", "shower", "wc", "washbasin", "washer", "dryer", "water_heater"],
   work: ["desk", "worktop", "office_chair", "tall_cabinet", "coat_rack", "radiator", "ac_unit", "stairs", "stairs_u", "robot_vacuum"],
   vehicles: ["parking"],
   outdoor: ["awning"],
   household: ["waste_bin", "mailbox"],
-  electric: ["wall_switch", "wall_socket"],
+  electric: ["wall_switch", "wall_socket", "water_heater"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1337,6 +1339,8 @@ export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: strin
       return SWITCH_Y;
     case "wall_socket":
       return SOCKET_Y;
+    case "water_heater":
+      return WATER_HEATER_Y;
     case "inverter":
       return 1.1;
     case "wallbox":
@@ -1359,6 +1363,7 @@ export function surfaceHeight(floor: Floor, x: number, z: number): number {
 
 export const ELECTRIC_FURNITURE = new Set<string>([
   ...LAMP_TYPES,
+  "water_heater",
   "radiator",
   "ac_unit",
   "awning",
@@ -1452,6 +1457,8 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   // a single 86 mm plate; more keys make it wider (see switchWidth)
   wall_switch: [0.086, 0.05, 0.086],
   wall_socket: [0.086, 0.05, 0.086],
+  // an 80 l slim tank (see WATER_HEATER_SIZES for the other capacities)
+  water_heater: [0.506, 0.275, 1.066],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

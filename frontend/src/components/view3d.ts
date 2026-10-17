@@ -117,6 +117,7 @@ import type { DeviceMarker, FloorplanViewer, FloorStack, RobotInfo, Quality, Scr
 import { wallLayout } from "../camera-wall.ts";
 import { watchedEntities } from "../watched.ts";
 import { socketOutlets, switchKeyOn, switchKeys, switchRing } from "../wall-switch.ts";
+import { heaterEntities, heaterState, maxShowers, type HeaterState } from "../water-heater.ts";
 
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
 
@@ -2436,6 +2437,7 @@ export class Fp3dView3d extends LitElement {
         const id = (f.type === "home_battery" ? (extra ?? link.entity ?? link.power) : (link.entity ?? link.power ?? extra))!;
         targets.set(f.id, id);
         const st = link.entity ? hass.states[link.entity] : undefined;
+        const heater = f.type === "water_heater" ? heaterState(hass, heaterEntities(hass, { entity: link.entity })) : null;
         // the meter's sensor is the grid (+ = import), the battery's can point the other way as well
         const invert = f.type === "meter" ? b.energy.grid_invert && !f.export : f.type === "home_battery" ? b.energy.battery_invert && !f.charge : false;
         let power = link.power ? readPower(hass.states[link.power], invert) : null;
@@ -2500,6 +2502,16 @@ export class Fp3dView3d extends LitElement {
             const gap = typeof a.temperature === "number" && typeof a.current_temperature === "number" ? a.temperature - a.current_temperature : 1;
             screens.set(f.id, { color: [1, 0.42, 0.1], level: Math.min(1, 0.45 + 0.25 * Math.max(0, gap)) });
           }
+        } else if (heater) {
+          // a water heater: its display glows while it is on (orange while it heats), the showers of hot water as dots
+          const n = maxShowers(f);
+          if (heater.on)
+            screens.set(f.id, {
+              color: heater.heating ? [1, 0.45, 0.12] : [0.25, 0.85, 1],
+              level: heater.heating ? 1 : 0.55,
+              plain: true,
+              dots: { n, lit: Math.max(0, Math.min(n, Math.round(heater.showers ?? 0))), color: [0.35, 0.9, 1] },
+            });
         } else if (f.type === "ac_unit" && st && kindOf(st.entity_id) === "climate") {
           const glow = climateModeGlow(st);
           if (glow) screens.set(f.id, glow);
@@ -2545,7 +2557,9 @@ export class Fp3dView3d extends LitElement {
           ownName: f.name || undefined,
           showName: !!f.show_name,
           text: hhText ??
-            (car
+            (heater
+              ? this.heaterText(hass, heater)
+              : car
               ? this.carText(hass, car, !!st && !PRESENT_STATES.has(st.state.toLowerCase()))
               : f.type === "home_battery"
               ? this.batteryText(hass, extra, power)
@@ -2558,7 +2572,7 @@ export class Fp3dView3d extends LitElement {
                     : power !== null
                       ? formatPower(hass, Math.max(0, power))
                       : ""),
-          active: hhText ? true : car ? car.charging : st ? isActive(st) : (power ?? 0) > (typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 5),
+          active: hhText ? true : heater ? heater.heating : car ? car.charging : st ? isActive(st) : (power ?? 0) > (typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 5),
           unavailable: st ? isUnavailable(st) : false,
           glow: null,
           // its pin grabs the item when furnishing
@@ -2901,6 +2915,17 @@ export class Fp3dView3d extends LitElement {
     if (!b || !(b.settings.roof.sections ?? []).some((sec) => sectionCutsBelow(sec, floor.elevation + room))) return room;
     const under = roofUnderAt(b, x, z);
     return under === null ? room : Math.max(0.5, Math.min(room, under - floor.elevation));
+  }
+
+  /** A water heater's pin: the water's temperature and its target, the showers left, the time to hot (or "off"). */
+  private heaterText(hass: HomeAssistant, h: HeaterState): string {
+    if (!h.on) return translate(hass, "state_off");
+    const unit = tempUnit(hass);
+    const temp = (v: number) => `${formatNumber(hass, v, 0)} ${unit}`;
+    const parts = [h.current !== null ? (h.target !== null && h.heating ? `${temp(h.current)} → ${temp(h.target)}` : temp(h.current)) : null];
+    if (h.showers !== null) parts.push(translate(hass, h.showers === 1 ? "heater_shower" : "heater_showers", { n: Math.round(h.showers) }));
+    if (h.remaining !== null) parts.push(translate(hass, "heater_left", { min: Math.round(h.remaining) }));
+    return parts.filter(Boolean).join(" · ");
   }
 
   /** A lamp: its 3D model glows with the linked light and is tapped directly. */

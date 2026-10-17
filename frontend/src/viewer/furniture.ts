@@ -7,6 +7,7 @@ import { Color } from "three";
 import type { Furniture, Vec2 } from "../model.ts";
 import { builtinBase, stairsULayout, POOL_VALVE_Y, SOCKET_Y, SWITCH_Y } from "../model.ts";
 import { plateModules, switchKeys } from "../wall-switch.ts";
+import { WATER_HEATER_Y } from "../water-heater.ts";
 import { mountBase, packItem, packMotion, packMovingPart, packScreen, type PackItem, type PackMotion } from "../packs.ts";
 import { binColors, binShape, householdCountry, mailboxShape, type BinShape, type MailboxShape } from "../household.ts";
 import type { Floor } from "../model.ts";
@@ -1304,6 +1305,56 @@ export function switchLeds(f: Pick<Furniture, "type" | "w" | "d" | "h" | "switch
   return Array.from({ length: n }, (_, i) => ({ x: -w / 2 + (i + 0.5) * kw, y: SWITCH_Y + h * 0.2, z: -d / 2 + 0.017, r: 0.005 }));
 }
 
+/** The control band at the bottom of a water heater (its height) and its display, in local coordinates. */
+function heaterLayout(w: number, d: number, h: number): { band: number; display: { x0: number; x1: number; y0: number; y1: number; z: number } } {
+  const band = Math.min(0.2, h * 0.19);
+  const s = Math.min(0.075, band * 0.55, w * 0.2);
+  const y = WATER_HEATER_Y + band * 0.3;
+  return { band, display: { x0: -s * 0.75, x1: s * 0.25, y0: y, y1: y + s, z: d / 2 + 0.004 } };
+}
+
+/**
+ * Electric water heater (from 1.0 m), a slim tank like an Ariston Velis: a white body with rounded corners seen
+ * from the front, a grey control band at the bottom with the display and four buttons beside it, and the two
+ * water pipes below. The display and the shower dots glow in the screen layer.
+ */
+function waterHeater(b: Builder, w: number, d: number, h: number): void {
+  const y0 = WATER_HEATER_Y;
+  const y1 = y0 + h;
+  const { band, display } = heaterLayout(w, d, h);
+  const r = Math.min(0.07, w * 0.14, band * 0.8);
+  const x0 = -w / 2;
+  const x1 = w / 2;
+  const z0 = -d / 2;
+  const z1 = d / 2;
+  // the rounded corners in three steps: how far the sides are drawn in at a height t into the corner
+  const steps = 3;
+  const inset = (t: number) => r - Math.sqrt(Math.max(0, r * r - (r - t) * (r - t)));
+  const grey = C.metal;
+  for (let i = 0; i < steps; i++) {
+    const t0 = (r * i) / steps;
+    const t1 = (r * (i + 1)) / steps;
+    const a = inset(t0);
+    const c = inset(t1);
+    b.loft([x0 + a, x1 - a, z0, z1], [x0 + c, x1 - c, z0, z1], y0 + t0, y0 + t1, grey);
+    b.loft([x0 + c, x1 - c, z0, z1], [x0 + a, x1 - a, z0, z1], y1 - t1, y1 - t0, C.white, C.whiteTop);
+  }
+  b.box(x0, x1, y0 + r, y0 + band, z0, z1, grey, grey);
+  b.box(x0, x1, y0 + band, y1 - r, z0, z1, C.white, C.whiteTop, EDGE_FURN);
+  // the seam between the white body and the grey band
+  b.seg(x0, y0 + band, z1 + 0.001, x1, y0 + band, z1 + 0.001, EDGE_FAINT);
+  // the display's dark glass and the four buttons beside it (two by two)
+  b.box(display.x0, display.x1, display.y0, display.y1, z1, z1 + 0.003, C.dark, C.dark, EDGE_FAINT);
+  const bs = (display.y1 - display.y0) * 0.3;
+  for (const [bx, by] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    const cx = display.x1 + 0.012 + bx * (bs + 0.008);
+    const cy = display.y0 + 0.004 + by * (bs + 0.012);
+    b.box(cx, cx + bs, cy, cy + bs, z1, z1 + 0.003, C.body, C.body);
+  }
+  // cold water in, hot water out
+  for (const px of [-0.05, 0.05]) b.cyl(px, 0, 0.011, y0 - 0.12, y0 + 0.01, C.metal, C.metal, 8);
+}
+
 /** Wallbox (from 1.0 m): a compact box with a glowing ring and the charging cable hanging below. */
 function wallbox(b: Builder, w: number, d: number, h: number): void {
   const y0 = 1.0;
@@ -1433,6 +1484,7 @@ function builtInScreen(f: Furniture, w: number, d: number, h: number, floor?: Fl
     const r = Math.min(w * 0.36, (h - 0.2) * 0.42) * 0.8;
     return { x0: -r, x1: r, y0: cy - r, y1: cy + r, z: d / 2 - 0.004 };
   }
+  if (f.type === "water_heater") return heaterLayout(w, d, h).display;
   if (f.type === "dishwasher") return { x0: -w / 2 + 0.06, x1: w / 2 - 0.06, y0: h - 0.16, y1: h - 0.08, z: d / 2 - 0.004 };
   return null;
 }
@@ -1702,6 +1754,9 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
     case "wall_socket":
       wallSocket(b, w, d, h, plateModules(f));
       return;
+    case "water_heater":
+      waterHeater(b, w, d, h);
+      return; // on the wall, no shadow on the floor
     case "pool_pump":
       poolPump(b, w, d, h);
       break;
