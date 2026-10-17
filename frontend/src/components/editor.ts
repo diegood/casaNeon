@@ -20,7 +20,7 @@ import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
-import { ACCESS_POINT_SIZE, ACCESS_POINT_WALL_SIZE, accessPointDevices, apEntities, apOnWall } from "../access-point.ts";
+import { ACCESS_POINT_SIZE, ACCESS_POINT_WALL_SIZE, apChoices, apEntities, apOnWall } from "../access-point.ts";
 import { heaterCapacity, heaterEntities, WATER_HEATER_CAPACITIES, WATER_HEATER_SIZES } from "../water-heater.ts";
 import { MAX_SWITCH_KEYS, SOCKET_SWITCH_DOMAINS, socketOutlets, SWITCH_KEY_DOMAINS, switchKeys, switchRing, switchWidth, type SocketOutlet } from "../wall-switch.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
@@ -10896,8 +10896,6 @@ export class Fp3dEditor extends LitElement {
   }
 
   private renderFurnitureLinks(f: Furniture) {
-    // the devices that are access points (for an access point's entity list)
-    const apDevices = f.type === "access_point" && this.hass ? accessPointDevices(this.hass) : new Set<string>();
     const ALARM_CLASSES = new Set(["smoke", "gas", "carbon_monoxide", "heat", "moisture", "safety", "sound", "problem"]);
     if (!this.hass) return nothing;
     const hass = this.hass;
@@ -10912,7 +10910,8 @@ export class Fp3dEditor extends LitElement {
     // "Device", with media players, switches and status sensors to choose from
     const tvLike = media && (!isPackType(f.type) || packDisplay(f.type));
     const lamp = isLamp(f.type);
-    const entities = this.entityOptions((id) =>
+    // an access point: one choice per access point, by its name (any of its entities would do)
+    const entities = f.type === "access_point" && this.hass ? apChoices(this.hass) : this.entityOptions((id) =>
       lamp
         ? // a lamp can follow a light or a plain switch (e.g. a relay that switches the ceiling light)
           /^(light|switch|input_boolean)\./.test(id)
@@ -10921,8 +10920,6 @@ export class Fp3dEditor extends LitElement {
             /^(media_player|switch|input_boolean|light)\./.test(id) || (packMotion(f.type) === "screen" && id.startsWith("cover."))
           : f.type === "water_heater"
             ? id.startsWith("water_heater.")
-          : f.type === "access_point"
-            ? apDevices.has(this.hass?.entities?.[id]?.device_id ?? "") && /^(device_tracker|sensor|light)\./.test(id)
           : f.type === "awning"
             ? id.startsWith("cover.")
             : packMotion(f.type) === "curtain"

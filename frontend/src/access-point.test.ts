@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apEntities, apRing, apState, isAccessPoint } from "./access-point.ts";
+import { apChoices, apEntities, apRing, apState, isAccessPoint } from "./access-point.ts";
 import type { HomeAssistant } from "./types.ts";
 
 // as the UniFi Network integration puts them on an access point's device (a real U7 Lite)
@@ -57,4 +57,15 @@ test("LED off: no ring; offline: red whatever the LED; updating: amber", () => {
   assert.deepEqual(apRing(ds), [1, 0.22, 0.25]);
   const busy = hass({ ...base, "sensor.u7_lite_estado": entity("sensor.u7_lite_estado", "upgrading", { options: OPTIONS }) });
   assert.equal(apState(busy, apEntities(busy, { entity: "device_tracker.u7_lite" }))!.status, "busy");
+});
+
+test("the editor offers each access point once, by its device's name", () => {
+  const states = {
+    ...base,
+    // the same AP seen as a client of the network: not the one to offer
+    "device_tracker.unifi_default_90_41_b2_0a_cf_c6": entity("device_tracker.unifi_default_90_41_b2_0a_cf_c6", "home"),
+  };
+  const h = hass(states) as unknown as { devices: Record<string, unknown> };
+  h.devices = { u7: { name: "U7 AP Garage", name_by_user: null } };
+  assert.deepEqual(apChoices(h as unknown as HomeAssistant), [{ id: "device_tracker.u7_lite", label: "U7 AP Garage" }]);
 });

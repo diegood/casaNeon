@@ -101,6 +101,22 @@ export function apState(hass: HomeAssistant, e: ApEntities): ApState | null {
   };
 }
 
+/**
+ * One choice per access point for the editor, by its device's name: its own device tracker (not the
+ * "unifi_default_…" one that sees it as a client of the network), else its state sensor.
+ */
+export function apChoices(hass: HomeAssistant): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  for (const device of accessPointDevices(hass)) {
+    const ids = Object.values(hass.entities ?? {}).filter((e) => e.device_id === device).map((e) => e.entity_id);
+    const id =
+      ids.find((x) => x.startsWith("device_tracker.") && !x.startsWith("device_tracker.unifi_default_")) ??
+      ids.find((x) => x.startsWith("sensor.") && isStateSensor(hass.states[x]));
+    if (id) out.push({ id, label: apName(hass, id) });
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /** The access point's name: its device's (the UniFi device trackers repeat it in their own name). */
 export function apName(hass: HomeAssistant, entity: string): string {
   const device = hass.entities?.[entity]?.device_id;
