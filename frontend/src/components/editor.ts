@@ -2718,7 +2718,7 @@ export class Fp3dEditor extends LitElement {
     } else if (e.key.toLowerCase() === "l" && !mod && (this._furnitureId || this._deviceId)) {
       const s = this.selectedFix!;
       this.toggleFixed(s.kind, s.id);
-    } else if (Object.hasOwn(ARROWS, e.key) && !mod && (this._tool === "select" || this._tool === "furniture")) {
+    } else if (Object.prototype.hasOwnProperty.call(ARROWS, e.key) && !mod && (this._tool === "select" || this._tool === "furniture")) {
       // arrow keys nudge the selection: one grid step, Shift 10 cm, Alt 1 cm
       const step = e.altKey ? 0.01 : e.shiftKey ? 0.1 : this._doc.settings.grid;
       const [dx, dz] = ARROWS[e.key];

@@ -114,10 +114,25 @@ if (watch) {
   // old Fire-tablet WebViews (Chrome before 91, e.g. Fully Kiosk on a Fire 7) throw on an optional call with spread
   // arguments, `a?.b(...x)` – the roof failed there; lowering the target for it would cost ~11 KB, so it is banned
   for (const file of Object.keys(BUDGET)) {
-    const hit = readFileSync(`${out}/${file}`, "utf8").match(/\?\.(?:[\w$]+)?\(\.\.\./);
+    const code = readFileSync(`${out}/${file}`, "utf8");
+    const hit = code.match(/\?\.(?:[\w$]+)?\(\.\.\./);
     if (hit) {
       over = true;
       console.log(`OLD-WEBVIEW ${file}: "${hit[0]}" breaks Chrome < 91 – write it as "if (a.b) a.b(...x)"`);
+    }
+    // functions those WebViews do not have (and that are not in polyfills.ts), and dvh outside @supports: with
+    // var() in it a browser without dvh does not fall back to the line before, the height is lost (the panel
+    // collapsed on the Fire tablets in 1.20/1.21)
+    const api = code.match(/Object\.hasOwn\(|\.findLast(?:Index)?\(|\.toSorted\(|\.toReversed\(|\.toSpliced\(|Object\.groupBy\(|\.randomUUID\(/);
+    if (api) {
+      over = true;
+      console.log(`OLD-WEBVIEW ${file}: "${api[0]}" is missing in Chrome 87 (old Fire tablets) – use an older equivalent`);
+    }
+    for (const m of code.matchAll(/100dvh/g)) {
+      if (!code.slice(Math.max(0, m.index - 300), m.index).includes("@supports")) {
+        over = true;
+        console.log(`OLD-WEBVIEW ${file}: "100dvh" outside @supports (height: 100dvh) – Chrome < 108 loses the height`);
+      }
     }
   }
   for (const [file, limit] of Object.entries(BUDGET)) {

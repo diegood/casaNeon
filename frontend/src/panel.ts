@@ -25,6 +25,15 @@ import type { HistorySpec } from "./timetravel/types.ts";
 import type { Feature } from "./features.ts";
 import type { FloorStack, Quality, WallMode } from "./viewer/viewer3d.ts";
 
+/** A device without a mouse or a fine pointer: a touch tablet or a phone. */
+function touchOnly(): boolean {
+  try {
+    return matchMedia("(hover: none) and (pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches;
+  } catch {
+    return false;
+  }
+}
+
 type Mode = "view" | "editor" | "extensions";
 
 /** View preferences belong to the device (a wall tablet wants other settings than a desktop). */
@@ -190,6 +199,14 @@ export class Floorplan3dPanel extends LitElement {
 
   private get isAdmin(): boolean {
     return this.hass?.user?.is_admin ?? false;
+  }
+
+  /**
+   * The editor is offered to admins on devices with a mouse or a fine pointer only: a touch-only tablet (a wall
+   * tablet) or phone shows the house, no editor – nobody draws there, and its bundle is not loaded.
+   */
+  private get canEdit(): boolean {
+    return this.isAdmin && !touchOnly();
   }
 
   private setMode(mode: Mode): void {
@@ -482,7 +499,7 @@ export class Floorplan3dPanel extends LitElement {
           ${this.isAdmin
             ? html`<div class="fp3d-seg" role="tablist">
                 <button role="tab" aria-pressed=${this._mode === "view"} @click=${() => this.setMode("view")}>${this.t("view")}</button>
-                <button role="tab" aria-pressed=${this._mode === "editor"} @click=${() => this.setMode("editor")}>${this.t("editor")}</button>
+                ${this.canEdit ? html`<button role="tab" aria-pressed=${this._mode === "editor"} @click=${() => this.setMode("editor")}>${this.t("editor")}</button>` : nothing}
                 <button role="tab" class="fp3d-tab-ext" aria-pressed=${this._mode === "extensions"} @click=${() => this.setMode("extensions")}>
                   ✦ ${this.t("ext_tab")}
                 </button>
@@ -606,7 +623,7 @@ export class Floorplan3dPanel extends LitElement {
         ${this.data.error && !b ? html`<p class="fp3d-message">${this.t("load_error")}: ${this.data.error}</p>` : nothing}
         ${!b && !this.data.error ? html`<p class="fp3d-message">${this.t("loading")}</p>` : nothing}
         ${b
-          ? this._mode === "editor" && this.isAdmin
+          ? this._mode === "editor" && this.canEdit
             ? this.renderEditor(b)
             : this._mode === "extensions" && this.isAdmin
               ? this.renderExtensions()
@@ -698,8 +715,8 @@ export class Floorplan3dPanel extends LitElement {
   private renderView(b: Building) {
     if (!b.floors.length || !b.floors.some((f) => f.rooms.length)) {
       return html`<div class="fp3d-empty">
-        <p>${this.t(this.isAdmin ? "no_building_admin" : "no_building")}</p>
-        ${this.isAdmin
+        <p>${this.t(this.canEdit ? "no_building_admin" : "no_building")}</p>
+        ${this.canEdit
           ? html`<button class="fp3d-btn fp3d-primary" @click=${() => this.setMode("editor")}>${this.t("open_editor")}</button>
               <p class="fp3d-phone-only">${this.t("phone_hint")}</p>`
           : nothing}
@@ -975,8 +992,15 @@ export class Floorplan3dPanel extends LitElement {
            screen's safe areas (notches; some themes set them on every screen): those are taken off, or the panel is
            taller than the window and its bottom is cut off (#529). */
         height: calc(100vh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
-        height: calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
         background: var(--fp3d-bg);
+      }
+      /* dvh only where it is known: with var() in it a browser without dvh (Chrome before 108, the Fire tablets'
+         WebView) cannot drop the line while reading it, so it would not fall back to the vh above – the height
+         would be lost and the panel collapse to its header, the 3D view to nothing */
+      @supports (height: 100dvh) {
+        :host {
+          height: calc(100dvh - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px));
+        }
       }
       .fp3d-app {
         display: flex;
