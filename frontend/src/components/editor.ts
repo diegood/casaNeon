@@ -10677,7 +10677,8 @@ export class Fp3dEditor extends LitElement {
           ${WATER_HEATER_CAPACITIES.map((c) => html`<option value=${c} ?selected=${cap === c}>${c} l</option>`)}
         </select></label
       >
-      <p class="fp3d-sub fp3d-wide">${roles.length ? `${this.t("heater_found")} ${roles.join(" · ")}` : this.t("heater_hint")}</p>`;
+      <p class="fp3d-sub fp3d-wide">${roles.length ? `${this.t("heater_found")} ${roles.join(" · ")}` : this.t("heater_hint")}</p>
+      <p class="fp3d-sub fp3d-wide">${this.t(found?.power ? "heater_gestures" : "heater_gestures_no_power")}</p>`;
   }
 
   /** Awning: its fall, the valance, a position sensor, its run time and the other direction (with the cover above). */

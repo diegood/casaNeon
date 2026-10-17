@@ -2917,6 +2917,18 @@ export class Fp3dView3d extends LitElement {
     return under === null ? room : Math.max(0.5, Math.min(room, under - floor.elevation));
   }
 
+  /** The power switch of the water heater whose entity this is (null: not a water heater in the plan, or none). */
+  private heaterPower(entityId: string): string | null {
+    if (!this.hass || !this.building || !entityId.startsWith("water_heater.")) return null;
+    for (const floor of this.building.floors)
+      for (const f of floor.furniture) {
+        if (f.type !== "water_heater") continue;
+        const entity = this.furnitureLinks?.get(f.id)?.entity ?? f.entity;
+        if (entity === entityId) return heaterEntities(this.hass, { entity }).power;
+      }
+    return null;
+  }
+
   /** A water heater's pin: the water's temperature and its target, the showers left, the time to hot (or "off"). */
   private heaterText(hass: HomeAssistant, h: HeaterState): string {
     if (!h.on) return translate(hass, "state_off");
@@ -3906,6 +3918,12 @@ export class Fp3dView3d extends LitElement {
       const grid = b ? (b.energy.grid ?? deviceSensors(b, (f) => this.furnitureLinks?.get(f.id)?.power ?? null).grid) : null;
       const id = entityId === "grid" ? grid : entityId.startsWith("detect:") ? entityId.slice(7) : entityId;
       if (id) this.showInfo(id, x, y);
+      return;
+    }
+    // a water heater: a tap switches it on or off (its power switch); a long press opens its settings (the dial)
+    const power = this.heaterPower(entityId);
+    if (power) {
+      if (!this.confirmSet.has(entityId) || confirm(translate(this.hass, "confirm_switch", { name: entityName(this.hass, entityId) }))) void toggleEntity(this.hass, power);
       return;
     }
     // the street end of the grid cable opens the grid sensor: the balance's, else the meter's (#223)

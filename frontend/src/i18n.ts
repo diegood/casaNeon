@@ -1716,6 +1716,8 @@ const es = {
   heater_role_remaining: "tiempo restante",
   heater_role_power: "encendido",
   heater_role_eco: "eco",
+  heater_gestures: "En 3D: tocar lo enciende o apaga; mantener pulsado abre su ficha para regular la temperatura y el modo.",
+  heater_gestures_no_power: "En 3D: tocar o mantener pulsado abre su ficha para regular la temperatura y el modo (no se encontró un interruptor de encendido).",
   heater_shower: "{n} ducha",
   heater_showers: "{n} duchas",
   heater_left: "{min} min para agua caliente",
