@@ -281,6 +281,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("service"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("service_min"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=1000))),
         vol.Optional("door_alarm"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0.5, max=120))),
+        # straight stair open underneath: its steps on a sloped slab, the space below free
+        vol.Optional("stair_open"): bool,
         # ceiling fan with its light: the fan entity (the light is "entity"); tapping the blades toggles it
         vol.Optional("fan_entity"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # wall switch: the entity each key switches (one to four keys, None = a key without an entity)

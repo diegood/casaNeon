@@ -10163,7 +10163,13 @@ export class Fp3dEditor extends LitElement {
               ${f.mount_y != null ? html`<button class="fp3d-btn fp3d-field-btn" ?disabled=${!admin} @click=${() => this.updateFurniture({ mount_y: null })}>${this.t("height_auto")}</button>` : nothing}`
           : nothing}
       </div>
-      ${f.type === "stairs" ? html`<p class="fp3d-sub">${this.t("stairs_hint")}</p>` : nothing}
+      ${f.type === "stairs"
+        ? html`<label class="fp3d-check" title=${this.t("stair_open_hint")}
+              ><input type="checkbox" .checked=${!!f.stair_open} ?disabled=${!this.isAdmin} @change=${(ev: Event) => this.updateFurniture({ stair_open: (ev.target as HTMLInputElement).checked || undefined })} />
+              ${this.t("stair_open")}</label
+            >
+            <p class="fp3d-sub">${this.t("stairs_hint")}</p>`
+        : nothing}
       ${f.type === "stairs_u" ? html`<p class="fp3d-sub">${this.t("stairs_u_hint")}</p>` : nothing}
       ${f.type === "stairwell"
         ? html`<p class="fp3d-sub">${this.t("stairwell_hint")}</p>

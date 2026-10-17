@@ -70,6 +70,38 @@ class Builder {
     if (edges) this.outline(poly, y0, y1, edges);
   }
 
+  /**
+   * A block with a flat top at `top` and a sloped bottom (at `bottom0` where z = z0, `bottom1` where z = z1): a piece of
+   * a stair flight on its sloped slab. Every face is turned outwards (also when the transform mirrors).
+   */
+  wedge(x0: number, x1: number, z0: number, z1: number, bottom0: number, bottom1: number, top: number, side: number, topCol = side, under = side): void {
+    if (x1 - x0 < 1e-4 || z1 - z0 < 1e-4 || top - Math.min(bottom0, bottom1) < 1e-4) return;
+    const P = (x: number, z: number, y: number): number[] => {
+      const q = this.tf(x, z);
+      return [q[0], y, q[1]];
+    };
+    const yb = (z: number) => (z === z0 ? bottom0 : bottom1);
+    const c = P((x0 + x1) / 2, (z0 + z1) / 2, (top + (bottom0 + bottom1) / 2) / 2);
+    const face = (pts: number[][], col: Color) => {
+      // outwards: from the middle of the block to the middle of the face
+      const m = [0, 1, 2].map((k) => pts.reduce((s, p) => s + p[k], 0) / pts.length);
+      const out = [m[0] - c[0], m[1] - c[1], m[2] - c[2]];
+      const [a, b, d] = [pts[0], pts[1], pts[2]];
+      const n = [(b[1] - a[1]) * (d[2] - a[2]) - (b[2] - a[2]) * (d[1] - a[1]), (b[2] - a[2]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[2] - a[2]), (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0])];
+      const flip = n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0;
+      const q = flip ? [...pts].reverse() : pts;
+      this.buf.tri(q[0], q[1], q[2], col);
+      this.buf.tri(q[0], q[2], q[3], col);
+    };
+    const s = shade(side, 1);
+    face([P(x0, z0, top), P(x1, z0, top), P(x1, z1, top), P(x0, z1, top)], shade(topCol, 1));
+    face([P(x0, z0, yb(z0)), P(x0, z1, yb(z1)), P(x1, z1, yb(z1)), P(x1, z0, yb(z0))], shade(under, 0.72));
+    face([P(x0, z1, yb(z1)), P(x0, z1, top), P(x1, z1, top), P(x1, z1, yb(z1))], s);
+    face([P(x0, z0, yb(z0)), P(x1, z0, yb(z0)), P(x1, z0, top), P(x0, z0, top)], s);
+    face([P(x0, z0, yb(z0)), P(x0, z0, top), P(x0, z1, top), P(x0, z1, yb(z1))], shade(side, 0.86));
+    face([P(x1, z0, yb(z0)), P(x1, z1, yb(z1)), P(x1, z1, top), P(x1, z0, top)], shade(side, 0.86));
+  }
+
   /** A box whose top face is the rectangle `t` (sloped sides): hoods, windscreens, tapered shades. */
   loft(b: [number, number, number, number], t: [number, number, number, number], y0: number, y1: number, side: number, top = side, edges: Color | null = null): void {
     if (y1 - y0 < 1e-4) return;
@@ -863,18 +895,30 @@ function rug(b: Builder, w: number, d: number): void {
   }
 }
 
-/** Straight stair rising towards -z (the back), with a handrail on the +x side. */
-function stairs(b: Builder, w: number, d: number, h: number): void {
+/** Vertical thickness of an open stair's slab under its steps, beyond one riser. */
+const STAIR_SLAB = 0.18;
+
+/**
+ * Straight stair rising towards -z (the back), with a handrail on the +x side. Solid down to the floor, or `open`:
+ * the steps sit on a sloped slab whose underside runs parallel to the flight, leaving the space under it free (a
+ * cupboard, a desk, the next flight below).
+ */
+function stairs(b: Builder, w: number, d: number, h: number, open = false): void {
   const n = Math.max(3, Math.round(h / 0.18));
   const rise = h / n;
   const run = d / n;
+  // the underside of an open stair: parallel to the flight, a slab's thickness under the inner corners of the steps
+  const under = (z: number) => Math.max(0, rise * ((d / 2 - z) / run - 1) - STAIR_SLAB);
   for (let i = 0; i < n; i++) {
     const z1 = d / 2 - run * i;
     const z0 = z1 - run;
     const y1 = rise * (i + 1);
-    b.box(-w / 2, w / 2, 0, y1, z0, z1, C.wood, C.woodTop);
+    if (open) b.wedge(-w / 2, w / 2, z0, z1, under(z0), under(z1), y1, C.wood, C.woodTop, C.body);
+    else b.box(-w / 2, w / 2, 0, y1, z0, z1, C.wood, C.woodTop);
     b.seg(-w / 2, y1, z1, w / 2, y1, z1, EDGE_FURN);
   }
+  // the slab's underside along both sides
+  if (open) for (const x of [-w / 2, w / 2]) b.seg(x, under(d / 2 - run), d / 2 - run, x, under(-d / 2), -d / 2, EDGE_FAINT);
   b.seg(-w / 2, 0, d / 2, -w / 2, rise, d / 2, EDGE_FURN);
   // stringer lines along both sides
   for (const x of [-w / 2, w / 2]) b.seg(x, rise, d / 2, x, h, -d / 2 + run, EDGE_FAINT);
@@ -1678,7 +1722,7 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
       rug(b, w, d);
       return; // flat, no contact shadow
     case "stairs":
-      stairs(b, w, d, h);
+      stairs(b, w, d, h, !!f.stair_open);
       break;
     case "stairs_u":
       stairsU(b, w, d, h);

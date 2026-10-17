@@ -1707,6 +1707,8 @@ const es = {
   furn_mailbox: "Buzón",
   furn_wall_switch: "Interruptor de pared",
   furn_water_heater: "Termo eléctrico",
+  stair_open: "Abierta por debajo (losa inclinada)",
+  stair_open_hint: "Los peldaños van sobre una losa que sigue la pendiente: el hueco de debajo queda libre, con techo inclinado, y cabe otro tramo o un mueble debajo.",
   furn_access_point: "Punto de acceso Wi-Fi",
   ap_entity: "Punto de acceso",
   ap_mount: "Montaje",

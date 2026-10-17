@@ -181,6 +181,8 @@ export interface Furniture {
   switch_keys?: (string | null)[] | null;
   /** Ceiling fan with its light: the fan entity (the light is the item's own entity); tapping the blades toggles it. */
   fan_entity?: EntityRef;
+  /** Straight stair: open underneath – its steps on a sloped slab, the space under it free (false: solid to the floor). */
+  stair_open?: boolean;
   /** Wall switch with a light ring (e.g. a Sonoff TX Ultimate): the light whose colour and brightness the ring shows. */
   switch_ring?: EntityRef;
   /** Wall socket: its outlets, left to right (one to four), each with an optional switch and power sensor. */
