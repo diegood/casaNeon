@@ -8,6 +8,7 @@ import type { Furniture, Vec2 } from "../model.ts";
 import { builtinBase, stairsULayout, POOL_VALVE_Y, SOCKET_Y, SWITCH_Y } from "../model.ts";
 import { plateModules, switchKeys } from "../wall-switch.ts";
 import { WATER_HEATER_Y } from "../water-heater.ts";
+import { apOnWall } from "../access-point.ts";
 import { mountBase, packItem, packMotion, packMovingPart, packScreen, type PackItem, type PackMotion } from "../packs.ts";
 import { binColors, binShape, householdCountry, mailboxShape, type BinShape, type MailboxShape } from "../household.ts";
 import type { Floor } from "../model.ts";
@@ -1355,6 +1356,33 @@ function waterHeater(b: Builder, w: number, d: number, h: number): void {
   for (const px of [-0.05, 0.05]) b.cyl(px, 0, 0.011, y0 - 0.12, y0 + 0.01, C.metal, C.metal, 8);
 }
 
+/**
+ * Wi-Fi access point: a flat white disc with a softly rounded edge – under the ceiling (drawn from 0 up, lifted there
+ * by its mount height) or standing on the wall (its back at -z). Its LED ring glows in the screen layer (see apRingAt).
+ */
+function accessPoint(b: Builder, w: number, d: number, h: number, wall: boolean): void {
+  if (wall) {
+    const r = Math.min(w, h) / 2;
+    const t = Math.min(0.035, d);
+    b.lyingCyl("z", 0, -d / 2 + t * 0.4, 0.004, 2 * r - 0.004, t * 0.8, 2 * r - 0.008, C.white, C.white, 28);
+    b.lyingCyl("z", 0, -d / 2 + t * 0.85, 0.012, 2 * r - 0.012, t * 0.3, 2 * r - 0.024, C.whiteTop, C.whiteTop, 28, EDGE_FAINT);
+    return;
+  }
+  const r = Math.min(w, d) / 2;
+  // the rounded underside is a slightly smaller disc; the top meets the ceiling
+  b.cyl(0, 0, r - 0.006, 0, h * 0.3, C.whiteTop, C.whiteTop, 28, EDGE_FAINT);
+  b.cyl(0, 0, r, h * 0.3, h, C.white, C.white, 28);
+}
+
+/** The LED ring of an access point: its middle and radius in local coordinates, and the plane it lies in. */
+export function apRingAt(f: Pick<Furniture, "w" | "d" | "h" | "variant">): { y: number; z: number; r: number; wall: boolean } {
+  const w = Math.max(0.05, f.w);
+  const d = Math.max(0.005, f.d);
+  const h = Math.max(0.005, f.h);
+  if (apOnWall(f)) return { y: Math.min(w, h) / 2, z: -d / 2 + Math.min(0.035, d) + 0.002, r: Math.min(w, h) / 2, wall: true };
+  return { y: -0.002, z: 0, r: Math.min(w, d) / 2, wall: false };
+}
+
 /** Wallbox (from 1.0 m): a compact box with a glowing ring and the charging cable hanging below. */
 function wallbox(b: Builder, w: number, d: number, h: number): void {
   const y0 = 1.0;
@@ -1757,6 +1785,9 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
     case "water_heater":
       waterHeater(b, w, d, h);
       return; // on the wall, no shadow on the floor
+    case "access_point":
+      accessPoint(b, w, Math.max(0.005, f.d), h, apOnWall(f));
+      return;
     case "pool_pump":
       poolPump(b, w, d, h);
       break;

@@ -1171,6 +1171,7 @@ export const FURNITURE_TYPES = [
   "wall_switch",
   "wall_socket",
   "water_heater",
+  "access_point",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
@@ -1185,7 +1186,7 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   vehicles: ["parking"],
   outdoor: ["awning"],
   household: ["waste_bin", "mailbox"],
-  electric: ["wall_switch", "wall_socket", "water_heater"],
+  electric: ["wall_switch", "wall_socket", "water_heater", "access_point"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1364,6 +1365,7 @@ export function surfaceHeight(floor: Floor, x: number, z: number): number {
 export const ELECTRIC_FURNITURE = new Set<string>([
   ...LAMP_TYPES,
   "water_heater",
+  "access_point",
   "radiator",
   "ac_unit",
   "awning",
@@ -1459,6 +1461,8 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   wall_socket: [0.086, 0.05, 0.086],
   // an 80 l slim tank (see WATER_HEATER_SIZES for the other capacities)
   water_heater: [0.506, 0.275, 1.066],
+  // a disc on the ceiling (on the wall it stands upright, see ACCESS_POINT_WALL_SIZE)
+  access_point: [0.16, 0.16, 0.035],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

@@ -14,6 +14,7 @@ import { weatherEntity } from "./weather.ts";
 import { householdEntities } from "./household.ts";
 import { socketOutlets, switchKeys, switchRing } from "./wall-switch.ts";
 import { heaterEntities } from "./water-heater.ts";
+import { apEntities } from "./access-point.ts";
 
 export interface WatchLinks {
   /** Entities of each door and window. */
@@ -52,7 +53,7 @@ export function watchedEntities(hass: HomeAssistant, b: Building, w: WatchLinks)
   const household = hasFeature("household") ? b.floors.flatMap((f) => f.furniture.flatMap(householdEntities)).filter((id) => id !== "none") : [];
   // wall switches and sockets: every key's and outlet's entity (their LEDs follow them) and the outlets' power
   const switches = b.floors.flatMap((f) =>
-    f.furniture.flatMap((m) => (m.type === "water_heater" ? Object.values(heaterEntities(hass, { entity: w.furniture.get(m.id)?.entity ?? m.entity })) : m.type === "lamp_ceiling_fan" ? [m.fan_entity ?? null] : m.type === "wall_switch" ? [...switchKeys(m), switchRing(m)] : m.type === "wall_socket" ? socketOutlets(m).flatMap((o) => [o.entity, o.power]) : [])),
+    f.furniture.flatMap((m) => (m.type === "access_point" ? Object.values(apEntities(hass, { entity: w.furniture.get(m.id)?.entity ?? m.entity })) : m.type === "water_heater" ? Object.values(heaterEntities(hass, { entity: w.furniture.get(m.id)?.entity ?? m.entity })) : m.type === "lamp_ceiling_fan" ? [m.fan_entity ?? null] : m.type === "wall_switch" ? [...switchKeys(m), switchRing(m)] : m.type === "wall_socket" ? socketOutlets(m).flatMap((o) => [o.entity, o.power]) : [])),
   );
   const weather = weatherEntity(hass, w.weatherEntityId ?? b.settings.weather_entity);
   const all = [...switches, ...placed, ...cameraSensors, ...links, ...power, ...furniture, ...states, ...doors, ...robotRooms, ...roofWindowIds, ...solarIds, ...pictureRules, e.grid, e.solar, e.battery, e.battery_soc, e.consumption, e.tariff, ...presence, ...lights, ...heat, ...w.warnings, ...parking, ...motion, ...household, weather, "sun.sun"];

@@ -20,6 +20,7 @@ import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
+import { ACCESS_POINT_SIZE, ACCESS_POINT_WALL_SIZE, accessPointDevices, apEntities, apOnWall } from "../access-point.ts";
 import { heaterCapacity, heaterEntities, WATER_HEATER_CAPACITIES, WATER_HEATER_SIZES } from "../water-heater.ts";
 import { MAX_SWITCH_KEYS, SOCKET_SWITCH_DOMAINS, socketOutlets, SWITCH_KEY_DOMAINS, switchKeys, switchRing, switchWidth, type SocketOutlet } from "../wall-switch.ts";
 import { poolEntities, type PoolEntities } from "../pool.ts";
@@ -10653,6 +10654,32 @@ export class Fp3dEditor extends LitElement {
     </div>`;
   }
 
+  /** Access point: on the ceiling or the wall, and what was found beside its entity on the same device. */
+  private renderApFields(f: Furniture) {
+    const admin = this.isAdmin;
+    const wall = apOnWall(f);
+    const found = this.hass ? apEntities(this.hass, { entity: f.entity }) : null;
+    const roles = found
+      ? (["state", "clients", "led", "cpu", "memory", "restart"] as const).filter((k) => found[k]).map((k) => this.t(`ap_role_${k}` as I18nKey))
+      : [];
+    return html`<label class="fp3d-field fp3d-wide"
+        >${this.t("ap_mount")}
+        <select
+          ?disabled=${!admin}
+          @change=${(e: Event) => {
+            const onWall = (e.target as HTMLSelectElement).value === "wall";
+            const [w, d, h] = onWall ? ACCESS_POINT_WALL_SIZE : ACCESS_POINT_SIZE;
+            this.updateFurniture({ variant: onWall ? "wall" : null, w, d, h, mount_y: null });
+          }}
+        >
+          <option value="ceiling" ?selected=${!wall}>${this.t("ap_ceiling")}</option>
+          <option value="wall" ?selected=${wall}>${this.t("ap_wall")}</option>
+        </select></label
+      >
+      <p class="fp3d-sub fp3d-wide">${roles.length ? `${this.t("heater_found")} ${roles.join(" · ")}` : this.t("ap_hint")}</p>
+      <p class="fp3d-sub fp3d-wide">${this.t("ap_gestures")}</p>`;
+  }
+
   /**
    * Water heater: its capacity (the tank's size) and what was found beside its water_heater entity on the same
    * device – whether it heats, the showers left, the time to hot, the power and eco switches.
@@ -10869,6 +10896,8 @@ export class Fp3dEditor extends LitElement {
   }
 
   private renderFurnitureLinks(f: Furniture) {
+    // the devices that are access points (for an access point's entity list)
+    const apDevices = f.type === "access_point" && this.hass ? accessPointDevices(this.hass) : new Set<string>();
     const ALARM_CLASSES = new Set(["smoke", "gas", "carbon_monoxide", "heat", "moisture", "safety", "sound", "problem"]);
     if (!this.hass) return nothing;
     const hass = this.hass;
@@ -10892,6 +10921,8 @@ export class Fp3dEditor extends LitElement {
             /^(media_player|switch|input_boolean|light)\./.test(id) || (packMotion(f.type) === "screen" && id.startsWith("cover."))
           : f.type === "water_heater"
             ? id.startsWith("water_heater.")
+          : f.type === "access_point"
+            ? apDevices.has(this.hass?.entities?.[id]?.device_id ?? "") && /^(device_tracker|sensor|light)\./.test(id)
           : f.type === "awning"
             ? id.startsWith("cover.")
             : packMotion(f.type) === "curtain"
@@ -10914,10 +10945,10 @@ export class Fp3dEditor extends LitElement {
     return html`<div class="fp3d-form fp3d-links">
         ${f.type === "grid_point"
           ? html`<p class="fp3d-sub fp3d-wide">${this.t("grid_point_hint")}</p>`
-          : this.entitySelect(this.t(lamp ? "furn_entity_light" : packMotion(f.type) ? "motor_cover" : tvLike ? "furn_entity_tv" : f.type === "awning" ? "awning_cover" : f.type === "water_heater" ? "heater_entity" : f.type === "radiator" || f.type === "ac_unit" ? "furn_entity_climate" : isRobotVacuum(f.type) ? "furn_entity_vacuum" : "furn_entity"), f.entity ?? null, autoPick("entity"), entities, (v) =>
+          : this.entitySelect(this.t(lamp ? "furn_entity_light" : packMotion(f.type) ? "motor_cover" : tvLike ? "furn_entity_tv" : f.type === "awning" ? "awning_cover" : f.type === "water_heater" ? "heater_entity" : f.type === "access_point" ? "ap_entity" : f.type === "radiator" || f.type === "ac_unit" ? "furn_entity_climate" : isRobotVacuum(f.type) ? "furn_entity_vacuum" : "furn_entity"), f.entity ?? null, autoPick("entity"), entities, (v) =>
               this.updateFurniture({ entity: v }),
             )}
-        ${f.type === "awning" ? this.renderAwningFields(f) : f.type === "water_heater" ? this.renderHeaterFields(f) : packMotion(f.type) ? this.renderMotionFields(f) : nothing}
+        ${f.type === "awning" ? this.renderAwningFields(f) : f.type === "water_heater" ? this.renderHeaterFields(f) : f.type === "access_point" ? this.renderApFields(f) : packMotion(f.type) ? this.renderMotionFields(f) : nothing}
         ${!lamp && !(ENERGY_DEVICES as readonly string[]).includes(f.type) && !hasScreen(f.type) ? this.renderStateLinks(f) : nothing}
         ${lamp && f.entity && f.entity !== "none"
           ? html`${this.entitySelect(this.t("furn_color_entity"), f.color_entity ?? null, undefined, this.entityOptions((id) => id.startsWith("light.") && id !== f.entity), (v) => this.updateFurniture({ color_entity: v === "none" ? null : v }))}

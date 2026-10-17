@@ -118,6 +118,7 @@ import { wallLayout } from "../camera-wall.ts";
 import { watchedEntities } from "../watched.ts";
 import { socketOutlets, switchKeyOn, switchKeys, switchRing } from "../wall-switch.ts";
 import { heaterEntities, heaterState, maxShowers, type HeaterState } from "../water-heater.ts";
+import { apEntities, apName, apRing, apState, type ApEntities, type ApState } from "../access-point.ts";
 
 import type { HistorySpec, ReplayInfo } from "../timetravel/types.ts";
 
@@ -2438,6 +2439,7 @@ export class Fp3dView3d extends LitElement {
         targets.set(f.id, id);
         const st = link.entity ? hass.states[link.entity] : undefined;
         const heater = f.type === "water_heater" ? heaterState(hass, heaterEntities(hass, { entity: link.entity })) : null;
+        const ap = f.type === "access_point" ? apState(hass, apEntities(hass, { entity: link.entity })) : null;
         // the meter's sensor is the grid (+ = import), the battery's can point the other way as well
         const invert = f.type === "meter" ? b.energy.grid_invert && !f.export : f.type === "home_battery" ? b.energy.battery_invert && !f.charge : false;
         let power = link.power ? readPower(hass.states[link.power], invert) : null;
@@ -2502,6 +2504,9 @@ export class Fp3dView3d extends LitElement {
             const gap = typeof a.temperature === "number" && typeof a.current_temperature === "number" ? a.temperature - a.current_temperature : 1;
             screens.set(f.id, { color: [1, 0.42, 0.1], level: Math.min(1, 0.45 + 0.25 * Math.max(0, gap)) });
           }
+        } else if (ap) {
+          const ring = apRing(ap);
+          if (ring) screens.set(f.id, { color: ring, level: 1, apRing: ring });
         } else if (heater) {
           // a water heater: its display glows while it is on (orange while it heats), the showers of hot water as dots
           const n = maxShowers(f);
@@ -2553,11 +2558,13 @@ export class Fp3dView3d extends LitElement {
           z: f.z,
           y: markerHeight(f) + mountBase(floor, f),
           icon: f.icon ? mdiIcon(f.icon) : iconSvg(kind ?? "switch"),
-          name: f.name || (link.entity ? entityName(hass, link.entity) : furnitureName(hass, f.type)),
+          name: f.name || (ap && link.entity ? apName(hass, link.entity) : link.entity ? entityName(hass, link.entity) : furnitureName(hass, f.type)),
           ownName: f.name || undefined,
           showName: !!f.show_name,
           text: hhText ??
-            (heater
+            (ap
+              ? this.apText(hass, ap)
+              : heater
               ? this.heaterText(hass, heater)
               : car
               ? this.carText(hass, car, !!st && !PRESENT_STATES.has(st.state.toLowerCase()))
@@ -2572,7 +2579,7 @@ export class Fp3dView3d extends LitElement {
                     : power !== null
                       ? formatPower(hass, Math.max(0, power))
                       : ""),
-          active: hhText ? true : heater ? heater.heating : car ? car.charging : st ? isActive(st) : (power ?? 0) > (typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 5),
+          active: hhText ? true : ap ? ap.status === "up" : heater ? heater.heating : car ? car.charging : st ? isActive(st) : (power ?? 0) > (typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 5),
           unavailable: st ? isUnavailable(st) : false,
           glow: null,
           // its pin grabs the item when furnishing
@@ -2917,6 +2924,28 @@ export class Fp3dView3d extends LitElement {
     return under === null ? room : Math.max(0.5, Math.min(room, under - floor.elevation));
   }
 
+  /** The entities of the access point in the plan whose (chosen) entity this is; null: none. */
+  private apOf(entityId: string): ApEntities | null {
+    if (!this.hass || !this.building) return null;
+    for (const floor of this.building.floors)
+      for (const f of floor.furniture) {
+        if (f.type !== "access_point") continue;
+        const entity = this.furnitureLinks?.get(f.id)?.entity ?? f.entity;
+        if (entity === entityId) return apEntities(this.hass, { entity });
+      }
+    return null;
+  }
+
+  /** An access point's pin: its clients and load, or that it is offline or busy. */
+  private apText(hass: HomeAssistant, s: ApState): string {
+    if (s.status === "down") return translate(hass, "ap_down");
+    if (s.status === "busy") return translate(hass, "ap_busy");
+    const parts: string[] = [];
+    if (s.clients !== null) parts.push(translate(hass, s.clients === 1 ? "ap_client" : "ap_clients", { n: Math.round(s.clients) }));
+    if (s.cpu !== null) parts.push(`CPU ${formatNumber(hass, s.cpu, 0)} %`);
+    return parts.join(" · ") || translate(hass, "ap_up");
+  }
+
   /** The power switch of the water heater whose entity this is (null: not a water heater in the plan, or none). */
   private heaterPower(entityId: string): string | null {
     if (!this.hass || !this.building || !entityId.startsWith("water_heater.")) return null;
@@ -3116,6 +3145,13 @@ export class Fp3dView3d extends LitElement {
   private onDeviceHold(entityId: string, x: number, y: number): void {
     if (this.ro) {
       this.onDeviceTap(entityId, x, y);
+      return;
+    }
+    // an access point: a long press restarts it, after asking (without a restart button: its dialog)
+    const apEnt = this.apOf(entityId);
+    if (apEnt) {
+      if (!apEnt.restart || !this.hass) openMoreInfo(this, entityId);
+      else if (confirm(translate(this.hass, "ap_restart_confirm", { name: apName(this.hass, entityId) }))) void this.hass.callService("button", "press", { entity_id: apEnt.restart });
       return;
     }
     // Auto Pro: a long press on the parking spot's pin opens the car's menu (lock, climate, charging)
@@ -3918,6 +3954,13 @@ export class Fp3dView3d extends LitElement {
       const grid = b ? (b.energy.grid ?? deviceSensors(b, (f) => this.furnitureLinks?.get(f.id)?.power ?? null).grid) : null;
       const id = entityId === "grid" ? grid : entityId.startsWith("detect:") ? entityId.slice(7) : entityId;
       if (id) this.showInfo(id, x, y);
+      return;
+    }
+    // an access point: a tap switches its LED (or opens it without one)
+    const apEnt = this.apOf(entityId);
+    if (apEnt) {
+      if (!apEnt.led) openMoreInfo(this, entityId);
+      else if (!this.confirmSet.has(entityId) || confirm(translate(this.hass, "confirm_switch", { name: this.hass ? apName(this.hass, entityId) : entityId }))) void toggleEntity(this.hass, apEnt.led);
       return;
     }
     // a water heater: a tap switches it on or off (its power switch); a long press opens its settings (the dial)

@@ -54,7 +54,7 @@ import { roofRider, roofUnderAt, sectionCutsBelow } from "../roof-sections.ts";
 import { buildFloorGeometry, SLAB, stairHoles, type FloorGeometry } from "./build.ts";
 import { OrbitControls, type OrbitView } from "./controls.ts";
 import { makeFoldable, type FoldMasks } from "./fold.ts";
-import { pushAwning, pushCameraModel, pushPackGlow, pushPackLamp, pushPackMotion, screenRect, pushFridgeDoors, switchLeds } from "./furniture.ts";
+import { pushAwning, pushCameraModel, pushPackGlow, pushPackLamp, pushPackMotion, screenRect, pushFridgeDoors, switchLeds, apRingAt } from "./furniture.ts";
 import { switchKeyAt } from "../wall-switch.ts";
 import { pushPipeTube, type PipeTube } from "./pipes.ts";
 // the walk through the house at eye height (lives with the viewer it drives)
@@ -261,6 +261,8 @@ export interface ScreenState {
   faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon"; color: [number, number, number]; level: number }[];
   /** A wall switch: the colour of each key's LED (null = off), left to right. */
   keys?: ([number, number, number] | null)[];
+  /** An access point's LED ring in this colour. */
+  apRing?: [number, number, number];
   /** Dots over the screen, `lit` of `n` glowing: a water heater's showers of hot water left. */
   dots?: { n: number; lit: number; color: [number, number, number] };
   /** A wall switch with a light ring: its colour and brightness (null = off). */
@@ -2815,6 +2817,26 @@ export class FloorplanViewer {
       const c = Math.cos(a);
       const s = Math.sin(a);
       const P = (x: number, y: number, z: number) => [f.x + x * c - z * s, y, f.z + x * s + z * c];
+      if (st.apRing) {
+        // an access point's LED ring: a bright band with a soft glow round it, under the disc or on its face
+        const ring = apRingAt(f);
+        const y0 = mountBase(fv.floor, f) + ring.y;
+        const col = new Color(...st.apRing);
+        const halo = col.clone().multiplyScalar(0.45);
+        const dark = new Color(0, 0, 0);
+        const at = (a: number, rad: number) => (ring.wall ? P(Math.cos(a) * rad, y0 + Math.sin(a) * rad, ring.z) : P(Math.cos(a) * rad, y0, Math.sin(a) * rad));
+        const radii = [ring.r * 0.52, ring.r * 0.7, ring.r * 1.15];
+        const n = 28;
+        for (let i = 0; i < n; i++) {
+          const a0 = (i / n) * Math.PI * 2;
+          const a1 = ((i + 1) / n) * Math.PI * 2;
+          buf.tri(at(a0, radii[0]), at(a0, radii[1]), at(a1, radii[1]), col);
+          buf.tri(at(a0, radii[0]), at(a1, radii[1]), at(a1, radii[0]), col);
+          buf.tri(at(a0, radii[1]), at(a0, radii[2]), at(a1, radii[2]), halo, dark, dark);
+          buf.tri(at(a0, radii[1]), at(a1, radii[2]), at(a1, radii[1]), halo, dark, halo);
+        }
+        continue;
+      }
       if (st.keys) {
         // a wall switch: a small LED on each key that is on, with a soft halo (mirrored: the keys run the other way)
         const lift = mountBase(fv.floor, f) - builtinBase(f);

@@ -4,6 +4,7 @@
 
 import { builtinBase, ELECTRIC_FURNITURE, FURNITURE_SIZE, LIFT_SPOTS, spotDepth, surfaceHeight, WALL_LAMP_Y, type Floor, type Furniture } from "./model.ts";
 import type { LampModel } from "./viewer/viewer3d.ts";
+import { ACCESS_POINT_WALL_Y } from "./access-point.ts";
 
 /** A cooking zone of a pack cooktop: a thin disc lying on the item's top. */
 export function isCooktopZone(p: Pick<PackPart, "shape" | "y" | "h" | "axis">): boolean {
@@ -234,11 +235,13 @@ export function packName(pack: { id: string; name: string }): string {
 }
 
 /** Height of the bottom of a pack item, a wall light or an LED strip above the floor (0 for other built-in furniture). */
-export function mountBase(floor: Floor, f: Pick<Furniture, "type" | "x" | "z" | "h"> & { mount_y?: number | null }): number {
+export function mountBase(floor: Floor, f: Pick<Furniture, "type" | "x" | "z" | "h"> & { mount_y?: number | null; variant?: string | null }): number {
   const item = packItem(f.type);
   if (f.mount_y != null) return f.mount_y;
   // wall lights at the usual height, LED strips just under the ceiling
   if (f.type === "lamp_wall") return WALL_LAMP_Y;
+  // an access point under the ceiling, or on the wall at the usual height
+  if (f.type === "access_point") return f.variant === "wall" ? ACCESS_POINT_WALL_Y : Math.max(0, floor.height - Math.max(0.005, f.h));
   if (LIFT_SPOTS.has(f.type)) return Math.max(0, floor.height - spotDepth(f.type, f.h));
   if (f.type === "led_strip") return Math.max(0, floor.height - 0.04 - Math.max(0.02, f.h));
   switch (item?.mount) {
