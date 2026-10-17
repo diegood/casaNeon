@@ -3,6 +3,17 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.21.1
+
+### Correcciones
+
+- **Tablets Fire 7 y otros navegadores antiguos:** la vista 3D vuelve a verse. Desde la 1.20.0 el panel perdía su altura en navegadores sin la unidad `dvh` (Chrome anterior al 108, como el WebView de las Fire) y se quedaba solo con la cabecera.
+- **Editor con las flechas del teclado** en navegadores antiguos: ya no falla.
+
+### Cambios
+
+- **Sin editor en tablets táctiles y móviles:** en dispositivos sin ratón ni puntero fino solo aparecen 3D y Extensiones; el editor se usa desde el PC.
+
 ## 1.21.0
 
 ### Novedades
