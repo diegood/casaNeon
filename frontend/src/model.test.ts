@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { emptyBuilding, floorElevation, newFloor, openingPreset, openingStyle, normalizeBuilding, outdoorDrop, outdoorGround, resizeFurniture, roomTiles, sidelightLayout, spotGrid, surfaceHeight, type Furniture } from "./model.ts";
+import { emptyBuilding, floorElevation, newFloor, outdoorZones, zonesOf, openingPreset, openingStyle, normalizeBuilding, outdoorDrop, outdoorGround, resizeFurniture, roomTiles, sidelightLayout, spotGrid, surfaceHeight, type Furniture } from "./model.ts";
 
 test("a sidelight sits opposite the hinge, on the hinge side when asked, and keeps the leaf at least half a metre", () => {
   const none = {};
@@ -173,4 +173,30 @@ test("a patch cut out of a lawn decides the ground inside it", () => {
 test("a glass wall is a preset of its own (#163)", () => {
   assert.equal(openingPreset({ type: "window", leaves: 1, sill: 0, style: "glass_wall" }), "glass_wall");
   assert.equal(openingPreset({ type: "window", leaves: 1, sill: 0, style: null }), "terrace");
+});
+
+test("outdoor areas with a Home Assistant area act as rooms; hedges, fences and areas without one do not (#100)", () => {
+  const sq = (x: number): [number, number][] => [[x, 0], [x + 2, 0], [x + 2, 2], [x, 2]];
+  const floor = {
+    ...newFloor("f", "EG", 0),
+    rooms: [{ id: "r", name: "Küche", area_id: "kitchen", points: sq(0), floor_material: "wood" }],
+    outdoor: [
+      { id: "g", type: "lawn" as const, points: sq(5), area_id: "garden", name: "Garten" },
+      { id: "t", type: "terrace" as const, points: sq(10) },
+      { id: "h", type: "hedge" as const, points: sq(15), area_id: "garden" },
+    ],
+  };
+  const zones = outdoorZones(floor);
+  assert.deepEqual(zones.map((z) => [z.id, z.name, z.area_id, z.outdoor]), [["g", "Garten", "garden", true]]);
+  assert.deepEqual(zonesOf(floor).map((z) => z.id), ["r", "g"]);
+});
+test("a lamp fits under a high worktop step and stands on the floor; on a kitchen worktop it stands on top (#614)", () => {
+  const floor = newFloor("f", "F", 0);
+  const top = (h: number): Furniture => ({ id: `w${h}`, type: "worktop", x: 1, z: 1, rotation: 0, w: 1, d: 0.6, h, variant: null });
+  floor.furniture = [top(1.6)];
+  assert.equal(surfaceHeight(floor, 1, 1, 0.45), 0);
+  assert.equal(surfaceHeight(floor, 1, 1, 1.8), 1.6);
+  assert.equal(surfaceHeight(floor, 1, 1), 1.6);
+  floor.furniture = [top(0.92)];
+  assert.equal(surfaceHeight(floor, 1, 1, 0.45), 0.92);
 });

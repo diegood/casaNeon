@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.neonplan3d import packs
 from custom_components.neonplan3d.const import DOMAIN
@@ -180,3 +181,25 @@ def test_feature_packs_need_no_items_but_a_pack_needs_something() -> None:
         packs.validate_payload({**pro, "features": ["some_future_addon"]})
     assert err.value.code == "needs_update"
     assert err.value.detail == "some_future_addon"
+
+
+def test_a_newer_part_shape_asks_for_an_update() -> None:
+    """An unknown value of a newer pack asks for an update (voluptuous and Probatio); other faults stay errors."""
+    item = copy.deepcopy(PAYLOAD["items"][0])
+    item["parts"][0]["shape"] = "some_future_shape"
+    with pytest.raises(packs.PackError) as err:
+        packs.validate_payload({**PAYLOAD, "items": [item]})
+    assert err.value.code == "needs_update"
+    item["parts"][0]["shape"] = "box"
+    item["parts"][0]["w"] = "wide"
+    with pytest.raises(packs.PackError) as err:
+        packs.validate_payload({**PAYLOAD, "items": [item]})
+    assert err.value.code == "invalid_content"
+
+
+def test_probatio_marks_an_unknown_value_by_its_code() -> None:
+    """Probatio (Home Assistant 2026.9+) words its errors its own way but gives the code "not_in_list"."""
+    err = vol.Invalid("not a valid option")
+    err.code = "not_in_list"
+    assert packs._unknown_value(vol.MultipleInvalid([err]))
+    assert not packs._unknown_value(vol.MultipleInvalid([vol.Invalid("expected float")]))

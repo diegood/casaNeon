@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { BufferGeometry } from "three";
 import type { Floor, Furniture, Opening, Room } from "../model.ts";
 import { newFloor } from "../model.ts";
-import { buildFloorGeometry, clipAlong, stairHoles } from "./build.ts";
+import { buildFloorGeometry, clipAlong, stairHoles, stairHoleParts } from "./build.ts";
 
 const EXT = 0.24;
 const INT = 0.12;
@@ -175,4 +175,38 @@ test("a stairwell opening cuts a hole into its own floor; stairs below reaching 
   const solid = area(buildFloorGeometry(upper, EXT, INT).floor);
   const cut = area(buildFloorGeometry(upper, EXT, INT, holes).floor);
   assert.ok(solid - cut > 4.4 && solid - cut < 4.6, `${solid - cut}`);
+});
+
+test("a stairwell joined with the stairs' own hole is cut even where the two reach past the room (#375)", () => {
+  // two rooms upstairs; the stairwell lies in the first, the tall stairs below reach a little into the second
+  const upper = floorWith([rect("a", 0, 0, 6, 4.5), rect("b", 0, 4.5, 6, 8)]);
+  upper.elevation = 2.75;
+  upper.furniture.push({ id: "w", type: "stairwell", x: 3, z: 3.65, rotation: 0, w: 2, d: 1, h: 0.005, variant: null });
+  const lower = floorWith([rect("c", 0, 0, 6, 8)]);
+  lower.furniture.push({ id: "s", type: "stairs", x: 3, z: 4.2, rotation: 0, w: 2, d: 1.95, h: 3.5, variant: null });
+  const solid = area(buildFloorGeometry(upper, EXT, INT).floor);
+  const cut = area(buildFloorGeometry(upper, EXT, INT, stairHoleParts([lower, upper], upper)).floor);
+  // the union of both openings: x 2–4, z 3.15–5.175 (2 × 2.025 m), minus the 3 mm inset
+  assert.ok(solid - cut > 3.9 && solid - cut < 4.06, `${solid - cut}`);
+});
+
+test("a sloping wall: its top runs from the height at its start to the one at its end (D569)", () => {
+  // edge 0 of the room runs from (0,0) to (4,0): 1.0 m high at the start, 2.5 m at the end
+  const room = { ...rect("r", 0, 0, 4, 3), wall_slopes: [[1.0, 2.5] as [number, number], null, null, null] };
+  const floor = { ...floorWith([room]), height: 2.5 };
+  const pos = buildFloorGeometry(floor, EXT, INT).walls.getAttribute("position");
+  // the highest point of the wall's solid near each end of the edge (z < 0.05: the wall on edge 0)
+  const top = (x0: number, x1: number) => {
+    let hi = -Infinity;
+    for (let i = 0; i < pos.count; i++) if (pos.getZ(i) < 0.05 && pos.getZ(i) > -0.5 && pos.getX(i) >= x0 && pos.getX(i) <= x1) hi = Math.max(hi, pos.getY(i));
+    return hi;
+  };
+  assert.ok(top(0.05, 0.4) < 1.2, `start ${top(0.05, 0.4)}`);
+  assert.ok(top(3.6, 3.95) > 2.2, `end ${top(3.6, 3.95)}`);
+  // a window near the low end stays below the top
+  const win = { ...opening("window", "r", 0, 0.8, 0.6), sill: 0.3, height: 1.5 };
+  const geo = buildFloorGeometry({ ...floor, openings: [win] }, EXT, INT);
+  // centred 0.8 m along the wall it starts at 0.5 m, where the top is 1.0 + 1.5 × 0.5 / 4 ≈ 1.19 m: it ends just below
+  const info = geo.openings.find((o) => o.opening.id === win.id);
+  assert.ok(info && info.top < 1.19 && info.top > 1.1, `window top ${info?.top}`);
 });

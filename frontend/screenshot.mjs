@@ -114,6 +114,25 @@ const HOUSEHOLD_SCRIPT = `
   e.setDoc(structuredClone(e._doc));
 `;
 
+
+// lab prototype: a garden camera on the back wall casts a test picture (1 m squares, coloured bands) onto terrace and lawn
+const PROJECTION_SCRIPT = `
+  localStorage.setItem('neonplan3d.lab', '1');
+  const c = document.createElement('canvas'); c.width = 960; c.height = 540;
+  const g = c.getContext('2d');
+  const sky = g.createLinearGradient(0, 0, 0, 540); sky.addColorStop(0, '#5aa0d8'); sky.addColorStop(0.35, '#7fbf5a'); sky.addColorStop(1, '#3d7a2e');
+  g.fillStyle = sky; g.fillRect(0, 0, 960, 540);
+  for (let y = 200; y < 540; y += 34) for (let x = 0; x < 960; x += 34) if (((x + y) / 34) % 2 === 0) { g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(x, y, 34, 34); }
+  g.fillStyle = '#c9a77a'; g.fillRect(260, 330, 440, 210);
+  g.fillStyle = '#d2453a'; g.fillRect(420, 380, 120, 70);
+  g.fillStyle = '#ffffff'; g.font = 'bold 44px sans-serif'; g.fillText('KAMERA GARTEN', 300, 120);
+  g.strokeStyle = '#ffeb3b'; g.lineWidth = 8; g.strokeRect(6, 6, 948, 528);
+  e.hass.states['camera.garten'] = { entity_id: 'camera.garten', state: 'idle', attributes: { friendly_name: 'Garten Kamera', entity_picture: c.toDataURL('image/jpeg', 0.9) }, last_changed: '', last_updated: '', context: { id: '' } };
+  const f = e._doc.floors[0];
+  f.placements.push({ entity_id: 'camera.garten', x: 4, z: 0.15, y: 2.4, mount: 'wall', rotation: 180, tilt: 32, fov: 100 });
+  e.setDoc(structuredClone(e._doc));
+`;
+
 const shots = [
   { name: "view-house", query: "?fp3d_stats", width: 1280, height: 800 },
   { name: "promo-house", query: "", width: 1280, height: 800 },
@@ -128,7 +147,7 @@ const shots = [
   { name: "view-high", query: "", width: 1280, height: 800, click: "Hoch", then: "Bad" },
   { name: "view-garden", query: "", width: 1280, height: 800, click: "Gestapelt" },
   { name: "view-sun", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Schlafzimmer" },
-  { name: "view-heat", query: "", width: 1280, height: 800, click: "Temp.", then: "Erdgeschoss" },
+  { name: "view-heat", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Anzeige", thenAlso: ["Temp."] },
   { name: "view-blueprint", query: "", width: 1280, height: 800, click: "Blueprint", then: "Erdgeschoss" },
   { name: "view-day", query: "", width: 1280, height: 800, click: "Tag", then: "Erdgeschoss" },
   { name: "view-day-house", query: "", width: 1280, height: 800, click: "Tag" },
@@ -434,6 +453,7 @@ for (const shot of shots.filter((s) => !only || only.includes(s.name))) {
   if (shot.select) await clickText(shot.select);
   if (shot.click) await clickText(shot.click);
   if (shot.then) await clickText(shot.then);
+  for (const t of shot.thenAlso ?? []) await clickText(t);
   if (shot.tapAt) {
     await page.mouse.click(shot.tapAt[0], shot.tapAt[1]);
     await new Promise((r) => setTimeout(r, 900));
@@ -513,10 +533,10 @@ for (const shot of shots.filter((s) => !only || only.includes(s.name))) {
       }
       // DEBUG_VIEW="<code using v>" prints what the panel's 3D view says after the switch
       if (process.env.DEBUG_VIEW) {
-        const out = await page.evaluate((code) => {
+        const out = await page.evaluate(async (code) => {
           const v = document.querySelector("neonplan3d-panel").shadowRoot.querySelector("fp3d-view3d");
           try {
-            return String(new Function("v", "return " + code)(v));
+            return String(await new Function("v", "return " + code)(v));
           } catch (err) {
             return "ERROR " + err.message;
           }

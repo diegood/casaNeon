@@ -13,11 +13,12 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.loader import async_get_integration
 import voluptuous as vol
 
-from .const import DOMAIN, SIGNAL_BUILDING_UPDATED
+from .const import DATA_ASK, DATA_VOICE, DOMAIN, SIGNAL_ASK, SIGNAL_BUILDING_UPDATED
 from .packs import MAX_PACK_SIZE, PackError, fingerprint, parts_of, verify_pack
 from .schema import BUILDING_SCHEMA, IMAGE_DATA
 from .storage import FloorplanData, complete
 from .timetravel import ws_timetravel_history
+from .voice import SENTENCE_MODES, AskBroker, VoiceSettings
 
 _IMAGE_ID = vol.All(str, vol.Length(min=1, max=64), vol.Match(r"^[A-Za-z0-9_\-.]+$"))
 
@@ -41,6 +42,10 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_backup_export,
         ws_backup_import,
         ws_timetravel_history,
+        ws_voice_subscribe,
+        ws_voice_answer,
+        ws_voice_settings,
+        ws_voice_settings_set,
     ):
         websocket_api.async_register_command(hass, command)
 
@@ -308,3 +313,57 @@ async def ws_backup_import(
             "skipped": skipped,
         },
     )
+
+
+@websocket_api.websocket_command({vol.Required("type"): "neonplan3d/voice/subscribe"})
+@callback
+def ws_voice_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Every sentence Assist (or the service `neonplan3d.ask`) hands to the views; each open view listens."""
+
+    @callback
+    def forward(ask: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], ask))
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_ASK, forward)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "neonplan3d/voice/answer",
+        vol.Required("ask_id"): vol.All(str, vol.Length(max=64)),
+        vol.Required("text"): vol.All(str, vol.Length(max=2000)),
+        vol.Optional("answered", default=True): bool,
+    }
+)
+@callback
+def ws_voice_answer(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """A view's answer to a sentence: the first one is taken, later ones are told so (`taken: false`)."""
+    broker: AskBroker | None = hass.data.get(DATA_ASK)
+    taken = broker.answer(msg["ask_id"], msg["text"], msg["answered"]) if broker else False
+    connection.send_result(msg["id"], {"taken": taken})
+
+
+@websocket_api.websocket_command({vol.Required("type"): "neonplan3d/voice/settings"})
+@callback
+def ws_voice_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """The voice settings: which sentences Assist hands to NeonPlan."""
+    settings: VoiceSettings | None = hass.data.get(DATA_VOICE)
+    connection.send_result(msg["id"], {"sentences": settings.sentences if settings else "distinct"})
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "neonplan3d/voice/settings/set", vol.Required("sentences"): vol.In(SENTENCE_MODES)}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_voice_settings_set(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Sets which sentences Assist hands to NeonPlan; the sentence files are rewritten and Assist reloads them."""
+    settings: VoiceSettings | None = hass.data.get(DATA_VOICE)
+    if settings is None:
+        connection.send_error(msg["id"], "not_ready", "voice settings not loaded")
+        return
+    await settings.async_set_sentences(msg["sentences"])
+    connection.send_result(msg["id"], {"sentences": settings.sentences})

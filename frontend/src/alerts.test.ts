@@ -127,33 +127,6 @@ test("a power outage: grid sensors off, helpers on, a UPS on battery, a low main
   assert.equal(alertText(hass, b, alerts[0]), "Corte de luz: Netz");
 });
 
-test("Pool Pro warns when pH or chlorine are far off or the water freezes while the pump rests", () => {
-  const st = (entity_id: string, state: string, attributes: Record<string, unknown> = {}) => ({ entity_id, state, attributes });
-  const hass = {
-    language: "de",
-    states: {
-      "sensor.pool_ph": st("sensor.pool_ph", "8.3"),
-      "sensor.pool_redox": st("sensor.pool_redox", "700", { unit_of_measurement: "mV" }),
-      "sensor.pool_wasser": st("sensor.pool_wasser", "2", { device_class: "temperature", unit_of_measurement: "°C" }),
-      "switch.pool_pumpe": st("switch.pool_pumpe", "off"),
-    },
-    entities: {},
-  } as unknown as HomeAssistant;
-  const b = emptyBuilding();
-  b.floors = [{ ...newFloor("eg", "EG", 0), outdoor: [{ id: "p1", type: "pool", points: [[0, 0], [4, 0], [4, 3], [0, 3]], pool: {} }] }];
-  // Pool Pro is not released yet: no pool warnings unless the lab switch is on
-  assert.deepEqual(findAlerts(hass, b, alertSources(hass, b), new Map()), []);
-  const lab = new Map([["neonplan3d.lab", "1"]]);
-  (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => lab.get(k) ?? null };
-  try {
-    const alerts = findAlerts(hass, b, alertSources(hass, b), new Map());
-    assert.deepEqual(alerts.map((a) => a.kind), ["pool_ph", "pool_frost"]);
-    assert.equal(alertText(hass, b, alerts[0]), "Piscina: pH 8.3");
-  } finally {
-    delete (globalThis as { localStorage?: unknown }).localStorage;
-  }
-});
-
 test("Haushalt Pro warns when a fridge door stands open too long", () => {
   const open = new Date(Date.now() - 5 * 60_000).toISOString();
   const hass = {

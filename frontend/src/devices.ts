@@ -62,9 +62,15 @@ const SENSOR_CLASSES = new Set([
   "nitrogen_dioxide",
   "moisture",
   "sound_pressure",
+  // water values of a pool or a pond (D600): pH, and conductivity for salt
+  "ph",
+  "conductivity",
 ]);
-/** Sensors without a class still count when their unit is a meter's (e.g. older meter readers). */
-const METER_UNITS = new Set(["m³", "m3", "L", "l", "kWh", "Wh", "MWh", "lx"]);
+/**
+ * Sensors without a class still count when their unit is a meter's (e.g. older meter readers) or a water value's:
+ * redox / ORP in mV, salt or chlorine in mg/L or ppm, conductivity in µS/cm (D600).
+ */
+const METER_UNITS = new Set(["m³", "m3", "L", "l", "kWh", "Wh", "MWh", "lx", "mV", "mg/L", "mg/l", "ppm", "µS/cm", "μS/cm", "mS/cm"]);
 const BINARY_CLASSES = new Set(["door", "window", "opening", "garage_door", "motion", "occupancy", "presence", "smoke", "moisture", "gas", "carbon_monoxide"]);
 
 /** Order in lists and panels. */
@@ -252,7 +258,8 @@ export function roomClimateSensors(hass: HomeAssistant, floor: Floor | null, roo
   const here = placed.filter((p) => inRoom(p.x, p.z)).map((p) => p.entity_id);
   const elsewhere = new Set(placed.filter((p) => !inRoom(p.x, p.z)).map((p) => p.entity_id));
   const ids = [...new Set([...areaEntities(hass, room.area_id).filter((id) => !elsewhere.has(id)), ...here])];
-  const sensors = ids.filter((id) => id.startsWith("sensor.") && hass.states[id]?.attributes.device_class === dc && isRoomClimateSensor(hass, id));
+  // outside (an outdoor area acting as a room, #100) the "outdoor" sensors are just the right ones
+  const sensors = ids.filter((id) => id.startsWith("sensor.") && hass.states[id]?.attributes.device_class === dc && (room.outdoor || isRoomClimateSensor(hass, id)));
   if (sensors.length) return sensors;
   // no sensor of its own: a thermostat of the room tells its temperature (and humidity) too (#478)
   const attr = CLIMATE_ATTRS[key];
@@ -321,6 +328,21 @@ export function entityName(hass: HomeAssistant, entityId: string, areaName?: str
     return rest.charAt(0).toUpperCase() + rest.slice(1);
   }
   return name;
+}
+
+/**
+ * Whether a radiator heats by its own sensor (D637): a valve's work state ("opened", "heating", "on"), a binary
+ * sensor, or an opening in percent (above 0); null when the sensor says nothing usable.
+ */
+export function heatSensorOn(hass: HomeAssistant, ref: EntityRef | undefined): boolean | null {
+  if (!ref || ref === "none") return null;
+  const st = hass.states[ref];
+  if (!st || isUnavailable(st)) return null;
+  const s = st.state.toLowerCase();
+  if (["on", "open", "opened", "heating", "heat", "true", "active", "running"].includes(s)) return true;
+  if (["off", "closed", "idle", "false", "inactive", "standby"].includes(s)) return false;
+  const v = Number(s);
+  return Number.isFinite(v) ? v > 0 : null;
 }
 
 export function isUnavailable(st: HassEntity | undefined): boolean {
@@ -569,6 +591,8 @@ export interface OpeningEntities {
   tiltInvert?: boolean;
   /** A door without a sensor is drawn closed. */
   shut?: boolean;
+  /** A door's smart lock. */
+  lock?: string | null;
   /** The contacts report the other way round (on = closed). */
   contactInvert?: boolean;
   /** The cover reports open as closed and its position the other way round. */
@@ -599,6 +623,8 @@ export function openingEntities(hass: HomeAssistant, floors: readonly Floor[]): 
     contact: o.sensor === "handle" && o.contact == null ? null : pick(o.contact, autoK),
     tilt: o.tilt === "none" ? null : o.tilt,
     contact2: o.leaves === 2 && o.contact2 && o.contact2 !== "none" ? o.contact2 : null,
+    // a smart lock on a door, or on a terrace door (a window down to the floor, #645)
+    lock: (o.type === "door" || (o.type === "window" && o.sill <= 0.01)) && o.lock && o.lock !== "none" ? o.lock : null,
     tilt2: o.leaves === 2 && o.tilt2 && o.tilt2 !== "none" ? o.tilt2 : null,
     position: o.position && o.position !== "none" ? o.position : null,
     positionInverted: !!o.position_inverted,

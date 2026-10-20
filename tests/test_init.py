@@ -512,3 +512,18 @@ async def test_panel_and_card_are_registered_and_removed(hass: HomeAssistant, mo
     await hass.async_block_till_done()
     mock_frontend["remove_panel"].assert_called_once_with(hass, "neonplan3d")
     mock_frontend["remove_js"].assert_called_once_with(hass, url)
+
+
+async def test_frontend_files_are_served_without_caching(hass: HomeAssistant, hass_client) -> None:
+    """A reload shows a new bundle: no-cache (and a 304 when unchanged); nothing outside the folder."""
+    await _setup(hass)
+    client = await hass_client()
+    res = await client.get("/neonplan3d_static/neonplan3d.js?v=1")
+    assert res.status == 200
+    assert res.headers["Cache-Control"] == "no-cache"
+    etag = res.headers.get("ETag")
+    assert etag
+    again = await client.get("/neonplan3d_static/neonplan3d.js", headers={"If-None-Match": etag})
+    assert again.status == 304
+    assert (await client.get("/neonplan3d_static/../manifest.json")).status in (403, 404)
+    assert (await client.get("/neonplan3d_static/nothing.js")).status == 404

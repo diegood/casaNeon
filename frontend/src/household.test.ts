@@ -186,3 +186,35 @@ test("the glow hours can be set for the house; a tap on a bin lists its next pic
   assert.deepEqual(next.map((p) => p.day.getDate()), [15, 29, 12]);
   assert.deepEqual(binNext({ bin_kind: "paper", bin_source: "sensor.p" }, hassOf(st("sensor.p", "3")), pickups, new Date(2026, 9, 15, 18, 0)).map((p) => p.day.getDate()), [18]);
 });
+
+test("a sensor's free text: the days, not another number in it (D576)", () => {
+  const st = (state: string) => ({ entity_id: "sensor.rest", state, attributes: {} });
+  assert.equal(sensorDays(st("Restabfalltonne 2-wöchentlich in 4 Tagen")), 4);
+  assert.equal(sensorDays(st("in 3 days")), 3);
+  assert.equal(sensorDays(st("Bio: 11 dagen")), 11);
+  assert.equal(sensorDays(st("Tonne 120 l, 5")), 5);
+});
+
+test("a sensor's date in its text: Waste Collection Schedule's formats (1.20.1 took the year for the days)", () => {
+  const now = new Date(2026, 9, 19, 9, 0);
+  const st = (state: string) => ({ entity_id: "sensor.bio", state, attributes: {} });
+  assert.equal(sensorDays(st("on Mon, 26.10.2026"), now), 7);
+  assert.equal(sensorDays(st("am Mo, 19.10.2026"), now), 0);
+  assert.equal(sensorDays(st("Biotonne 28.10."), now), 9);
+  assert.equal(sensorDays(st("2026-10-29 (Do)"), now), 10);
+  assert.equal(sensorDays(st("29/10/2026"), now), 10);
+  assert.equal(sensorDays(st("10/29/2026"), now), 10);
+  // a date without a year that has passed this year is next year's
+  assert.equal(sensorDays(st("Weihnachtsbaum 05.01."), now), 78);
+  // numbers that are no date stay as they were
+  assert.equal(sensorDays(st("Restabfalltonne 2-wöchentlich in 4 Tagen"), now), 4);
+});
+
+test("the pickup day across a clock change is the right calendar day (D576)", () => {
+  // Saturday 17 October 2026, the clocks go back on the 25th: 11 days later is Wednesday the 28th
+  const now = new Date(2026, 9, 17, 10, 0);
+  const hass = { states: { "sensor.bio": { entity_id: "sensor.bio", state: "11", attributes: {} } } } as unknown as Parameters<typeof binDue>[1];
+  const due = binDue({ bin_kind: "bio", bin_source: "sensor.bio", bin_match: null }, hass, new Map(), now);
+  assert.equal(due?.day.getDate(), 28);
+  assert.equal(due?.day.getDay(), 3);
+});

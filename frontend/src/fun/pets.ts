@@ -7,7 +7,7 @@
 
 import type * as THREE from "three";
 import type { Building, Floor, Furniture, Pet, Vec2 } from "../model.ts";
-import type { FloorMap } from "../viewer/walk.ts";
+import type { FloorMap, Obstacle } from "../viewer/walk.ts";
 
 /** The three.js classes the pets need, lent by the 3D bundle (it has no ready-made spheres or boxes: shapes are made here). */
 export type FunLib = Pick<typeof THREE, "Group" | "Mesh" | "MeshBasicMaterial" | "CanvasTexture" | "Color" | "PlaneGeometry" | "BufferGeometry" | "Float32BufferAttribute"> & { DoubleSide: typeof THREE.DoubleSide };
@@ -283,6 +283,20 @@ interface Rug {
 }
 
 /** Rugs and mats of a floor (a built-in rug or a pack's, "rug"/"carpet"/"mat" in its name, at most 6 cm high). */
+/**
+ * The furniture the pets walk around: whatever stands on the floor and is higher than a rug or a dog bed – sofas,
+ * tables, cabinets, beds. Lamps, rugs and what hangs on a wall stay out (a place on the sofa is still reached, with a
+ * hop at the end).
+ */
+function obstaclesOf(floor: Floor, base: (floor: Floor, f: Furniture) => number): Obstacle[] {
+  return floor.furniture
+    .filter((f) => f.h >= 0.25 && base(floor, f) < 0.3 && !/lamp|light|leuchte|rug|carpet|teppich|(^|_)mat($|_)|parking|stellplatz/.test(itemOf(f.type)))
+    .map((f) => {
+      const a = (f.rotation * Math.PI) / 180;
+      return { c: [f.x, f.z] as Vec2, u: [Math.cos(a), Math.sin(a)] as Vec2, hw: f.w / 2, hd: f.d / 2 };
+    });
+}
+
 function rugsOf(floor: Floor): Rug[] {
   return floor.furniture
     .filter((f) => /rug|carpet|teppich|(^|_)mat($|_)/.test(itemOf(f.type)) && f.h <= 0.06)
@@ -537,7 +551,7 @@ export function startPets(ctx: PetsContext): PetsController {
       // shut doors are walls for the pets
       const shut = ctx.closedDoors?.() ?? new Set<string>();
       const walkable = shut.size ? { ...floor, openings: floor.openings.filter((o) => !shut.has(o.id)) } : floor;
-      info = { floor, map: new ctx.FloorMap(plan, walkable), rooms: floor.rooms.filter((r) => r.points.length >= 3), spots: new Map(), rugs: rugsOf(floor) };
+      info = { floor, map: new ctx.FloorMap(plan, walkable, obstaclesOf(floor, ctx.base)), rooms: floor.rooms.filter((r) => r.points.length >= 3), spots: new Map(), rugs: rugsOf(floor) };
       floors.set(id, info);
     }
     return info;

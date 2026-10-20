@@ -437,12 +437,40 @@ function fridge(b: Builder, w: number, d: number, h: number): void {
 const tone = (hex: string, k: number) => shade(parseInt(hex.slice(1), 16), k).getHex();
 
 /**
+ * The blueprint and day looks keep only bright, strong colours and turn the rest into their own tones: waste bins
+ * are drawn in their full colour there, or a brown or blue bin turns blue or grey like any cupboard (#609).
+ */
+let lightLook = false;
+export function setLightLook(on: boolean): void {
+  lightLook = on;
+}
+
+/** Vertex colours from `from` on: saturated ones darkened by the shading are lifted back to a kept brightness. */
+export function keepBright(c: number[], from: number): void {
+  for (let i = from; i + 2 < c.length; i += 3) {
+    const mx = Math.max(c[i], c[i + 1], c[i + 2]);
+    const mn = Math.min(c[i], c[i + 1], c[i + 2]);
+    // wheels and dark parts stay dark; grey and white parts follow the look
+    if (mx < 0.1 || (mx - mn) / mx < 0.45 || mx >= 0.62) continue;
+    const k = 0.62 / mx;
+    c[i] *= k;
+    c[i + 1] *= k;
+    c[i + 2] *= k;
+  }
+}
+
+/**
  * A waste bin in its shape and colours (household.ts): wheelie bins taper to the bottom and have their wheels and
  * handle at the back (-z), a 1100 l container stands on four castors, a sack is tied at the top.
  */
 function wasteBin(b: Builder, w: number, d: number, h: number, shape: BinShape, colors: [string, string]): void {
-  const body = tone(colors[0], 0.55);
-  const lid = tone(colors[1], 0.8);
+  // in the light looks at least as bright as the looks keep a colour (a dark brown or green bin too)
+  const full = (hex: string) => {
+    const mx = Math.max(...new Color(hex).toArray());
+    return tone(hex, mx > 0.05 ? Math.max(1, 0.62 / mx) : 1);
+  };
+  const body = lightLook ? full(colors[0]) : tone(colors[0], 0.55);
+  const lid = lightLook ? full(colors[1]) : tone(colors[1], 0.8);
   const lidTop = tone(colors[1], 1);
   if (shape === "bag") {
     // a full sack: wider in the middle, gathered and tied at the top
@@ -1677,9 +1705,14 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
     case "fridge_smart":
       fridgeSmart(b, w, d, h);
       break;
-    case "waste_bin":
+    case "waste_bin": {
+      const c0 = buf.c.length;
       wasteBin(b, w, d, h, binShape(f), binColors(f, householdCountry()));
+      // the light looks keep only bright saturated colours: the shading towards the floor made the lower half of a
+      // bin fall back to the look's grey (#609), so its coloured parts keep their brightness all the way down
+      if (lightLook) keepBright(buf.c, c0);
       break;
+    }
     case "mailbox": {
       // like the other built-in wall models it is drawn at its own height (a wall mailbox at 1 m, a bank at 0.75 m)
       const p0 = buf.p.length;

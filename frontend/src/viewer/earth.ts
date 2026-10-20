@@ -59,11 +59,14 @@ function outlineOf(b: Building, floor: Floor): Vec2[] | null {
  */
 function coverAbove(b: Building, floor: Floor, p: Vec2, ground: number): number {
   let top = -Infinity;
-  for (const f of b.floors)
+  for (const f of b.floors) {
+    // only areas on the ground cover a well: a balcony on an upper floor floats over it (#602)
+    if (f.elevation > 0.3) continue;
     for (const a of f.outdoor ?? []) {
-      if (a.points.length < 3 || a.type === "pool" || outdoorStanding(a.type) || !pointInPolygon(p, a.points)) continue;
+      if (a.points.length < 3 || a.type === "pool" || a.type === "balcony" || outdoorStanding(a.type) || !pointInPolygon(p, a.points)) continue;
       top = Math.max(top, f.elevation + areaGround(f, a) + OUTDOOR_TOP[a.type] - floor.elevation);
     }
+  }
   return top > ground ? top - ground : 0;
 }
 
