@@ -1013,15 +1013,6 @@ export function furnitureEntities(hass: HomeAssistant, floors: readonly Floor[])
   return out;
 }
 
-/** An access point's status (D582): online, offline, or null when nothing says (unknown). */
-export function apOnline(st: HassEntity | undefined): boolean | null {
-  if (!st) return null;
-  const s = String(st.state).toLowerCase();
-  if (s === "unavailable") return false;
-  if (s === "unknown" || s === "") return null;
-  return !["off", "disconnected", "offline", "not_home", "disabled", "down", "isolated"].includes(s);
-}
-
 /** How fast a ceiling fan's blades turn (0–1): its percentage while it is on, a middle speed when it reports none. */
 export function fanSpeed(st: HassEntity | undefined): number {
   if (!st || st.state !== "on") return 0;

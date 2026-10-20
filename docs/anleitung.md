@@ -503,9 +503,9 @@ Unter **Möbel → Haushalt** stehen **Mülltonne** und **Briefkasten**.
 - **Abfallart:** Restmüll, Bio, Papier, Verpackung, Glas, Garten, Recycling oder Sonstiges. Sie gibt der Tonne die Farben, die in deinem Land üblich sind (nach dem Land in Home Assistant: in Deutschland etwa Papier blau, Bio braun, Gelbe Tonne gelb; in Australien zeigt der Deckel die Sorte). **Farbe** und **Deckel** kannst du danach frei wählen.
 - **Briefkasten – Bauform:** Wandbriefkasten (hängt auf 1 m), Briefkasten auf Pfosten mit Fähnchen, Standbriefkasten mit Zeitungsfach, Paketbox oder Briefkastenanlage.
 
-### 4.24 Haustechnik: Lichtschalter, Steckdosen, WLAN und Warmwasser
+### 4.24 Lichtschalter und Steckdosen
 
-Unter **Möbel → Haustechnik** (in der Wandansicht unter 🔌 **Schalter**) stehen **Lichtschalter** und **Steckdose**. Sie hängen an der Wand: der Schalter auf 1,05 m, die Steckdose auf 0,3 m (die Außensteckdose auf 0,5 m); mit **Höhe über Boden** setzt du eine eigene Höhe.
+Unter **Möbel → Schalter & Steckdosen** (in der Wandansicht unter 🔌 **Schalter**) stehen **Lichtschalter** und **Steckdose**. Sie hängen an der Wand: der Schalter auf 1,05 m, die Steckdose auf 0,3 m (die Außensteckdose auf 0,5 m); mit **Höhe über Boden** setzt du eine eigene Höhe.
 
 - **Tasten / Dosen im Rahmen:** 1 bis 4 in einem Rahmen; der Rahmen wird dabei passend breiter.
 - **Jede Taste, jede Dose bekommt ihre eigene Entität:** ein Licht, ein Schalter (das Relais, der Zwischenstecker) oder ein Lüfter. Sie leuchtet in 3D, solange die Entität an ist – ein Licht in seiner Farbe, eine Steckdose grün.
@@ -514,10 +514,6 @@ Unter **Möbel → Haustechnik** (in der Wandansicht unter 🔌 **Schalter**) st
 - **Bauform (Steckdose):** innen oder **Außensteckdose mit Klappe**.
 - **Antippen:** Mit nur einer Entität schaltet ein Tippen sie direkt. Bei mehreren öffnet sich ein kleines Menü mit einer Schaltfläche pro Taste. **Vor dem Schalten fragen** gilt für alle Tasten.
 - Das Symbol über dem Rahmen zeigt bei mehreren Tasten, wie viele an sind (z. B. „1/2“), bei Steckdosen auch die Leistung.
-
-**WLAN-Access-Point:** eine flache Scheibe unter der Decke oder eine Platte an der Wand (**Montage**). Als **Status** nimmst du, was sagt, ob er da ist – einen Verbindungs-Sensor, den Zustand, einen device_tracker; auch Diagnose-Entitäten (etwa von UniFi) stehen zur Wahl. Sein Ring leuchtet blau, solange er da ist, und rot, wenn er fehlt; dann zeigt sich auch sein Symbol mit „Offline“. Mit dem Sensor **verbundene Geräte** steht deren Zahl am Symbol.
-
-**Warmwasserspeicher:** ein Standspeicher oder ein flacher Speicher an der Wand (auf 1,1 m). Verknüpft wird die water_heater-Entität, ein Thermostat oder der Schalter des Heizstabs, dazu optional ein Sensor mit der **Wassertemperatur** und ein Leistungssensor. Er glüht warm, solange er heizt (Thermostat „heizt“, Schalter an oder Leistung über der Schwelle), schwach, solange er bereit ist, und zeigt die Wassertemperatur.
 
 ---
 

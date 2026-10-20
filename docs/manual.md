@@ -503,9 +503,9 @@ Under **Furniture → Household** you find the **waste bin** and the **mailbox**
 - **Waste:** general, food / organic, paper, packaging, glass, garden, recycling or other. It gives the bin the colours usual in your country (by the country set in Home Assistant: in Germany paper is blue and food waste brown, in the US recycling is blue; in Australia the lid tells the kind). **Colour** and **lid** can be changed freely afterwards.
 - **Mailbox – shape:** wall mailbox (hanging at 1 m), mailbox on a post with a flag, post box with a newspaper holder, parcel box or mailbox bank.
 
-### 4.24 Home technology: light switches, sockets, Wi-Fi and hot water
+### 4.24 Light switches and sockets
 
-Under **Furniture → Home technology** (in the wall view under 🔌 **Switches**) you find the **light switch** and the **socket**. They hang on the wall: the switch at 1.05 m, the socket at 0.3 m (the outdoor socket at 0.5 m); **Height above floor** sets your own.
+Under **Furniture → Switches & sockets** (in the wall view under 🔌 **Switches**) you find the **light switch** and the **socket**. They hang on the wall: the switch at 1.05 m, the socket at 0.3 m (the outdoor socket at 0.5 m); **Height above floor** sets your own.
 
 - **Buttons / sockets in the frame:** 1 to 4 in one frame; the frame grows wider to fit.
 - **Every button, every socket gets its own entity:** a light, a switch (the relay, the smart plug) or a fan. It glows in 3D while the entity is on – a light in its colour, a socket green.
@@ -514,10 +514,6 @@ Under **Furniture → Home technology** (in the wall view under 🔌 **Switches*
 - **Kind (socket):** indoor or **outdoor socket with lid**.
 - **Tap:** with one entity a tap switches it right away. With several, a small menu opens with one button per gang. **Ask before switching** applies to every gang.
 - With several gangs, the symbol above the frame shows how many are on (e.g. "1/2"); sockets show their power too.
-
-**Wi-Fi access point:** a flat disc under the ceiling or a plate on the wall (**Mounting**). As its **status** pick whatever says whether it is there – a connectivity sensor, its state, a device_tracker; diagnostic entities (UniFi's, for example) are offered too. Its ring glows blue while it is there and red when it is gone; its symbol then shows with "Offline". With the **connected clients** sensor their number stands at the symbol.
-
-**Water heater:** a standing tank or a slim tank on the wall (at 1.1 m). Link the water_heater entity, a thermostat or the heating element's switch, plus optionally a sensor with the **water temperature** and a power sensor. It glows warm while it heats (thermostat heating, switch on or power above the threshold), faintly while it is ready, and shows the water temperature.
 
 ---
 

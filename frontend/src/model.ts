@@ -269,10 +269,6 @@ export interface Furniture {
   upright?: boolean;
   /** Ceiling fan with light (D606): its fan entity – the blades turn with its speed (the light is `entity`). */
   fan?: EntityRef;
-  /** Wi-Fi access point (D582): a sensor with the number of connected clients (its status is `entity`). */
-  clients?: EntityRef;
-  /** Water heater: a sensor with the water temperature (else the heater's own current temperature). */
-  water_temp?: EntityRef;
   /** Wall switch and socket (D523, D540, #593): one entry per gang – the entity it switches and, for a socket, its power sensor. */
   gangs?: Gang[] | null;
   /** Screens: pictures shown while an entity is in a state (first match wins; "*" = any state). */
@@ -1246,8 +1242,6 @@ export const FURNITURE_TYPES = [
   "wall_switch",
   "wall_socket",
   "lamp_fan",
-  "wifi_ap",
-  "water_heater",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
@@ -1262,7 +1256,7 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   vehicles: ["parking"],
   outdoor: ["awning"],
   household: ["waste_bin", "mailbox"],
-  switches: ["wall_switch", "wall_socket", "wifi_ap", "water_heater"],
+  switches: ["wall_switch", "wall_socket"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1471,23 +1465,6 @@ export function gangEntities(f: Pick<Furniture, "gangs">): string[] {
   return [...new Set(gangsOf(f).map((g) => g.entity).filter((e): e is string => !!e && e !== "none"))];
 }
 
-/** Wi-Fi access point and water heater: technical items with their own form (D582). */
-export const TECH_TYPES = new Set<string>(["wifi_ap", "water_heater"]);
-/** Their sizes by mounting: a disc on the ceiling or a plate on the wall; a standing tank or a slim one on the wall. */
-export const TECH_SIZE: Record<string, [number, number, number]> = {
-  "wifi_ap:": [0.2, 0.2, 0.04],
-  "wifi_ap:wall": [0.16, 0.04, 0.16],
-  "water_heater:": [0.56, 0.56, 1.5],
-  "water_heater:wall": [0.5, 0.27, 0.8],
-};
-
-/** Where an access point or water heater hangs by default: an access point under the ceiling or high on the wall, a slim tank at 1.1 m. */
-export function techBase(f: { type: string; variant?: string | null; h: number }, ceiling: number): number | null {
-  if (f.type === "wifi_ap") return f.variant === "wall" ? 2.1 : Math.max(0, ceiling - f.h);
-  if (f.type === "water_heater") return f.variant === "wall" ? 1.1 : 0;
-  return null;
-}
-
 export const ELECTRIC_FURNITURE = new Set<string>([
   ...LAMP_TYPES,
   "radiator",
@@ -1582,9 +1559,6 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   // a single plate; more gangs make it wider (gangPlateWidth)
   wall_switch: [0.085, 0.012, 0.085],
   wall_socket: [0.085, 0.014, 0.085],
-  // a ceiling access point (a UniFi disc); a standing hot water tank
-  wifi_ap: [0.2, 0.2, 0.04],
-  water_heater: [0.56, 0.56, 1.5],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

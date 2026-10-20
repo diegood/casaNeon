@@ -30,7 +30,6 @@ import { carState, type CarState, heatSensorOn, roomClimateValue,
   cooktopLevel,
   onlyColor,
   fanSpeed,
-  apOnline,
 } from "../devices.ts";
 import { alertColor, alertEntities, alertSources, alertText, findAlerts, isOutage, type Alert, type AlertSources } from "../alerts.ts";
 import { iconPath, iconSvg, mdiIcon } from "../icons.ts";
@@ -107,8 +106,7 @@ import { load3d } from "../load3d.ts";
 import { loadFun } from "../load-fun.ts";
 import { detectionKind, scaleGlow, buildMarkers, cameraMotionSensors, openMoreInfo, stateText, toggleEntity } from "../markers.ts";
 import { roofUnderAt, sectionCutsBelow } from "../roof-sections.ts";
-import { centroid, furnitureFootprint, gangEntities, gangsOf, GANG_TYPES, TECH_TYPES, isLamp, setTerrain, poolFloorY, LAMP_MODEL, LIFT_SPOTS, outdoorGround, pointInPolygon, poolWaterY, spotDepth, surfaceHeight, zonesOf, type Building, type Floor, type Furniture, type Pet, type StartView } from "../model.ts";
-
+import { centroid, furnitureFootprint, gangEntities, gangsOf, GANG_TYPES, isLamp, setTerrain, poolFloorY, LAMP_MODEL, LIFT_SPOTS, outdoorGround, pointInPolygon, poolWaterY, spotDepth, surfaceHeight, zonesOf, type Building, type Floor, type Furniture, type Pet, type StartView } from "../model.ts";
 import { pathLength, pipePath, pointAlong, type P3 } from "../geometry/runs.ts";
 import { pipePieces, poolAreas, poolNodeAt, poolWallNormal, underBasin, PIPE_IDLE, type PipePiece } from "../pool-runs.ts";
 import type { PipeTube } from "../viewer/viewer3d.ts";
@@ -2495,14 +2493,6 @@ export class Fp3dView3d extends LitElement {
           }
           continue;
         }
-        if (TECH_TYPES.has(f.type)) {
-          const pin = this.techItem(hass, floor, f, screens, taken);
-          if (pin) {
-            markers.push(pin);
-            targets.set(f.id, pin.id);
-          }
-          continue;
-        }
         if (GANG_TYPES.has(f.type)) {
           const pin = this.gangItem(hass, floor, f, consumers, screens, consumerSensors);
           if (pin) {
@@ -2827,84 +2817,6 @@ export class Fp3dView3d extends LitElement {
       furnitureId: f.id,
       show: f.marker ?? undefined,
       fromFurniture: true,
-    };
-  }
-
-  /**
-   * Wi-Fi access point (D582): its LED ring blue while it is online, red when it is gone, and its clients on the pin
-   * (which then shows by itself). Water heater: it glows warm while it heats and tells its water temperature.
-   */
-  private techItem(hass: HomeAssistant, floor: Floor, f: Furniture, screens: Map<string, ScreenState>, taken: Set<string>): (DeviceMarker & { fromFurniture: boolean; energyDevice?: boolean }) | null {
-    const ref = (v: EntityRef | undefined) => (typeof v === "string" && v !== "none" ? v : null);
-    const main = ref(f.entity);
-    const st = main ? hass.states[main] : undefined;
-    const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
-    const base = {
-      floorId: floor.id,
-      roomId: room?.id ?? null,
-      x: f.x,
-      z: f.z,
-      ownName: f.name || undefined,
-      showName: !!f.show_name,
-      glow: null,
-      furnitureId: f.id,
-      fromFurniture: true,
-    };
-    if (f.type === "wifi_ap") {
-      const clientsId = ref(f.clients);
-      const cs = clientsId ? hass.states[clientsId] : undefined;
-      const n = cs && Number.isFinite(Number(cs.state)) ? Math.round(Number(cs.state)) : null;
-      // without a status entity the clients sensor tells whether it is there
-      const online = main ? apOnline(st) : cs ? apOnline(cs) : null;
-      if (online !== null) {
-        const color: [number, number, number] = online ? [0.25, 0.6, 1] : [1, 0.25, 0.2];
-        screens.set(f.id, { color, level: 0.85, faces: [{ part: "apring", color, level: 0.85 }] });
-      }
-      const id = main ?? clientsId;
-      if (!id || taken.has(id)) return null;
-      taken.add(id);
-      return {
-        ...base,
-        id,
-        y: mountBase(floor, f) - (f.variant === "wall" ? -f.h - 0.2 : 0.3),
-        icon: mdiIcon(f.icon || "access-point"),
-        name: f.name || entityName(hass, id),
-        text: online === false ? translate(hass, "ap_offline") : n !== null ? translate(hass, "ap_clients", { n }) : st ? stateText(hass, st) : "",
-        active: online === true,
-        unavailable: online === false,
-        // gone: its pin shows by itself
-        show: f.marker ?? (online === false ? "always" : undefined),
-        energyDevice: n !== null,
-      };
-    }
-    // water heater: heating by its action, a switch that is on, or the power it draws
-    const kind = st ? kindOf(st.entity_id) : null;
-    const pw = ref(f.power);
-    const watts = pw ? readPower(hass.states[pw]) : null;
-    const runW = typeof f.run_w === "number" && f.run_w > 0 ? f.run_w : 30;
-    const heating = (st?.attributes.hvac_action === "heating") || (kind === "switch" && st?.state === "on") || (watts ?? 0) > runW;
-    const on = heating || (!!st && !["off", "unavailable", "unknown"].includes(st.state));
-    if (on) screens.set(f.id, { color: [1, 0.45, 0.15], level: heating ? 0.9 : 0.3, faces: [{ part: "band", color: [1, 0.45, 0.15], level: heating ? 0.9 : 0.3 }] });
-    const tempId = ref(f.water_temp);
-    const ts = tempId ? hass.states[tempId] : undefined;
-    const temp = ts && Number.isFinite(Number(ts.state)) ? Number(ts.state) : typeof st?.attributes.current_temperature === "number" ? (st.attributes.current_temperature as number) : null;
-    const unit = (ts?.attributes.unit_of_measurement as string | undefined) ?? "°C";
-    const id = main ?? tempId ?? pw;
-    if (!id || taken.has(id)) return null;
-    taken.add(id);
-    return {
-      ...base,
-      id,
-      y: mountBase(floor, f) + f.h + 0.25,
-      icon: mdiIcon(f.icon || "water-boiler"),
-      name: f.name || (main ? entityName(hass, main) : furnitureName(hass, f.type)),
-      text: temp !== null ? `${formatNumber(hass, Math.round(temp))} ${unit}${heating ? " · 🔥" : ""}` : st ? stateText(hass, st) : "",
-      active: heating,
-      unavailable: st ? isUnavailable(st) : false,
-      power: watts ?? undefined,
-      show: f.marker ?? undefined,
-      // its temperature is worth a pin
-      energyDevice: temp !== null,
     };
   }
 

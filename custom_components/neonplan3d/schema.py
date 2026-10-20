@@ -299,9 +299,6 @@ FURNITURE_SCHEMA = vol.Schema(
         # LED strip: tilt about its length (degrees) and standing upright
         vol.Optional("tilt", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("upright", default=False): bool,
-        # access point: its clients sensor; water heater: its water temperature
-        vol.Optional("clients"): vol.Any(None, vol.All(str, vol.Length(max=255))),
-        vol.Optional("water_temp"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # wall switch and socket: one entry per gang (its entity, a socket's power sensor)
         vol.Optional("gangs"): vol.Any(
             None,

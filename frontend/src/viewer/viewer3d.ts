@@ -257,7 +257,7 @@ export interface ScreenState {
   /** Furniture with a state: glowing faces on top of the item instead of a screen – the whole top, or a half of it. */
   // (see also SoundSource below)
   // "gang": one rocker or socket of a wall switch or socket (`index` of `of`)
-  faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon" | "gang" | "drum" | "apring"; color: [number, number, number]; level: number; index?: number; of?: number }[];
+  faces?: { part: "all" | "left" | "right" | "top" | "bottom" | "band" | "cabin" | "lights" | "burners" | "lid" | "beacon" | "gang" | "drum"; color: [number, number, number]; level: number; index?: number; of?: number }[];
 }
 
 /** Position of the sun (from sun.sun): degrees above the horizon and clockwise from north. */
@@ -3025,25 +3025,6 @@ export class FloorplanViewer {
               // the screen material is double-sided: one winding is enough (both would add up twice)
               buf.tri(p00, p10, p11, col);
               buf.tri(p00, p11, p01, col);
-            }
-            continue;
-          }
-          if (face.part === "apring") {
-            // an access point's LED ring: under the disc (ceiling) or on the plate's front (wall), with a soft halo
-            const wall = f.variant === "wall";
-            const aw = Math.abs(w);
-            const r = wall ? Math.min(aw, h) * 0.3 : Math.min(aw, d) * 0.3;
-            const col = new Color(...face.color.map((v) => Math.min(1, v * (0.4 + 0.6 * face.level))) as [number, number, number]);
-            const dark = new Color(0, 0, 0);
-            const n = 24;
-            const at = (a: number, rr: number) => (wall ? P(Math.cos(a) * rr, base + h / 2 + Math.sin(a) * rr, d / 2 + 0.004) : P(Math.cos(a) * rr, base - 0.003, Math.sin(a) * rr));
-            for (let i = 0; i < n; i++) {
-              const a0 = (i / n) * Math.PI * 2;
-              const a1 = ((i + 1) / n) * Math.PI * 2;
-              buf.tri(at(a0, r * 0.8), at(a0, r), at(a1, r), col);
-              buf.tri(at(a0, r * 0.8), at(a1, r), at(a1, r * 0.8), col);
-              buf.tri(at(a0, r), at(a0, r * 1.5), at(a1, r * 1.5), col, dark, dark);
-              buf.tri(at(a0, r), at(a1, r * 1.5), at(a1, r), col, dark, col);
             }
             continue;
           }

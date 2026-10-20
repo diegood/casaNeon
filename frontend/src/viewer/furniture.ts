@@ -515,44 +515,6 @@ function wallPlate(b: Builder, w: number, d: number, h: number, n: number, socke
   }
 }
 
-/** Wi-Fi access point: a flat disc under the ceiling (its LED ring below) or a square plate on the wall (ring in front). */
-function wifiAp(b: Builder, w: number, d: number, h: number, wall: boolean): void {
-  if (wall) {
-    b.box(-w / 2, w / 2, 0, h, -d / 2, d / 2, C.white, C.whiteTop, EDGE_FURN);
-    const r = Math.min(w, h) * 0.3;
-    for (let i = 0; i < 20; i++) {
-      const a0 = (i / 20) * Math.PI * 2;
-      const a1 = ((i + 1) / 20) * Math.PI * 2;
-      b.seg(Math.cos(a0) * r, h / 2 + Math.sin(a0) * r, d / 2 + 0.002, Math.cos(a1) * r, h / 2 + Math.sin(a1) * r, d / 2 + 0.002, EDGE_FAINT);
-    }
-    return;
-  }
-  const r = Math.min(w, d) / 2;
-  b.cyl(0, 0, r, 0, h, C.white, C.whiteTop, 24, EDGE_FURN);
-  // the mounting plate on the ceiling
-  b.cyl(0, 0, r * 0.5, h, h + 0.01, C.metal, C.metal, 12);
-}
-
-/** Water heater: a standing tank with its pipes below, or a slim flat tank on the wall (like an Ariston Velis). */
-function waterHeater(b: Builder, w: number, d: number, h: number, wall: boolean): void {
-  if (wall) {
-    b.pad(-w / 2, w / 2, 0, h, -d / 2, d / 2, C.white, C.whiteTop, 0.05, EDGE_FURN);
-    // the display near the top and the two pipes underneath
-    b.box(-w * 0.18, w * 0.18, h * 0.8, h * 0.88, d / 2, d / 2 + 0.006, C.dark);
-    for (const x of [-w * 0.2, w * 0.2]) b.cyl(x, 0, 0.012, -0.12, 0, C.metal, C.metal, 6);
-    return;
-  }
-  const r = Math.min(w, d) / 2;
-  b.cyl(0, 0, r, 0.04, h - 0.05, C.white, C.whiteTop, 20, EDGE_FURN);
-  // a domed top, the feet and the controls in front
-  b.cyl(0, 0, r * 0.85, h - 0.05, h, C.white, C.whiteTop, 20);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2;
-    b.cyl(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7, 0.03, 0, 0.04, C.dark, C.dark, 6);
-  }
-  b.box(-r * 0.3, r * 0.3, h * 0.55, h * 0.65, r - 0.01, r + 0.01, C.dark);
-}
-
 /** A mailbox in its local shape. */
 function mailbox(b: Builder, w: number, d: number, h: number, shape: MailboxShape): void {
   const body = C.metal;
@@ -1616,14 +1578,6 @@ function buildFurniture(buf: GeoBuffer, lines: LineBuffer, shadow: GeoBuffer, f:
       if (lift > 0) return; // hangs on the wall: no shadow on the floor
       break;
     }
-    case "wifi_ap":
-      // under the ceiling or on the wall: lifted by its mount height, no shadow
-      wifiAp(b, w, d, h, f.variant === "wall");
-      return;
-    case "water_heater":
-      waterHeater(b, w, d, h, f.variant === "wall");
-      if (f.variant === "wall") return;
-      break;
     case "wall_switch":
     case "wall_socket": {
       // drawn at its own height like the other built-in wall models; never a shadow on the floor

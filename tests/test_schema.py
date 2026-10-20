@@ -197,14 +197,6 @@ def test_live_director_triggers_and_live_picture() -> None:
     assert d["live"] is True
 
 
-def test_access_point_and_water_heater_keep_their_sensors() -> None:
-    """An access point keeps its clients sensor, a water heater its temperature sensor (D582)."""
-    ap = {"id": "a1", "type": "wifi_ap", "x": 2, "z": 2, "rotation": 0, "w": 0.2, "d": 0.2, "h": 0.04, "variant": None}
-    assert FURNITURE_SCHEMA({**ap, "clients": "sensor.ap_clients"})["clients"] == "sensor.ap_clients"
-    heater = {**ap, "id": "h1", "type": "water_heater", "variant": "wall", "water_temp": "sensor.boiler_temp"}
-    assert FURNITURE_SCHEMA(heater)["water_temp"] == "sensor.boiler_temp"
-
-
 def test_ceiling_fan_keeps_its_fan() -> None:
     """A ceiling fan with light keeps its fan entity next to its light (D606)."""
     fan = {

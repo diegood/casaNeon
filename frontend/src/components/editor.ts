@@ -64,8 +64,6 @@ import {
   splitAliases,
   GANG_TYPES,
   MAX_GANGS,
-  TECH_SIZE,
-  TECH_TYPES,
   type Gang,
   DEFAULT_HOLOGRAM,
   type HologramSettings,
@@ -204,7 +202,7 @@ const WALL_CATS: Record<string, string[]> = {
   tall: ["kitchen_tall", "fridge", "wardrobe", "tall_cabinet", "shelf", "coat_rack"],
   living: ["sofa", "armchair", "bed", "bunk_bed", "bench", "corner_bench", "plant"],
   light: ["lamp_wall", "lamp_floor", "led_strip", "lamp_table"],
-  switches: ["wall_switch", "wall_socket", "wifi_ap", "water_heater"],
+  switches: ["wall_switch", "wall_socket"],
 };
 /** Hanging pieces (they go into a gap high on the wall). */
 const HANGING = new Set(["kitchen_wall", "tv_wall", "lamp_wall", "shelf", "led_strip", "ac_unit"]);
@@ -311,7 +309,7 @@ function pathLengthOf(p: PoolPipe, nodeAt: (n: string) => { x: number; z: number
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 // furniture without a top to light: no "State from" box
-const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch", "wall_socket", "wifi_ap", "water_heater"]);
+const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch", "wall_socket"]);
 
 export class Fp3dEditor extends LitElement {
   static properties = {
@@ -10884,7 +10882,7 @@ export class Fp3dEditor extends LitElement {
             >
           </div>`
         : nothing}
-      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${GANG_TYPES.has(f.type) ? this.renderGangsForm(f) : nothing} ${TECH_TYPES.has(f.type) ? this.renderTechForm(f) : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
+      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${GANG_TYPES.has(f.type) ? this.renderGangsForm(f) : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -11632,36 +11630,6 @@ export class Fp3dEditor extends LitElement {
       >`;
   }
 
-  /** Wi-Fi access point (D582) and water heater: how it is mounted and its entities. */
-  private renderTechForm(f: Furniture) {
-    if (!this.hass) return nothing;
-    const admin = this.isAdmin;
-    const ap = f.type === "wifi_ap";
-    const mounts = ["", "wall"] as const;
-    const setMount = (v: string) => {
-      const [w, d, h] = TECH_SIZE[`${f.type}:${v}`];
-      this.updateFurniture({ variant: v || null, w, d, h, mount_y: null });
-    };
-    const sensors = this.entityOptions((id) => id.startsWith("sensor."));
-    // an access point's entities are often diagnostic (UniFi): every entity of the kinds that tell a state is offered
-    const main = this.entityOptions((id) => (ap ? /^(binary_sensor|sensor|device_tracker|switch|button|update)\./ : /^(water_heater|climate|switch|input_boolean|sensor)\./).test(id));
-    return html`<div class="fp3d-form fp3d-links">
-      <label class="fp3d-field"
-        >${this.t("tech_mount")}
-        <select ?disabled=${!admin} @change=${(e: Event) => setMount((e.target as HTMLSelectElement).value)}>
-          ${mounts.map((v) => html`<option value=${v} ?selected=${(f.variant ?? "") === v}>${this.t(`${f.type}_${v || "std"}` as I18nKey)}</option>`)}
-        </select></label
-      >
-      ${this.entitySelect(this.t(ap ? "ap_status" : "heater_entity"), typeof f.entity === "string" && f.entity !== "none" ? f.entity : null, undefined, main, (v) => this.updateFurniture({ entity: v && v !== "none" ? v : "none" }))}
-      ${ap
-        ? this.entitySelect(this.t("ap_clients_sensor"), f.clients ?? null, undefined, sensors, (v) => this.updateFurniture({ clients: v && v !== "none" ? v : null }))
-        : html`${this.entitySelect(this.t("heater_temp"), f.water_temp ?? null, undefined, sensors, (v) => this.updateFurniture({ water_temp: v && v !== "none" ? v : null }))}
-            ${this.entitySelect(this.t("furn_power"), typeof f.power === "string" && f.power !== "none" ? f.power : null, undefined, this.entityOptions((id) => this.isPowerSensor(id)), (v) => this.updateFurniture({ power: v && v !== "none" ? v : "none" }))}`}
-      <p class="fp3d-sub fp3d-wide">${this.t(ap ? "ap_hint" : "heater_hint")}</p>
-      <div class="fp3d-form">${this.markerSelect(f.marker ?? null, (v) => this.updateFurniture({ marker: v }))}${this.iconInput(f.icon, (v) => this.updateFurniture({ icon: v }))}</div>
-    </div>`;
-  }
-
   /** Wall switch or socket (D523, #593): its gangs, and per gang what it switches (a socket also its power sensor). */
   private renderGangsForm(f: Furniture) {
     if (!this.hass) return nothing;
@@ -12257,7 +12225,7 @@ export class Fp3dEditor extends LitElement {
   private libraryButton(type: string, label: string) {
     const show = (e: Event) => void this.showPreview(type, e.currentTarget as HTMLElement);
     // a lamp can be switched from 3D, another electric item takes an entity and a power sensor
-    const badge = isLamp(type) ? "light" : isElectric(type) || GANG_TYPES.has(type) || TECH_TYPES.has(type) ? "switch" : null;
+    const badge = isLamp(type) ? "light" : isElectric(type) || GANG_TYPES.has(type) ? "switch" : null;
     return html`<button
       class="fp3d-btn ${badge ? "fp3d-lib-electric" : ""}"
       title=${badge ? this.t(badge === "light" ? "lib_badge_light" : "lib_badge_electric") : label}
