@@ -11720,10 +11720,6 @@ export class Fp3dEditor extends LitElement {
           : this.entitySelect(this.t(lamp ? "furn_entity_light" : packMotion(f.type) ? "motor_cover" : tvLike ? "furn_entity_tv" : f.type === "awning" ? "awning_cover" : f.type === "radiator" || f.type === "ac_unit" ? "furn_entity_climate" : isRobotVacuum(f.type) ? "furn_entity_vacuum" : "furn_entity"), f.entity ?? null, autoPick("entity"), entities, (v) =>
               this.updateFurniture({ entity: v }),
             )}
-        ${f.type === "lamp_fan"
-          ? html`${this.entitySelect(this.t("fan_entity"), f.fan ?? null, undefined, this.entityOptions((id) => id.startsWith("fan.")), (v) => this.updateFurniture({ fan: v && v !== "none" ? v : null }))}
-              <p class="fp3d-sub fp3d-wide">${this.t("fan_hint")}</p>`
-          : nothing}
         ${f.type === "radiator"
           ? html`${this.entitySelect(this.t("heat_sensor"), f.heat_sensor ?? null, undefined, this.entityOptions((id) => /^(binary_sensor|sensor|switch|input_boolean|number)\./.test(id)), (v) => this.updateFurniture({ heat_sensor: v && v !== "none" ? v : null }))}
               <p class="fp3d-sub fp3d-wide">${this.t("heat_sensor_hint")}</p>`

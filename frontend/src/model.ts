@@ -267,8 +267,6 @@ export interface Furniture {
   rise?: number;
   /** LED strip: standing upright – its length runs up from the mount height (door frame, light column). */
   upright?: boolean;
-  /** Ceiling fan with light (D606): its fan entity – the blades turn with its speed (the light is `entity`). */
-  fan?: EntityRef;
   /** Wall switch and socket (D523, D540, #593): one entry per gang – the entity it switches and, for a socket, its power sensor. */
   gangs?: Gang[] | null;
   /** Screens: pictures shown while an entity is in a state (first match wins; "*" = any state). */
@@ -1241,12 +1239,11 @@ export const FURNITURE_TYPES = [
   "mailbox",
   "wall_switch",
   "wall_socket",
-  "lamp_fan",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
 export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
-  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_fan", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
+  lights: ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_floor", "lamp_uplight", "lamp_table", "lamp_wall", "led_strip", "lamp_bollard", "lamp_garden"],
   living: ["sofa", "sofa_l", "sofa_u", "armchair", "stool", "coffee_table", "tv_board", "tv_wall", "sideboard", "shelf", "plant", "rug"],
   dining: ["table", "table_round", "chair", "bench", "corner_bench", "bar_stool"],
   kitchen: ["kitchen", "kitchen_wall", "kitchen_tall", "island", "worktop", "sink", "stove", "dishwasher", "fridge"],
@@ -1271,7 +1268,6 @@ export const ENERGY_DEVICES = ["meter", "inverter", "home_battery", "wallbox", "
 /** Lamps: drawn live (they glow with their light) and tapped directly in 3D. */
 export const LAMP_TYPES = new Set<string>([
   "lamp_ceiling",
-  "lamp_fan",
   "lamp_downlight",
   "lamp_spot",
   "lamp_panel",
@@ -1294,7 +1290,7 @@ export const WALL_LAMP_Y = 1.75;
  * light (a downstand beam, ceiling beams) start under the ceiling and can be lowered (#287).
  */
 export function canLift(f: Pick<Furniture, "type">): boolean {
-  if (["lamp_pendant", "lamp_fan", "stairwell", "parking"].includes(f.type) || STAIR_TYPES.has(f.type)) return false;
+  if (["lamp_pendant", "stairwell", "parking"].includes(f.type) || STAIR_TYPES.has(f.type)) return false;
   const item = packItem(f.type);
   return !(item?.mount === "ceiling" && item.light);
 }
@@ -1562,8 +1558,6 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],
-  // blade span, and the drop from the ceiling to the bottom of its light
-  lamp_fan: [1.3, 1.3, 0.45],
   lamp_floor: [0.4, 0.4, 1.7],
   lamp_table: [0.28, 0.28, 0.45],
   lamp_wall: [0.22, 0.12, 0.2],
@@ -1808,7 +1802,6 @@ export const LAMP_MODEL: Record<string, LampModel> = {
   lamp_bollard: "bollard",
   lamp_garden: "garden",
   lamp_pendant: "pendant",
-  lamp_fan: "fan",
   lamp_floor: "floor",
   lamp_table: "table",
   lamp_wall: "wall",

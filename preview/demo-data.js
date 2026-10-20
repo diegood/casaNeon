@@ -131,7 +131,6 @@ const DEVICES = [
   light("bad", "Bad Spots", "bad", true, { brightness: 220, color_temp_kelvin: 4000 }),
   light("flur", "Flurlicht", "flur", true, { brightness: 120 }),
   light("kinderzimmer", "Kinderzimmer Decke", "kinderzimmer", true, { brightness: 150 }),
-  entity("fan.kinderzimmer", "kinderzimmer", "on", { friendly_name: "Kinderzimmer Ventilator", percentage: 66, percentage_step: 33 }),
   light("schreibtisch", "Schreibtischlampe", "arbeitszimmer", true, { color_temp_kelvin: 4500 }),
   light("esstisch", "Esstisch Pendel", "kueche", true, { brightness: 140 }),
   light("kueche_links", "Küche links", "kueche", true, { brightness: 230, color_mode: "hs", rgb_color: [255, 70, 40] }),
@@ -312,7 +311,7 @@ DEMO_BUILDING.floors[0].placements.push(
   place("sensor.waschmaschine_leistung", 6.4, 6.9),
   place("sensor.akku_leistung", 7.3, 8.8),
 );
-DEMO_BUILDING.floors[1].placements = [place("light.schreibtisch", 6.2, 1.2), place("sensor.pc_leistung", 9.0, 0.9)];
+DEMO_BUILDING.floors[1].placements = [place("light.kinderzimmer", 2.9, 2.8), place("light.schreibtisch", 6.2, 1.2), place("sensor.pc_leistung", 9.0, 0.9)];
 // grid, solar and battery come from the devices in the garage (meter, inverter, home battery)
 DEMO_BUILDING.energy = {
   meter: null,
@@ -457,8 +456,6 @@ DEMO_BUILDING.floors[1].walls = [{ id: "wall_demo", a: [8, 8], b: [8, 6], thickn
 DEMO_BUILDING.floors[0].walls = [{ id: "wall_garage", a: [10, 1.1], b: [12.6, 1.1], thickness: null, height: null }];
 DEMO_BUILDING.floors[0].openings.push(hole("door", "garage", 0, 1.2, 0.9, { wall: "wall_garage" }));
 DEMO_BUILDING.floors[1].furniture = [
-  // a ceiling fan with light in the children's room: the blades turn with the fan
-  { ...item("lamp_fan", 2.9, 2.8, 1.3, 1.3, 0.45), entity: "light.kinderzimmer", fan: "fan.kinderzimmer" },
   item("bed", 1.0, 1.4, 1.0, 2.05, 0.8, 90),
   item("desk", 2.8, 3.8, 1.2, 0.6, 0.75, 180),
   item("rug", 2.2, 2.6, 1.6, 1.2, 0.01),

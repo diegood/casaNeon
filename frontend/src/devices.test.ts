@@ -13,7 +13,7 @@ test("a lamp switched by a relay takes colour and brightness from its colour ent
   // the bulb unavailable: the relay's own (plain) glow
   assert.deepEqual(lightGlow(relay as never, { ...bulb, state: "unavailable" } as never)!.color, [1, 0.71, 0.28]);
 });
-import { isRelevant, fanSpeed, climateModeGlow, cooktopLevel, onlyColor, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
+import { isRelevant, climateModeGlow, cooktopLevel, onlyColor, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
 import type { Floor, Opening, Room } from "./model.ts";
 import { centroid, newFloor, pointInPolygon } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -524,15 +524,6 @@ test("a window marked 'ask first' puts its blind on the confirm list", () => {
   assert.equal(confirmEntities(hass, [floor]).has("cover.rollo"), false);
   floor.openings = [o("w1", { confirm: true })];
   assert.equal(confirmEntities(hass, [floor]).has("cover.rollo"), true);
-});
-
-test("a ceiling fan's blades turn with its percentage, at a middle speed without one, not at all when off", () => {
-  const st = (state: string, attributes: Record<string, unknown> = {}) => ({ entity_id: "fan.decke", state, attributes }) as unknown as Parameters<typeof fanSpeed>[0];
-  assert.equal(fanSpeed(st("on", { percentage: 33 })), 0.33);
-  assert.equal(fanSpeed(st("on")), 0.6);
-  assert.equal(fanSpeed(st("on", { percentage: 250 })), 1);
-  assert.equal(fanSpeed(st("off", { percentage: 66 })), 0);
-  assert.equal(fanSpeed(undefined), 0);
 });
 
 test("a wall switch marked 'ask first' puts every gang's entity on the confirm list", () => {

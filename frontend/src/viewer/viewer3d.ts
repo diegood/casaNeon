@@ -163,8 +163,6 @@ export interface DeviceMarker {
   upright?: boolean;
   /** LED strip: rising along its length (degrees; D539). */
   rise?: number;
-  /** Ceiling fan: how fast its blades turn (0–1; D606). */
-  fanSpeed?: number;
   /** Show the HTML marker (false: the 3D object alone stands for the device). */
   pin?: boolean;
   /** A placed device fixed against moving. */
@@ -205,7 +203,7 @@ export interface TrailSpot {
   age: number;
 }
 
-export type LampModel = "ceiling" | "downlight" | "spot" | "panel" | "pendant" | "fan" | "floor" | "uplight" | "table" | "wall" | "strip" | "bollard" | "garden";
+export type LampModel = "ceiling" | "downlight" | "spot" | "panel" | "pendant" | "floor" | "uplight" | "table" | "wall" | "strip" | "bollard" | "garden";
 
 /** Piece of energy cable (floor-local coordinates); the flow runs from a to b. */
 /** A ray from the camera through the pointer, in building coordinates (heights above the ground). */
@@ -345,13 +343,11 @@ const FLOW_FRAME_MS = 33;
 const CABLE_WIDTH = 0.028;
 const CABLE_HALO = 0.09;
 const LAMP_BODY = 0x2a3a60;
-const FAN_BLADE = 0x22314f;
-const FAN_BLADE_TOP = 0x2f4170;
 const LAMP_SHADE = 0x1d2946;
 /** Lamps that hang from the ceiling (hidden in the cut view). */
 /** LED strips mounted below this height (metres) light upwards instead of down. */
 const LOW_STRIP = 1.0;
-const HANGING = new Set<LampModel>(["ceiling", "downlight", "spot", "panel", "pendant", "fan", "strip"]);
+const HANGING = new Set<LampModel>(["ceiling", "downlight", "spot", "panel", "pendant", "strip"]);
 const FLASH_MS = 450;
 const EFFECT_MS = 125;
 /** Turns of the colour wheel per second while a colour effect runs. */
@@ -365,7 +361,6 @@ const LAMP_SIZE: Record<LampModel, [number, number, number]> = {
   bollard: [0.16, 0.16, 0.8],
   garden: [0.12, 0.12, 0.3],
   pendant: [0.4, 0.4, 0.8],
-  fan: [1.3, 1.3, 0.45],
   floor: [0.42, 0.42, 1.7],
   table: [0.26, 0.26, 0.45],
   wall: [0.22, 0.12, 0.2],
@@ -600,11 +595,6 @@ export class FloorplanViewer {
   private robotLedGeo: BufferGeometry | null = null;
   private robotLast = 0;
   private robotTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Ceiling fans (D606): their blades in a group of their own, turning with the fan's speed. */
-  private fans = new Map<string, { group: Group; mesh: Mesh; r: number; speed: number; floorId: string; y: number }>();
-  private fanMat: MeshBasicMaterial | null = null;
-  private fanLast = 0;
-  private fanTimer: ReturnType<typeof setTimeout> | undefined;
   private floorStack: FloorStack = "dim";
   /** Floors by id, and per-frame bookkeeping so labels are only placed when something moved. */
   private floorMap = new Map<string, FloorView>();
@@ -875,7 +865,6 @@ export class FloorplanViewer {
   /** Replace the device markers; pins are reused per entity, light cones rebuilt per floor. */
   setDevices(devices: DeviceMarker[]): void {
     this.devices = devices;
-    this.syncFans(devices);
     this.labelsDirty = true;
     this.effectFloors = new Set(devices.filter((d) => d.effect && d.glow).map((d) => d.floorId));
     this.deviceFloor = new Map(devices.map((d) => [d.id, d.floorId]));
@@ -1606,7 +1595,6 @@ export class FloorplanViewer {
     clearTimeout(this.flowTimer);
     clearTimeout(this.effectTimer);
     clearTimeout(this.robotTimer);
-    clearTimeout(this.fanTimer);
     clearTimeout(this.orbitTimer);
     clearTimeout(this.weatherTimer);
     for (const o of [this.rain, this.snow, this.skyDisc]) {
@@ -1631,9 +1619,6 @@ export class FloorplanViewer {
     this.robotGeo?.dispose();
     this.robotLedGeo?.dispose();
     this.robotMat?.dispose();
-    for (const f of this.fans.values()) f.mesh.geometry.dispose();
-    this.fans.clear();
-    this.fanMat?.dispose();
     this.renderer.dispose();
     // frees the GPU context now instead of when the garbage collector gets to it
     this.renderer.forceContextLoss();
@@ -1702,7 +1687,6 @@ export class FloorplanViewer {
   private clear(): void {
     // robots share one geometry: keep them out of the floor groups while those are disposed
     for (const r of this.robots.values()) r.group.removeFromParent();
-    for (const f of this.fans.values()) f.group.removeFromParent();
     for (const fv of this.floors) {
       for (const pic of fv.screenPics.values()) {
         (pic.mesh.material as Material).dispose();
@@ -1837,7 +1821,6 @@ export class FloorplanViewer {
         spot: [H - h, "spot"],
         panel: [H - 0.05, "ceiling"],
         pendant: [Math.max(0.5, H - h), "pendant"],
-        fan: [Math.max(0.5, H - h), "pendant"],
         floor: [base + h - 0.15, "omni"],
         uplight: [base + h, "up"],
         table: [base + h - 0.1, "omni"],
@@ -2627,8 +2610,7 @@ export class FloorplanViewer {
         // shades get the sentinel colour and are recoloured below
         if (d.model) pushCameraModel(buf, d.model, d.x, d.model === "camera_ceiling" ? H : d.y, d.z, d.rotation ?? 0);
         else if (packed) pushPackLamp(buf, packed, { x: d.x, z: d.z, rotation: d.rotation ?? 0, w: pw, d: pd, h: ph, mirror: d.mirror }, d.base ?? 0, SHADE_SENTINEL);
-        // a ceiling fan's blades turn in a group of their own (syncFans)
-        else pushLampModel(buf, { ...d, lamp: d.lamp! }, d.top ?? H, SHADE_SENTINEL, d.lamp !== "fan");
+        else pushLampModel(buf, { ...d, lamp: d.lamp! }, d.top ?? H, SHADE_SENTINEL);
         // keyed by the furniture: two lamps may share one light (one switch for two strips)
         ranges.set(d.furnitureId ?? d.id, { start, end: buf.count });
         if (d.pickable !== false) tris.push({ id: d.id, start, end: buf.count });
@@ -2878,7 +2860,6 @@ export class FloorplanViewer {
         spot: Ht - h,
         panel: Ht - 0.03,
         pendant: Math.max(0.4, Ht - h) + 0.08,
-        fan: Math.max(0.5, Ht - Math.max(0.25, h)) + 0.02,
         floor: base + h - 0.15,
         uplight: base + h,
         table: base + h - 0.09,
@@ -3791,7 +3772,7 @@ export class FloorplanViewer {
     const z = this.grab?.id === f.id ? this.grab.z : f.z;
     const H = fv.floor.height;
     // a spot lowered by hand stands at its height above the floor like a wall item
-    const hanging = ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant", "lamp_fan"].includes(f.type) && f.mount_y == null;
+    const hanging = ["lamp_ceiling", "lamp_downlight", "lamp_spot", "lamp_panel", "lamp_pendant"].includes(f.type) && f.mount_y == null;
     const h = Math.max(0.1, f.type === "lamp_pendant" ? 0.3 : f.h);
     const y0 = packItem(f.type) || f.type === "lamp_wall" || f.type === "led_strip"
       ? mountBase(fv.floor, f)
@@ -3999,69 +3980,6 @@ export class FloorplanViewer {
     return { info, motion: { pos: [...info.rest] as [number, number], heading: info.restHeading, path: [], next: 0 }, group, led: ledMat };
   }
 
-  /** Ceiling fans: a group with the blades for each, at its place and with its speed. */
-  private syncFans(devices: DeviceMarker[]): void {
-    const seen = new Set<string>();
-    for (const d of devices) {
-      if (d.lamp !== "fan") continue;
-      const key = d.furnitureId ?? d.id;
-      seen.add(key);
-      const [w, , h] = d.size ?? LAMP_SIZE.fan;
-      const H = d.top ?? this.floorMap.get(d.floorId)?.floor.height ?? 2.5;
-      const r = w / 2;
-      let fan = this.fans.get(key);
-      if (fan && Math.abs(fan.r - r) > 1e-3) {
-        fan.group.removeFromParent();
-        fan.mesh.geometry.dispose();
-        this.fans.delete(key);
-        fan = undefined;
-      }
-      if (!fan) {
-        const buf = new GeoBuffer();
-        pushFanBlades(buf, 0, 0, 0, r, 0);
-        this.fanMat ??= new MeshBasicMaterial({ vertexColors: true });
-        const mesh = new Mesh(buf.geometry(), this.fanMat);
-        const group = new Group();
-        group.add(mesh);
-        group.rotation.y = -((d.rotation ?? 0) * DEG);
-        fan = { group, mesh, r, speed: 0, floorId: d.floorId, y: 0 };
-        this.fans.set(key, fan);
-      }
-      fan.floorId = d.floorId;
-      fan.speed = d.fanSpeed ?? 0;
-      fan.y = fanBladeY(H, h);
-      fan.group.position.set(d.x, fan.y, d.z);
-    }
-    for (const [key, f] of this.fans) {
-      if (seen.has(key)) continue;
-      f.group.removeFromParent();
-      f.mesh.geometry.dispose();
-      this.fans.delete(key);
-    }
-    this.fanLast = 0;
-  }
-
-  /** Turn the fans' blades; true while one of them runs. */
-  private stepFans(now: number): boolean {
-    if (!this.fans.size) return false;
-    const dt = this.fanLast ? Math.min(0.2, (now - this.fanLast) / 1000) : 0;
-    this.fanLast = now;
-    let turning = false;
-    for (const f of this.fans.values()) {
-      const fv = this.floorMap.get(f.floorId);
-      if (!fv) continue;
-      if (f.group.parent !== fv.group) fv.group.add(f.group);
-      // hanging above cut walls they are left out like the lamps
-      f.group.visible = !(this.wallMode === "cut" && f.y > Math.min(fv.floor.cut_height, fv.floor.height));
-      if (f.speed <= 0) continue;
-      turning = true;
-      // up to about one turn a second at full speed
-      f.group.rotation.y -= f.speed * Math.PI * 2 * dt;
-    }
-    if (!turning) this.fanLast = 0;
-    return turning;
-  }
-
   /** Move the robots; true while one of them drives. */
   private stepRobots(now: number): boolean {
     if (!this.robots.size) return false;
@@ -4213,7 +4131,6 @@ export class FloorplanViewer {
     }
     const roofMoving = this.placeRoof(dt);
     const robotsMoving = this.stepRobots(now);
-    const fansTurning = this.stepFans(now);
     const weatherMoving = this.stepWeather(now);
     const moving = cameraMoving || floorsMoving || openingsMoving || flashing || roofMoving;
     const busy: string[] = [];
@@ -4229,7 +4146,6 @@ export class FloorplanViewer {
     if (this.solarActive) busy.push("solar");
     if (this.effectTick) busy.push("effect");
     if (robotsMoving) busy.push("robot");
-    if (fansTurning) busy.push("fan");
     if (orbiting) busy.push("orbit");
     if (this.tintTick) busy.push("tint");
     this.effectTick = this.tintTick = false;
@@ -4282,13 +4198,6 @@ export class FloorplanViewer {
         this.robotTimer = undefined;
         this.invalidate();
       }, this.lowQuality ? 66 : 33);
-    }
-    if (!moving && fansTurning && !this.fanTimer) {
-      // turning blades: about 20 frames per second are enough (they blur anyway), 12 on the tablet level
-      this.fanTimer = setTimeout(() => {
-        this.fanTimer = undefined;
-        this.invalidate();
-      }, this.lowQuality ? 83 : 50);
     }
     if (!moving && (this.flowActive || this.solarActive || this.soundActive || this.poolActive) && !this.flowTimer) {
       // only the energy flow (or the living modules) moves: about 30 frames per second are enough
@@ -4761,33 +4670,12 @@ export function createViewer(host: HTMLElement, options?: ViewerOptions): Floorp
   return new FloorplanViewer(host, options);
 }
 
-/** Height of a ceiling fan's blades: in its motor housing, `h` below the ceiling `H` its light's bottom. */
-function fanBladeY(H: number, h: number): number {
-  return Math.max(0.5, H - Math.max(0.25, h)) + 0.11;
-}
-
-/** Four blades of a ceiling fan around (cx, cz), reaching out to `r`, turned by `ang` (radians). */
-export function pushFanBlades(buf: GeoBuffer, cx: number, y: number, cz: number, r: number, ang: number): void {
-  const r0 = 0.12;
-  const reach = Math.max(r0 + 0.1, r);
-  for (let i = 0; i < 4; i++) {
-    const a = ang + (i * Math.PI) / 2;
-    const c = Math.cos(a);
-    const s = Math.sin(a);
-    // a blade widening a little towards its tip
-    const pts: [number, number][] = [[r0, -0.045], [reach, -0.065], [reach, 0.065], [r0, 0.045]];
-    const poly = pts.map(([u, v]) => [cx + u * c - v * s, cz + u * s + v * c] as [number, number]);
-    pushPrism(buf, poly, y - 0.006, y + 0.006, FAN_BLADE, FAN_BLADE_TOP, { aoFrom: 0, bottom: true });
-  }
-}
-
 /** Model of a lamp into a buffer (3D view and furniture previews); `H` is the ceiling height. */
 export function pushLampModel(
   buf: GeoBuffer,
   d: Pick<DeviceMarker, "x" | "z" | "size" | "base" | "rotation" | "variant" | "roll" | "upright" | "rise"> & { lamp: LampModel },
   H: number,
   shadeCol: number,
-  blades = true,
 ): void {
   const [w, dd, h] = d.size ?? LAMP_SIZE[d.lamp];
   const base = d.base ?? 0;
@@ -4833,16 +4721,6 @@ export function pushLampModel(
         cyl(r * 0.35, bottom + 0.14, bottom + 0.2, shadeCol, shadeCol, 12);
         cyl(r, bottom, bottom + 0.14, shadeCol, shadeCol, 16);
       }
-      break;
-    }
-    case "fan": {
-      // a ceiling fan: canopy, downrod, motor housing, the blades and its light bowl underneath
-      const bottom = Math.max(0.5, H - Math.max(0.25, h));
-      cyl(0.06, H - 0.03, H, LAMP_BODY, LAMP_BODY, 10);
-      cyl(0.012, bottom + 0.16, H - 0.03, LAMP_BODY, LAMP_BODY, 6);
-      cyl(0.13, bottom + 0.07, bottom + 0.16, LAMP_BODY, LAMP_BODY, 16);
-      cyl(0.11, bottom, bottom + 0.07, shadeCol, shadeCol, 16);
-      if (blades) pushFanBlades(buf, d.x, fanBladeY(H, h), d.z, w / 2, ang);
       break;
     }
     case "downlight":

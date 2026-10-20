@@ -272,8 +272,6 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("color_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # any electric item: a sensor whose value stands at its symbol (a boiler's water temperature)
         vol.Optional("extra", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
-        # ceiling fan with light: its fan entity (the blades turn with its speed)
-        vol.Optional("fan"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # mirrored left-right
         vol.Optional("mirror", default=False): bool,
         # awning: the fabric's fall (degrees), the valance, a position sensor, its run time and the other direction

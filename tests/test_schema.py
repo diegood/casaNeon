@@ -197,24 +197,6 @@ def test_live_director_triggers_and_live_picture() -> None:
     assert d["live"] is True
 
 
-def test_ceiling_fan_keeps_its_fan() -> None:
-    """A ceiling fan with light keeps its fan entity next to its light (D606)."""
-    fan = {
-        "id": "f1",
-        "type": "lamp_fan",
-        "x": 2,
-        "z": 2,
-        "rotation": 0,
-        "w": 1.3,
-        "d": 1.3,
-        "h": 0.45,
-        "variant": None,
-    }
-    out = FURNITURE_SCHEMA({**fan, "entity": "light.decke", "fan": "fan.decke"})
-    assert out["fan"] == "fan.decke"
-    assert "fan" not in FURNITURE_SCHEMA(fan)
-
-
 def test_wall_socket_keeps_its_gangs() -> None:
     """A socket keeps up to four gangs, the same entity on two of them (#593); a fifth is refused."""
     base = {

@@ -29,7 +29,6 @@ import { carState, type CarState, heatSensorOn, roomClimateValue,
   climateModeGlow,
   cooktopLevel,
   onlyColor,
-  fanSpeed,
 } from "../devices.ts";
 import { alertColor, alertEntities, alertSources, alertText, findAlerts, isOutage, type Alert, type AlertSources } from "../alerts.ts";
 import { iconPath, iconSvg, mdiIcon } from "../icons.ts";
@@ -2463,34 +2462,7 @@ export class Fp3dView3d extends LitElement {
         const faces = this.stateFaces(hass, f);
         if (faces.length) screens.set(f.id, { color: faces[0].color, level: faces[0].level, faces });
         if (isLamp(f.type)) {
-          const lamp = this.lampMarker(hass, floor, f, linked?.entity ?? null);
-          markers.push(lamp);
-          // a ceiling fan with light: its fan gets a pin of its own beside the light (tap: on/off, hold: speed)
-          const fan = f.type === "lamp_fan" && f.fan && f.fan !== "none" ? f.fan : null;
-          if (fan && !taken.has(fan)) {
-            taken.add(fan);
-            const st = hass.states[fan];
-            const a = (f.rotation * Math.PI) / 180;
-            const off = Math.min(0.45, f.w * 0.3);
-            markers.push({
-              id: fan,
-              floorId: floor.id,
-              roomId: lamp.roomId,
-              x: f.x + Math.cos(a) * off,
-              z: f.z + Math.sin(a) * off,
-              y: lamp.y,
-              icon: f.icon ? mdiIcon(f.icon) : iconSvg("fan"),
-              name: entityName(hass, fan),
-              // its speed while it runs
-              text: st && fanSpeed(st) > 0 && typeof st.attributes.percentage === "number" ? `${Math.round(st.attributes.percentage)} %` : st ? stateText(hass, st) : "",
-              active: st ? isActive(st) : false,
-              unavailable: st ? isUnavailable(st) : false,
-              glow: null,
-              furnitureId: f.id,
-              show: f.marker ?? "always",
-              fromFurniture: true,
-            });
-          }
+          markers.push(this.lampMarker(hass, floor, f, linked?.entity ?? null));
           continue;
         }
         if (GANG_TYPES.has(f.type)) {
@@ -3167,7 +3139,7 @@ export class Fp3dView3d extends LitElement {
     const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
     // under a sloped roof the ceiling is the roof's underside: lamps hung from it follow the slope (#168)
     const ceiling = this.ceilingAt(floor, f.x, f.z);
-    const hung = (item ? item.mount === "ceiling" : ["ceiling", "downlight", "spot", "panel", "pendant", "fan"].includes(model)) && f.mount_y == null;
+    const hung = (item ? item.mount === "ceiling" : ["ceiling", "downlight", "spot", "panel", "pendant"].includes(model)) && f.mount_y == null;
     const slopeDrop = hung ? floor.height - ceiling : 0;
     const base = item && hung ? Math.max(0, base0 - slopeDrop) : base0;
     // a spot lowered by hand hangs from its own "ceiling" (under a wall cabinet, #311)
@@ -3184,7 +3156,6 @@ export class Fp3dView3d extends LitElement {
       spot: H - 0.35,
       panel: H - 0.25,
       pendant: Math.max(0.6, H - f.h - 0.25),
-      fan: Math.max(0.6, H - f.h - 0.25),
       floor: base + f.h + 0.25,
       uplight: base + f.h + 0.25,
       table: base + f.h + 0.2,
@@ -3213,8 +3184,6 @@ export class Fp3dView3d extends LitElement {
       roll: f.tilt ?? 0,
       upright: !!f.upright,
       rise: f.rise ?? 0,
-      // a ceiling fan's blades turn with its fan entity (D606)
-      fanSpeed: model === "fan" ? fanSpeed(f.fan && f.fan !== "none" ? hass.states[f.fan] : undefined) : undefined,
       size: [f.w, f.d, f.h],
       base,
       top,

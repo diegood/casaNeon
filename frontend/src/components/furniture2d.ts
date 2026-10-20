@@ -173,16 +173,6 @@ export function furnitureSymbol(type: string, w: number, d: number): Part[] | ty
       for (let i = 1; i < n; i++) out.push(line(-w / 2 + (w / n) * i, -d / 2, -w / 2 + (w / n) * i, d / 2));
       return out;
     }
-    case "lamp_fan": {
-      // a ceiling fan from above: its hub and four blades
-      const r = Math.min(w, d) / 2;
-      const out: Part[] = [circle(0, 0, 0.12, "fp3d-sym-fill"), circle(0, 0, r)];
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-        out.push(line(Math.cos(a) * 0.13, Math.sin(a) * 0.13, Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95, "fp3d-sym-strong"));
-      }
-      return out;
-    }
     case "lamp_panel":
       return [rect(-w / 2 + 0.03, -d / 2 + 0.03, w / 2 - 0.03, d / 2 - 0.03, "fp3d-sym-fill")];
     case "lamp_uplight":
