@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+from types import SimpleNamespace
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -199,7 +200,6 @@ def test_a_newer_part_shape_asks_for_an_update() -> None:
 
 def test_probatio_marks_an_unknown_value_by_its_code() -> None:
     """Probatio (Home Assistant 2026.9+) words its errors its own way but gives the code "not_in_list"."""
-    err = vol.Invalid("not a valid option")
-    err.code = "not_in_list"
-    assert packs._unknown_value(vol.MultipleInvalid([err]))
+    probatio = SimpleNamespace(errors=[SimpleNamespace(code="not_in_list")])
+    assert packs._unknown_value(probatio)  # type: ignore[arg-type]
     assert not packs._unknown_value(vol.MultipleInvalid([vol.Invalid("expected float")]))
