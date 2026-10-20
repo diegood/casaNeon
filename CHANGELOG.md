@@ -3,6 +3,35 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.22.0
+
+### Novedades
+
+- **Novedades del original hasta su 1.22.1**, solo lo funcional:
+  - **Control por voz** (beta): botón de micrófono en la vista 3D. «Muestra el salón», «ve a la planta de arriba», «enséñame toda la casa», «¿dónde está la lavadora?» o «muestra la cámara de la entrada» muestran el sitio; lo demás va a Assist. Se activa por dispositivo en **⚙ Ajustes → Control por voz** o en la tarjeta (opción *Control por voz*). Necesita https y una pipeline de Assist con voz a texto.
+  - **Assist pregunta a la casa:** «Muestra el salón» dicho a un satélite de voz llega a las vistas de CasaNeon abiertas (servicio `neonplan3d.ask` para automatizaciones). Las frases en castellano se escriben en `custom_sentences/es/`.
+  - **Otros nombres** para habitaciones, muebles y dispositivos («tele del salón»), para la voz y la búsqueda.
+  - **Director en directo:** una pantalla muestra sola lo que pasa: suena el timbre y la vista vuela a la puerta y mira por su cámara; también movimiento en cámaras, electrodomésticos terminados, avisos y disparadores propios. Todo apagado hasta activarlo en **⚙ Ajustes → Director en directo**.
+  - **Áreas exteriores como habitaciones:** un jardín o una terraza con un área de Home Assistant se abre en 3D con sus dispositivos y aparece en la barra de habitaciones.
+  - **Luz entre plantas:** las lámparas sobre una escalera o un hueco iluminan también la planta de abajo.
+  - **Las mascotas rodean los muebles.**
+  - **Paredes inclinadas:** botón «Inclinada» en la lista de paredes, con una altura en cada esquina.
+  - **Fondo propio** detrás de la casa (color, degradado o imagen), **aspecto Auto** (Día/Neón según el sol), **reloj** en una esquina, **modo de símbolos «En la habitación»** y **tamaño de símbolos**.
+  - **Tiras LED inclinadas** (escaleras, pasamanos), **cerraduras inteligentes** en las puertas como pines, **radiadores con sensor de calefacción**, **valor extra** junto al símbolo de un aparato (p. ej. temperatura del termo).
+  - **Bloqueo 3D** (ángulo fijo), **pantalla completa** al mirar por una cámara, **tejado opcional** en la tarjeta.
+  - **Editor:** menú **⚙ Ajustes** con casa, tiempo, director, voz, favoritos, fondo, terreno y copia de seguridad; **orden de habitaciones** con ↑/↓; **planta inicial del editor**; barra lateral más ancha o estrecha arrastrando su borde.
+  - **Tablón en «Hoy en casa»** desde un ayudante de texto.
+- **Packs de muebles de NextFloor** en `packs/nextfloor/`: Baño, Oficina y gaming, Fitness, Jardín y terraza, Lavadero e instalaciones, Mascotas, Cuarto infantil, Cine en casa y Hi-Fi, Cocina, Dormitorio, Smart home y tecnología, Salón y Arquitectura y acabados (columnas, vigas, pilares …): 438 modelos con nombres en castellano. Se importan en **Extensiones**.
+
+### Cambios
+
+- Nuestros interruptores, enchufes, ventilador de techo, punto de acceso y termo se quedan como estaban (los planos guardados siguen igual); las versiones del original no se traen.
+- No se traen los módulos de la tienda (Pool Pro como módulo, packs con código), licencias, diagnósticos ni otros idiomas.
+
+### Correcciones
+
+- Del original: fechas de recogida de basura leídas como fecha, valores de piscina y estanque (pH, conductividad) reconocidos como sensores, aperturas de suelo sobre escaleras altas, colores de los cubos en los aspectos claros, lámparas bajo una encimera alta, el pozo de luz en ventanas de sótano, y el área exterior más pequeña bajo el puntero se puede seleccionar (una piscina dentro de un césped).
+
 ## 1.21.1
 
 ### Correcciones
