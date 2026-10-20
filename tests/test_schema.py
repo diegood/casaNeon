@@ -195,27 +195,3 @@ def test_live_director_triggers_and_live_picture() -> None:
         {"entity": "event.klingel_2", "camera": None},
     ]
     assert d["live"] is True
-
-
-def test_wall_socket_keeps_its_gangs() -> None:
-    """A socket keeps up to four gangs, the same entity on two of them (#593); a fifth is refused."""
-    base = {
-        "id": "s1",
-        "type": "wall_socket",
-        "x": 1,
-        "z": 0.05,
-        "rotation": 0,
-        "w": 0.156,
-        "d": 0.014,
-        "h": 0.085,
-        "variant": "outdoor",
-    }
-    gangs = [{"entity": "switch.relais", "power": "sensor.relais_power"}, {"entity": "switch.relais"}]
-    out = FURNITURE_SCHEMA({**base, "gangs": gangs})
-    assert out["gangs"] == [
-        {"entity": "switch.relais", "power": "sensor.relais_power"},
-        {"entity": "switch.relais", "power": None},
-    ]
-    assert FURNITURE_SCHEMA({**base, "gangs": None})["gangs"] is None
-    with pytest.raises(vol.Invalid):
-        FURNITURE_SCHEMA({**base, "gangs": [{"entity": None}] * 5})

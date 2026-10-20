@@ -105,7 +105,7 @@ import { load3d } from "../load3d.ts";
 import { loadFun } from "../load-fun.ts";
 import { detectionKind, scaleGlow, buildMarkers, cameraMotionSensors, openMoreInfo, stateText, toggleEntity } from "../markers.ts";
 import { roofUnderAt, sectionCutsBelow } from "../roof-sections.ts";
-import { centroid, furnitureFootprint, gangEntities, gangsOf, GANG_TYPES, isLamp, setTerrain, poolFloorY, LAMP_MODEL, LIFT_SPOTS, outdoorGround, pointInPolygon, poolWaterY, spotDepth, surfaceHeight, zonesOf, type Building, type Floor, type Furniture, type Pet, type StartView } from "../model.ts";
+import { centroid, furnitureFootprint, isLamp, setTerrain, poolFloorY, LAMP_MODEL, LIFT_SPOTS, outdoorGround, pointInPolygon, poolWaterY, spotDepth, surfaceHeight, zonesOf, type Building, type Floor, type Furniture, type Pet, type StartView } from "../model.ts";
 import { pathLength, pipePath, pointAlong, type P3 } from "../geometry/runs.ts";
 import { pipePieces, poolAreas, poolNodeAt, poolWallNormal, underBasin, PIPE_IDLE, type PipePiece } from "../pool-runs.ts";
 import type { PipeTube } from "../viewer/viewer3d.ts";
@@ -253,7 +253,6 @@ export class Fp3dView3d extends LitElement {
     _household: { state: true },
     _hhFolded: { state: true },
     _binInfo: { state: true },
-    _gangMenu: { state: true },
     householdCard: { attribute: false },
     _sceneFired: { state: true },
     replay: { attribute: false },
@@ -439,8 +438,6 @@ export class Fp3dView3d extends LitElement {
   private declare _hhFolded: boolean;
   /** Haushalt Pro: the bin tapped – its next pickups in a small pop-up. */
   private declare _binInfo: { furnitureId: string; x: number; y: number } | null;
-  /** A wall switch or socket with several gangs: its small menu (one button per gang). */
-  private declare _gangMenu: { furnitureId: string; x: number; y: number } | null;
   private binInfoTimer: ReturnType<typeof setTimeout> | undefined;
   /** The glass card "Today in the household" (Haushalt Pro; the dashboard card can switch it off). */
   declare householdCard: boolean;
@@ -640,7 +637,6 @@ export class Fp3dView3d extends LitElement {
     this._household = [];
     this._hhFolded = readFlag("neonplan3d.hhFolded");
     this._binInfo = null;
-    this._gangMenu = null;
     this.householdCard = true;
     this.scenes = true;
     this._sceneFired = null;
@@ -2465,14 +2461,6 @@ export class Fp3dView3d extends LitElement {
           markers.push(this.lampMarker(hass, floor, f, linked?.entity ?? null));
           continue;
         }
-        if (GANG_TYPES.has(f.type)) {
-          const pin = this.gangItem(hass, floor, f, consumers, screens, consumerSensors);
-          if (pin) {
-            markers.push(pin);
-            targets.set(f.id, pin.id);
-          }
-          continue;
-        }
         // a home battery with only its charge, a wallbox with only its status still gets its marker;
         // a parking spot with Auto Pro data gets one even without a presence sensor
         const glow = glows.get(f.id);
@@ -2718,104 +2706,6 @@ export class Fp3dView3d extends LitElement {
         this.syncDevices(true);
       });
     }
-  }
-
-  /**
-   * Wall switch or socket (D523, D540, #593): every gang lights while its entity is on (a light in its own colour, a
-   * socket green, brighter with what it draws); a socket's power sensors count as consumers. One pin for the frame –
-   * the same entity may sit on several sockets (two sockets on one relay).
-   */
-  private gangItem(
-    hass: HomeAssistant,
-    floor: Floor,
-    f: Furniture,
-    consumers: Consumer[],
-    screens: Map<string, ScreenState>,
-    consumerSensors: Set<string>,
-  ): (DeviceMarker & { fromFurniture: boolean }) | null {
-    const gangs = gangsOf(f);
-    const socket = f.type === "wall_socket";
-    const faces: NonNullable<ScreenState["faces"]> = [];
-    let on = 0;
-    let used = 0;
-    let watts: number | null = null;
-    let reachable = false;
-    gangs.forEach((g, i) => {
-      const ent = g.entity && g.entity !== "none" ? g.entity : null;
-      const pw = g.power && g.power !== "none" ? g.power : null;
-      if (!ent && !pw) return;
-      used++;
-      const st = ent ? hass.states[ent] : undefined;
-      const w = pw ? readPower(hass.states[pw]) : null;
-      if (pw && w !== null) {
-        watts = (watts ?? 0) + Math.max(0, w);
-        if (!consumerSensors.has(pw)) {
-          consumerSensors.add(pw);
-          consumers.push({ id: ent ?? pw, powerEntity: pw, floorId: floor.id, x: f.x, z: f.z, power: Math.max(0, w) });
-        }
-      }
-      if (st && !isUnavailable(st)) reachable = true;
-      const active = st ? isActive(st) : (w ?? 0) > 5;
-      if (!active) return;
-      on++;
-      const lit = st && kindOf(st.entity_id) === "light" ? lightGlow(st) : null;
-      const color: [number, number, number] = lit ? lit.color : socket ? [0.35, 1, 0.55] : [0.22, 0.88, 1];
-      faces.push({ part: "gang", index: i, of: gangs.length, color, level: socket && w !== null ? Math.min(1, 0.55 + w / 1500) : 0.8 });
-    });
-    if (faces.length) screens.set(f.id, { color: faces[0].color, level: faces[0].level, faces });
-    if (!used) return null;
-    const ids = gangEntities(f);
-    const first = ids[0] ?? null;
-    const st = first ? hass.states[first] : undefined;
-    const room = floor.rooms.find((r) => r.points.length >= 3 && pointInPolygon([f.x, f.z], r.points));
-    const power = watts as number | null;
-    return {
-      id: `gangs:${f.id}`,
-      floorId: floor.id,
-      roomId: room?.id ?? null,
-      x: f.x,
-      z: f.z,
-      y: f.h + 0.2 + mountBase(floor, f),
-      icon: mdiIcon(f.icon || (socket ? "power-socket-de" : "light-switch")),
-      name: f.name || (ids.length === 1 && first ? entityName(hass, first) : furnitureName(hass, f.type)),
-      ownName: f.name || undefined,
-      showName: !!f.show_name,
-      // several gangs: how many are on (and what they draw together)
-      text: used > 1 ? `${on}/${used}${power !== null ? ` · ${formatPower(hass, power)}` : ""}` : power !== null ? formatPower(hass, power) : st ? stateText(hass, st) : "",
-      active: on > 0,
-      unavailable: !!first && !reachable,
-      glow: null,
-      power: power ?? undefined,
-      furnitureId: f.id,
-      show: f.marker ?? undefined,
-      fromFurniture: true,
-    };
-  }
-
-  /** A wall switch's or socket's menu: one button per gang, tapped it switches that gang. */
-  private renderGangMenu() {
-    const m = this._gangMenu;
-    const hass = this.hass;
-    const f = m && this.building?.floors.flatMap((x) => x.furniture).find((x) => x.id === m.furnitureId);
-    if (!m || !hass || !f) return nothing;
-    const socket = f.type === "wall_socket";
-    const close = () => (this._gangMenu = null);
-    return html`<div class="fp3d-menu-backdrop" @click=${close}></div>
-      <div class="fp3d-swipe fp3d-info fp3d-gang-menu" style="left:${m.x}px;top:${m.y}px">
-        <span>${f.name || furnitureName(hass, f.type)}</span>
-        ${gangsOf(f).map((g, i) => {
-          const id = g.entity && g.entity !== "none" ? g.entity : null;
-          const st = id ? hass.states[id] : undefined;
-          const w = g.power && g.power !== "none" ? readPower(hass.states[g.power]) : null;
-          const label = `${socket ? "🔌" : "▭"} ${i + 1} · ${id ? entityName(hass, id) : "–"}`;
-          return html`<button class="fp3d-chip ${st && isActive(st) ? "fp3d-gang-on" : ""}" ?disabled=${!id || (st ? isUnavailable(st) : true)}
-            @click=${() => {
-              if (!id) return;
-              if (this.confirmSet.has(id) && !confirm(translate(hass, "confirm_switch", { name: entityName(hass, id) }))) return;
-              void toggleEntity(hass, id);
-            }}>${label}${st ? html` <small>${stateText(hass, st)}${w !== null ? ` · ${formatPower(hass, Math.max(0, w))}` : ""}</small>` : nothing}</button>`;
-        })}
-      </div>`;
   }
 
   /** Haushalt Pro: how a bin or a mailbox shows now – its glow and its pin (with the days to the pickup, "post"). */
@@ -3298,14 +3188,6 @@ export class Fp3dView3d extends LitElement {
 
   /** Long press: the quick menu at the device, or the details for devices without one. */
   private onDeviceHold(entityId: string, x: number, y: number): void {
-    // a wall switch or socket: the quick menu of its one entity, else the frame's menu
-    if (entityId.startsWith("gangs:")) {
-      const f = this.building?.floors.flatMap((m) => m.furniture).find((m) => m.id === entityId.slice(6));
-      const ids = f ? gangEntities(f) : [];
-      if (ids.length === 1) this.onDeviceHold(ids[0], x, y);
-      else this.onDeviceTap(entityId, x, y);
-      return;
-    }
     if (this.ro) {
       this.onDeviceTap(entityId, x, y);
       return;
@@ -4482,25 +4364,6 @@ export class Fp3dView3d extends LitElement {
   private onDeviceTap(entityId: string, x = 0, y = 0): void {
     // trail pins and lamps without a light are drawn, but nothing of Home Assistant stands behind them
     if (entityId.startsWith("trail:") || entityId.startsWith("lamp:")) return;
-    // a wall switch or socket: one entity is switched right away, several open the frame's menu
-    if (entityId.startsWith("gangs:")) {
-      const fid = entityId.slice(6);
-      const f = this.building?.floors.flatMap((x) => x.furniture).find((x) => x.id === fid);
-      if (!f) return;
-      const ids = gangEntities(f);
-      if (ids.length === 1) return this.onDeviceTap(ids[0], x, y);
-      if (ids.length > 1) {
-        this._gangMenu = { furnitureId: fid, x, y };
-        return;
-      }
-      // only power sensors: their details
-      const pw = gangsOf(f).find((g) => g.power && g.power !== "none")?.power;
-      if (pw) {
-        if (this.ro) this.showInfo(pw, x, y);
-        else openMoreInfo(this, pw);
-      }
-      return;
-    }
     // Haushalt Pro: a bin shows its next pickups; a mailbox's or a plant's pin opens its sensor
     if (entityId.startsWith("hh:")) {
       const [id, furnitureId] = entityId.slice(3).split("#");
@@ -4747,22 +4610,6 @@ export class Fp3dView3d extends LitElement {
       .fp3d-holo-link[style*="--bin"] line,
       .fp3d-holo-link[style*="--bin"] circle {
         stroke: var(--bin);
-      }
-      .fp3d-gang-menu {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        z-index: 6;
-      }
-      .fp3d-gang-menu .fp3d-chip {
-        text-align: left;
-      }
-      .fp3d-gang-menu .fp3d-gang-on {
-        border-color: var(--fp3d-accent, #37e0ff);
-        box-shadow: 0 0 10px rgba(55, 224, 255, 0.35);
-      }
-      .fp3d-gang-menu small {
-        opacity: 0.7;
       }
       .fp3d-bin-info {
         display: flex;

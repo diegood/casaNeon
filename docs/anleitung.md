@@ -503,18 +503,6 @@ Unter **Möbel → Haushalt** stehen **Mülltonne** und **Briefkasten**.
 - **Abfallart:** Restmüll, Bio, Papier, Verpackung, Glas, Garten, Recycling oder Sonstiges. Sie gibt der Tonne die Farben, die in deinem Land üblich sind (nach dem Land in Home Assistant: in Deutschland etwa Papier blau, Bio braun, Gelbe Tonne gelb; in Australien zeigt der Deckel die Sorte). **Farbe** und **Deckel** kannst du danach frei wählen.
 - **Briefkasten – Bauform:** Wandbriefkasten (hängt auf 1 m), Briefkasten auf Pfosten mit Fähnchen, Standbriefkasten mit Zeitungsfach, Paketbox oder Briefkastenanlage.
 
-### 4.24 Lichtschalter und Steckdosen
-
-Unter **Möbel → Schalter & Steckdosen** (in der Wandansicht unter 🔌 **Schalter**) stehen **Lichtschalter** und **Steckdose**. Sie hängen an der Wand: der Schalter auf 1,05 m, die Steckdose auf 0,3 m (die Außensteckdose auf 0,5 m); mit **Höhe über Boden** setzt du eine eigene Höhe.
-
-- **Tasten / Dosen im Rahmen:** 1 bis 4 in einem Rahmen; der Rahmen wird dabei passend breiter.
-- **Jede Taste, jede Dose bekommt ihre eigene Entität:** ein Licht, ein Schalter (das Relais, der Zwischenstecker) oder ein Lüfter. Sie leuchtet in 3D, solange die Entität an ist – ein Licht in seiner Farbe, eine Steckdose grün.
-- **Dieselbe Entität an mehreren Dosen:** Schaltet ein Relais zwei Steckdosen (innen und außen, oder eine Doppeldose), wählst du bei beiden dieselbe Entität. Das geht über beliebig viele Rahmen.
-- **Leistung (nur Steckdosen):** pro Dose optional ein Leistungssensor. Die Dose leuchtet heller, je mehr sie zieht, und zählt als Verbraucher mit.
-- **Bauform (Steckdose):** innen oder **Außensteckdose mit Klappe**.
-- **Antippen:** Mit nur einer Entität schaltet ein Tippen sie direkt. Bei mehreren öffnet sich ein kleines Menü mit einer Schaltfläche pro Taste. **Vor dem Schalten fragen** gilt für alle Tasten.
-- Das Symbol über dem Rahmen zeigt bei mehreren Tasten, wie viele an sind (z. B. „1/2“), bei Steckdosen auch die Leistung.
-
 ---
 
 ## 5. Die 3D-Ansicht

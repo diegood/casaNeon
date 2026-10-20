@@ -526,16 +526,6 @@ test("a window marked 'ask first' puts its blind on the confirm list", () => {
   assert.equal(confirmEntities(hass, [floor]).has("cover.rollo"), true);
 });
 
-test("a wall switch marked 'ask first' puts every gang's entity on the confirm list", () => {
-  const hass = hassWith();
-  const sw = { id: "ws", type: "wall_switch", x: 1, z: 0, rotation: 0, w: 0.156, d: 0.012, h: 0.085, variant: null, gangs: [{ entity: "light.flur" }, { entity: "switch.garten" }], confirm: true };
-  const floor: Floor = { ...newFloor("f", "F", 0), furniture: [sw] };
-  const out = confirmEntities(hass, [floor]);
-  assert.ok(out.has("light.flur") && out.has("switch.garten"));
-  floor.furniture = [{ ...sw, confirm: false }];
-  assert.equal(confirmEntities(hass, [floor]).has("light.flur"), false);
-});
-
 test("a status sensor (a 3D printer) counts as active while it prints", () => {
   const st = (state: string, dc = "enum") => ({ entity_id: "sensor.drucker_status", state, attributes: { device_class: dc } });
   assert.equal(isActive(st("running")), true);

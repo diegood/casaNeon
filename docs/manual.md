@@ -503,18 +503,6 @@ Under **Furniture → Household** you find the **waste bin** and the **mailbox**
 - **Waste:** general, food / organic, paper, packaging, glass, garden, recycling or other. It gives the bin the colours usual in your country (by the country set in Home Assistant: in Germany paper is blue and food waste brown, in the US recycling is blue; in Australia the lid tells the kind). **Colour** and **lid** can be changed freely afterwards.
 - **Mailbox – shape:** wall mailbox (hanging at 1 m), mailbox on a post with a flag, post box with a newspaper holder, parcel box or mailbox bank.
 
-### 4.24 Light switches and sockets
-
-Under **Furniture → Switches & sockets** (in the wall view under 🔌 **Switches**) you find the **light switch** and the **socket**. They hang on the wall: the switch at 1.05 m, the socket at 0.3 m (the outdoor socket at 0.5 m); **Height above floor** sets your own.
-
-- **Buttons / sockets in the frame:** 1 to 4 in one frame; the frame grows wider to fit.
-- **Every button, every socket gets its own entity:** a light, a switch (the relay, the smart plug) or a fan. It glows in 3D while the entity is on – a light in its colour, a socket green.
-- **The same entity on several sockets:** when one relay switches two sockets (inside and outside, or a double socket), choose the same entity for both. This works across any number of frames.
-- **Power (sockets only):** an optional power sensor per socket. The socket glows brighter the more it draws and counts as a consumer.
-- **Kind (socket):** indoor or **outdoor socket with lid**.
-- **Tap:** with one entity a tap switches it right away. With several, a small menu opens with one button per gang. **Ask before switching** applies to every gang.
-- With several gangs, the symbol above the frame shows how many are on (e.g. "1/2"); sockets show their power too.
-
 ---
 
 ## 5. The 3D view

@@ -297,21 +297,6 @@ FURNITURE_SCHEMA = vol.Schema(
         # LED strip: tilt about its length (degrees) and standing upright
         vol.Optional("tilt", default=0.0): vol.All(vol.Coerce(float), vol.Range(min=-90, max=90)),
         vol.Optional("upright", default=False): bool,
-        # wall switch and socket: one entry per gang (its entity, a socket's power sensor)
-        vol.Optional("gangs"): vol.Any(
-            None,
-            vol.All(
-                [
-                    vol.Schema(
-                        {
-                            vol.Optional("entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
-                            vol.Optional("power", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
-                        }
-                    )
-                ],
-                vol.Length(max=4),
-            ),
-        ),
         # LED strip: rising along its length (degrees), e.g. up the stairs
         vol.Optional("rise"): vol.All(vol.Coerce(float), vol.Range(min=-80, max=80)),
         vol.Optional("pictures", default=[]): vol.All([_SCREEN_PICTURE_SCHEMA], vol.Length(max=20)),

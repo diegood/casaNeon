@@ -144,12 +144,6 @@ export interface ScreenPicture {
   image: string;
 }
 
-/** One gang of a wall switch or socket: what it switches (the same entity may sit on several) and what it draws. */
-export interface Gang {
-  entity: string | null;
-  power?: string | null;
-}
-
 export interface Furniture {
   /** Fixed against moving by accident. */
   locked?: boolean | null;
@@ -267,8 +261,6 @@ export interface Furniture {
   rise?: number;
   /** LED strip: standing upright – its length runs up from the mount height (door frame, light column). */
   upright?: boolean;
-  /** Wall switch and socket (D523, D540, #593): one entry per gang – the entity it switches and, for a socket, its power sensor. */
-  gangs?: Gang[] | null;
   /** Screens: pictures shown while an entity is in a state (first match wins; "*" = any state). */
   pictures?: ScreenPicture[];
   /** Screens: what shows around a rule picture – a dark screen (default) or a white one (for dark logos). */
@@ -1237,8 +1229,6 @@ export const FURNITURE_TYPES = [
   "awning",
   "waste_bin",
   "mailbox",
-  "wall_switch",
-  "wall_socket",
 ] as const;
 
 /** Furniture library sections (the editor lists them in this order). */
@@ -1253,7 +1243,6 @@ export const FURNITURE_GROUPS: Record<string, FurnitureType[]> = {
   vehicles: ["parking"],
   outdoor: ["awning"],
   household: ["waste_bin", "mailbox"],
-  switches: ["wall_switch", "wall_socket"],
 };
 
 /** Energy devices: placed and set up in the Energy tool (stored like furniture, not in the library). */
@@ -1400,11 +1389,6 @@ export function builtinBase(f: Pick<Furniture, "type" | "h"> & { variant?: strin
     case "mailbox":
       // a wall mailbox and a mailbox bank hang on the wall
       return f.variant === "bank" ? 0.75 : f.variant === "pole" || f.variant === "pillar" || f.variant === "parcel" ? 0 : 1.0;
-    case "wall_switch":
-      return 1.05;
-    case "wall_socket":
-      // an outdoor socket sits a little higher
-      return f.variant === "outdoor" ? 0.5 : 0.3;
     case "inverter":
       return 1.1;
     case "wallbox":
@@ -1439,26 +1423,6 @@ export function surfaceHeight(floor: Floor, x: number, z: number, itemH = 0): nu
 export function splitAliases(text: string): string[] | undefined {
   const out = text.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 12);
   return out.length ? out : undefined;
-}
-
-/** Wall switches and sockets: up to four gangs in one frame, each with its own entity (D523, #593). */
-export const GANG_TYPES = new Set<string>(["wall_switch", "wall_socket"]);
-export const MAX_GANGS = 4;
-
-/** The gangs of a wall switch or socket (at least one, empty when nothing is linked). */
-export function gangsOf(f: Pick<Furniture, "gangs">): Gang[] {
-  const g = (f.gangs ?? []).slice(0, MAX_GANGS);
-  return g.length ? g : [{ entity: null }];
-}
-
-/** Width of a frame with n gangs (a single one 8.5 cm, each more 7.1 cm). */
-export function gangPlateWidth(n: number): number {
-  return Math.round((0.085 + 0.071 * (Math.max(1, Math.min(MAX_GANGS, n)) - 1)) * 1000) / 1000;
-}
-
-/** The different entities a wall switch or socket switches (two sockets on one relay count once). */
-export function gangEntities(f: Pick<Furniture, "gangs">): string[] {
-  return [...new Set(gangsOf(f).map((g) => g.entity).filter((e): e is string => !!e && e !== "none"))];
 }
 
 export const ELECTRIC_FURNITURE = new Set<string>([
@@ -1552,9 +1516,6 @@ export const FURNITURE_SIZE: Record<FurnitureType, [number, number, number]> = {
   // a 240 l wheelie bin; a wall mailbox
   waste_bin: [0.58, 0.73, 1.07],
   mailbox: [0.38, 0.14, 0.34],
-  // a single plate; more gangs make it wider (gangPlateWidth)
-  wall_switch: [0.085, 0.012, 0.085],
-  wall_socket: [0.085, 0.014, 0.085],
   robot_vacuum: [0.36, 0.5, 0.1],
   parking: [2.6, 5.2, 0.02],
   lamp_pendant: [0.4, 0.4, 0.8],

@@ -863,8 +863,6 @@ export function confirmEntities(hass: HomeAssistant, floors: readonly Floor[]): 
     for (const f of floor.furniture) {
       const e = f.confirm ? links.get(f.id)?.entity : null;
       if (e && e !== "none") out.add(e);
-      // a wall switch or socket asks before switching any of its gangs
-      if (f.confirm) for (const g of f.gangs ?? []) if (g.entity && g.entity !== "none") out.add(g.entity);
     }
   }
   return out;

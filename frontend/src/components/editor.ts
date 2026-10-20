@@ -59,12 +59,7 @@ import {
   FLOOR_MATERIALS,
   FURNITURE_GROUPS,
   ENERGY_DEVICES,
-  gangPlateWidth,
-  gangsOf,
   splitAliases,
-  GANG_TYPES,
-  MAX_GANGS,
-  type Gang,
   DEFAULT_HOLOGRAM,
   type HologramSettings,
   type StartView,
@@ -202,7 +197,6 @@ const WALL_CATS: Record<string, string[]> = {
   tall: ["kitchen_tall", "fridge", "wardrobe", "tall_cabinet", "shelf", "coat_rack"],
   living: ["sofa", "armchair", "bed", "bunk_bed", "bench", "corner_bench", "plant"],
   light: ["lamp_wall", "lamp_floor", "led_strip", "lamp_table"],
-  switches: ["wall_switch", "wall_socket"],
 };
 /** Hanging pieces (they go into a gap high on the wall). */
 const HANGING = new Set(["kitchen_wall", "tv_wall", "lamp_wall", "shelf", "led_strip", "ac_unit"]);
@@ -309,7 +303,7 @@ function pathLengthOf(p: PoolPipe, nodeAt: (n: string) => { x: number; z: number
 const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 // furniture without a top to light: no "State from" box
-const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox", "wall_switch", "wall_socket"]);
+const NO_STATE_TYPES = new Set(["parking", "stairwell", "rug", "grid_point", "waste_bin", "mailbox"]);
 
 export class Fp3dEditor extends LitElement {
   static properties = {
@@ -7477,7 +7471,6 @@ export class Fp3dEditor extends LitElement {
       ["tall", "▯"],
       ["living", "🛋"],
       ["light", "💡"],
-      ["switches", "🔌"],
       ...((this.packs ?? []).some((p) => p.items.length) ? ([["pack", "🧩"]] as [string, string][]) : []),
       ...(hasFeature("energy_pro") ? ([["energy", "⚡"]] as [string, string][]) : []),
     ];
@@ -10882,7 +10875,7 @@ export class Fp3dEditor extends LitElement {
             >
           </div>`
         : nothing}
-      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${GANG_TYPES.has(f.type) ? this.renderGangsForm(f) : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
+      ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -11630,49 +11623,6 @@ export class Fp3dEditor extends LitElement {
       >`;
   }
 
-  /** Wall switch or socket (D523, #593): its gangs, and per gang what it switches (a socket also its power sensor). */
-  private renderGangsForm(f: Furniture) {
-    if (!this.hass) return nothing;
-    const admin = this.isAdmin;
-    const gangs = gangsOf(f);
-    const socket = f.type === "wall_socket";
-    const switches = this.entityOptions((id) => /^(light|switch|input_boolean|fan)\./.test(id));
-    const power = this.entityOptions((id) => this.isPowerSensor(id));
-    const save = (next: Gang[]) => this.updateFurniture({ gangs: next.length > 1 || next[0]?.entity || next[0]?.power ? next : null });
-    const setGang = (i: number, patch: Partial<Gang>) => save(gangs.map((g, k) => (k === i ? { ...g, ...patch } : g)));
-    // more gangs make the frame wider (a frame turned by hand keeps its own size otherwise)
-    const count = (n: number) => {
-      const next = Array.from({ length: n }, (_, i) => gangs[i] ?? { entity: null });
-      this.updateFurniture({ gangs: n > 1 || next[0].entity || next[0].power ? next : null, w: gangPlateWidth(n) });
-    };
-    return html`<div class="fp3d-form fp3d-links">
-      <label class="fp3d-field"
-        >${this.t(socket ? "gang_count_socket" : "gang_count_switch")}
-        <select ?disabled=${!admin} @change=${(e: Event) => count(Number((e.target as HTMLSelectElement).value))}>
-          ${Array.from({ length: MAX_GANGS }, (_, i) => i + 1).map((n) => html`<option value=${n} ?selected=${gangs.length === n}>${n}</option>`)}
-        </select></label
-      >
-      ${socket
-        ? html`<label class="fp3d-field"
-            >${this.t("socket_kind")}
-            <select ?disabled=${!admin} @change=${(e: Event) => this.updateFurniture({ variant: (e.target as HTMLSelectElement).value || null })}>
-              ${(["", "outdoor"] as const).map((v) => html`<option value=${v} ?selected=${(f.variant ?? "") === v}>${this.t(v ? "socket_outdoor" : "socket_indoor")}</option>`)}
-            </select></label
-          >`
-        : nothing}
-      ${gangs.map(
-        (g, i) => html`${this.entitySelect(`${this.t(socket ? "gang_socket" : "gang_switch")}${gangs.length > 1 ? ` ${i + 1}` : ""}`, g.entity, undefined, switches, (v) => setGang(i, { entity: v && v !== "none" ? v : null }))}
-        ${socket ? this.entitySelect(`${this.t("furn_power")}${gangs.length > 1 ? ` ${i + 1}` : ""}`, g.power ?? null, undefined, power, (v) => setGang(i, { power: v && v !== "none" ? v : null })) : nothing}`,
-      )}
-      <p class="fp3d-sub fp3d-wide">${this.t(socket ? "gang_socket_hint" : "gang_switch_hint")}</p>
-      <label class="fp3d-check fp3d-wide" title=${this.t("device_confirm_hint")}
-        ><input type="checkbox" .checked=${!!f.confirm} ?disabled=${!admin} @change=${(ev: Event) => this.updateFurniture({ confirm: (ev.target as HTMLInputElement).checked })} />
-        ${this.t("device_confirm")}</label
-      >
-      <div class="fp3d-form">${this.markerSelect(f.marker ?? null, (v) => this.updateFurniture({ marker: v }))}${this.iconInput(f.icon, (v) => this.updateFurniture({ icon: v }))}</div>
-    </div>`;
-  }
-
   private renderFurnitureLinks(f: Furniture) {
     const ALARM_CLASSES = new Set(["smoke", "gas", "carbon_monoxide", "heat", "moisture", "safety", "sound", "problem"]);
     if (!this.hass) return nothing;
@@ -12221,7 +12171,7 @@ export class Fp3dEditor extends LitElement {
   private libraryButton(type: string, label: string) {
     const show = (e: Event) => void this.showPreview(type, e.currentTarget as HTMLElement);
     // a lamp can be switched from 3D, another electric item takes an entity and a power sensor
-    const badge = isLamp(type) ? "light" : isElectric(type) || GANG_TYPES.has(type) ? "switch" : null;
+    const badge = isLamp(type) ? "light" : isElectric(type) ? "switch" : null;
     return html`<button
       class="fp3d-btn ${badge ? "fp3d-lib-electric" : ""}"
       title=${badge ? this.t(badge === "light" ? "lib_badge_light" : "lib_badge_electric") : label}

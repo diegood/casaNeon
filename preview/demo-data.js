@@ -393,9 +393,6 @@ DEMO_BUILDING.floors[0].furniture = [
   item("table", 8.0, 2.9, 1.3, 0.85, 0.75),
   { ...item("lamp_pendant", 8.0, 2.9, 0.3, 0.3, 0.95), entity: "light.esstisch", variant: "globe" },
   { ...item("radiator", 0.08, 2.3, 1.0, 0.1, 0.6, 270), entity: "climate.wohnzimmer" },
-  // a double light switch by the door and a double socket on one relay (both sockets the same entity)
-  { ...item("wall_switch", 0.006, 1.0, 0.156, 0.012, 0.085, 270), gangs: [{ entity: "light.wohnzimmer_decke" }, { entity: "light.stehlampe" }] },
-  { ...item("wall_socket", 0.007, 3.0, 0.156, 0.014, 0.085, 270), gangs: [{ entity: "switch.kaffeemaschine" }, { entity: "switch.kaffeemaschine" }] },
   ...[
     [7.6, 10.4],
     [7.6, 12.4],
