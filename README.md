@@ -74,4 +74,4 @@ Open an issue in [this repository](https://github.com/diegood/neonplan3d/issues)
 
 ## Licence
 
-MIT – see [LICENSE](LICENSE). Based on NeonPlan 3D, © 2026 Mastershort.
+MIT – see [LICENSE](LICENSE). Based on NeonPlan 3D, © 2026 Mastershort. The furniture packs in `packs/nextfloor/` come from [NextFloor](https://github.com/therealMRBK/NextFloor) by therealMRBK (MIT, see [their licence](packs/nextfloor/LICENSE)).
