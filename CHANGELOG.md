@@ -3,6 +3,32 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.23.0
+
+### Novedades
+
+- **Novedades del original hasta su 2.0.0**, solo lo funcional:
+  - **Localización** (gratis): quién y qué está en cada habitación, con los receptores Bluetooth que ya tiene Home Assistant (proxies Bluetooth de ESPHome, Shelly Gen2/3, adaptador USB). Asistente en el editor, **⚙ Ajustes → 📡 Localización**: receptores por habitación, dispositivos a localizar (iPhone y Apple Watch con su clave, móviles Android con «BLE Transmitter», llaveros), aprendizaje de 90 segundos por habitación y comprobación en vivo.
+  - **Un sensor «Habitación de …»** por cada dispositivo localizado, para automatizaciones.
+  - **Personas en 3D** como figura de neón o como pin (se elige en el paso «En vivo» del asistente).
+  - **Respuestas por voz** sin pantalla abierta: «¿Dónde está mi iPhone?», «¿Quién está en casa?», «Haz sonar mi iPhone» (servicio `neonplan3d.ask` y Assist).
+  - **Asistente de clave:** un ESP32 de unos 5 € lee la clave Bluetooth (IRK) de un iPhone o un Apple Watch al emparejarse. La página para flashearlo la sirve la propia integración en `/neonplan3d_static/keys/index.html` (el flasheo desde el navegador necesita Home Assistant por https).
+  - **Biblioteca de muebles nueva:** por tipo y por habitación, favoritos y usados recientemente, una tarjeta por familia de tamaños, y la versión izquierda/derecha de cada mueble.
+  - **Alféizar** por ventana (automático, ninguno, solo dentro o solo fuera), **extremos del tejado** distintos en cada lado (hastial, faldón o media cadera), **ventanas que cruzan** de una habitación a otra abierta.
+  - **Tablets de pared más ligeras:** las animaciones decorativas descansan cuando nadie toca la tablet.
+  - **Cubos de basura:** etiqueta solo para la próxima recogida, días de antelación, «sacado ✓» con un ayudante; **segundo mantenimiento** (p. ej. la base del robot).
+  - **Ocultar o mostrar todos** los dispositivos de un área en el panel de la habitación.
+
+### Cambios
+
+- El cargador de la tarjeta se sirve desde la integración; ya no se escribe nada en la carpeta `www`.
+- El archivo de frases de Assist solo se escribe cuando eliges las frases en **⚙ Ajustes → Voz**; si lo has cambiado a mano, ya no se sobrescribe, y se borra al quitar la integración.
+- Siguen sin traerse del original la aprobación e importación de módulos, la tienda, las licencias, los diagnósticos, otros idiomas, la página de importación ni sus interruptores, enchufes, ventilador, punto de acceso y termo.
+
+### Correcciones
+
+- Del original: un sensor de posición de persiana olvidado ya no baja una persiana sobre una puerta, una habitación gana a un área exterior con el mismo nombre en la voz, cientos de luces de segmentos LED ocultas en un área ya se guardan, y otras correcciones de tejados y paredes.
+
 ## 1.22.0
 
 ### Novedades
