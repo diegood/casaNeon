@@ -83,6 +83,30 @@ export interface ImportedPack {
   publisher: string;
   licensee: string | null;
   items: number;
+  /** Module code that waits for an admin's approval on the extensions page before it runs. */
+  approval?: boolean;
+}
+
+/** A module's code for an admin to read before approving it (the installed code or the waiting update). */
+export interface ModuleReview {
+  id: string;
+  name: string;
+  publisher: string;
+  licensee: string | null;
+  release: number;
+  api: number;
+  kind: string;
+  sha: string;
+  code: string;
+}
+
+export function reviewModule(hass: HomeAssistant, packId: string, pending: boolean): Promise<ModuleReview> {
+  return hass.callWS<ModuleReview>({ type: "neonplan3d/modules/review", pack_id: packId, pending });
+}
+
+/** Approves exactly the reviewed code (by its fingerprint); from then on it runs. */
+export async function approveModule(hass: HomeAssistant, packId: string, sha: string): Promise<void> {
+  await hass.callWS({ type: "neonplan3d/modules/approve", pack_id: packId, sha });
 }
 
 /** Import a pack file; the backend checks its signature (errors carry a code, e.g. "bad_signature"). */
@@ -124,6 +148,6 @@ export async function getVoiceSettings(hass: HomeAssistant): Promise<{ sentences
   return hass.callWS({ type: "neonplan3d/voice/settings" });
 }
 
-export async function setVoiceSentences(hass: HomeAssistant, sentences: SentenceMode): Promise<{ sentences: SentenceMode }> {
+export async function setVoiceSentences(hass: HomeAssistant, sentences: SentenceMode): Promise<{ sentences: SentenceMode; kept?: string[] }> {
   return hass.callWS({ type: "neonplan3d/voice/settings/set", sentences });
 }

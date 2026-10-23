@@ -124,14 +124,15 @@ export class OrbitControls {
     return active;
   }
 
-  flyTo(to: Partial<OrbitView>, duration = 700): void {
+  /** `saved`: a start view saved for the house, a floor or a room – its angle applies even under the 3D lock (#645). */
+  flyTo(to: Partial<OrbitView>, duration = 700, saved = false): void {
     const from = { ...this.view, target: this.view.target.clone() };
     // take the short way round
     let theta = to.theta ?? from.theta;
     while (theta - from.theta > Math.PI) theta -= 2 * Math.PI;
     while (theta - from.theta < -Math.PI) theta += 2 * Math.PI;
     // locked: the flight moves and zooms, the angle stays
-    const target = this.angleLock
+    const target = this.angleLock && !saved
       ? { target: (to.target ?? from.target).clone(), radius: to.radius ?? from.radius, theta: from.theta, phi: from.phi }
       : { target: (to.target ?? from.target).clone(), radius: to.radius ?? from.radius, theta, phi: to.phi ?? from.phi };
     this.velocity = { theta: 0, phi: 0 };

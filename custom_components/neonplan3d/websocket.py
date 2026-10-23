@@ -14,6 +14,8 @@ from homeassistant.loader import async_get_integration
 import voluptuous as vol
 
 from .const import DATA_ASK, DATA_VOICE, DOMAIN, SIGNAL_ASK, SIGNAL_BUILDING_UPDATED
+from .locate.recorder import ws_locate_rec
+from .locate.ws import COMMANDS as LOCATE_COMMANDS
 from .packs import MAX_PACK_SIZE, PackError, fingerprint, parts_of, verify_pack
 from .schema import BUILDING_SCHEMA, IMAGE_DATA
 from .storage import FloorplanData, complete
@@ -46,7 +48,10 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_voice_answer,
         ws_voice_settings,
         ws_voice_settings_set,
+        ws_locate_rec,
     ):
+        websocket_api.async_register_command(hass, command)
+    for command in LOCATE_COMMANDS:
         websocket_api.async_register_command(hass, command)
 
 
@@ -349,7 +354,7 @@ def ws_voice_answer(hass: HomeAssistant, connection: websocket_api.ActiveConnect
 def ws_voice_settings(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """The voice settings: which sentences Assist hands to NeonPlan."""
     settings: VoiceSettings | None = hass.data.get(DATA_VOICE)
-    connection.send_result(msg["id"], {"sentences": settings.sentences if settings else "distinct"})
+    connection.send_result(msg["id"], {"sentences": settings.sentences if settings else "off"})
 
 
 @websocket_api.websocket_command(
@@ -365,5 +370,9 @@ async def ws_voice_settings_set(
     if settings is None:
         connection.send_error(msg["id"], "not_ready", "voice settings not loaded")
         return
-    await settings.async_set_sentences(msg["sentences"])
-    connection.send_result(msg["id"], {"sentences": settings.sentences})
+    try:
+        kept = await settings.async_set_sentences(msg["sentences"])
+    except OSError as err:
+        connection.send_error(msg["id"], "write_failed", str(err))
+        return
+    connection.send_result(msg["id"], {"sentences": settings.sentences, "kept": kept})

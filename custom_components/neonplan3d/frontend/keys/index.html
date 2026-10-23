@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Asistente de clave de CasaNeon</title>
+    <meta name="description" content="Lee la clave Bluetooth (IRK) de un iPhone, un Apple Watch o un móvil Android con un ESP32, para la localización de CasaNeon. Se instala desde el navegador, sin Mac." />
+    <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+    <style>
+      :root { color-scheme: dark; --ink: #e6f7ff; --muted: #9fb8c8; --neon: #37e0ff; --card: #0f1a2e; --warn: #ffb86b; }
+      body { margin: 0; background: #070b14; color: var(--ink); font: 16px/1.6 system-ui, Roboto, sans-serif; }
+      main { max-width: 820px; margin: 0 auto; padding: 32px 16px 56px; }
+      h1 { margin: 0 0 4px; font-size: 30px; }
+      h1 span { color: var(--neon); }
+      h2 { font-size: 21px; margin: 30px 0 8px; }
+      .sub { color: var(--muted); }
+      .card { background: var(--card); border: 1px solid #37e0ff33; border-radius: 14px; padding: 16px 20px; margin: 14px 0; }
+      .step { display: grid; grid-template-columns: 38px 1fr; gap: 12px; margin: 18px 0; }
+      .num { width: 34px; height: 34px; border-radius: 50%; background: var(--neon); color: #04121c; font-weight: 800; display: grid; place-items: center; }
+      ul { padding-left: 20px; margin: 6px 0; }
+      li { margin: 4px 0; }
+      b { color: #fff; }
+      a { color: var(--neon); }
+      esp-web-install-button button[slot="activate"] { font: 700 18px system-ui, sans-serif; background: var(--neon); color: #04121c; border: 0; border-radius: 12px; padding: 14px 28px; cursor: pointer; }
+      .warn { color: var(--warn); }
+      details { margin: 8px 0; }
+      summary { cursor: pointer; font-weight: 600; }
+      footer { color: var(--muted); font-size: 13px; margin-top: 32px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>🔑 CasaNeon <span>Asistente de clave</span></h1>
+      <p class="sub">CasaNeon averigua en qué habitación estás con los receptores Bluetooth que Home Assistant ya tiene. Pero un iPhone y un Apple Watch cambian su dirección Bluetooth constantemente. Para que CasaNeon los reconozca igualmente necesita una vez su <b>clave</b> (IRK). Esta página convierte un ESP32 de unos 5 € en el <b>asistente de clave</b>, que lee la clave mientras el dispositivo se empareja, sin Mac.</p>
+
+      <div class="card">
+        <b>¿Lo necesito?</b>
+        <ul>
+          <li><b>iPhone, Apple Watch:</b> sí, salvo que ya tengas la clave; entonces escríbela en CasaNeon en «Pegar una clave que ya tienes».</li>
+          <li><b>Móvil Android:</b> no. Activa en la app de Home Assistant <b>Ajustes → App Companion → Gestionar sensores → BLE Transmitter</b>; CasaNeon encuentra el móvil en «Añadir un móvil Android o un llavero».</li>
+          <li><b>Llaveros</b> (Nut, Tile, iBeacon): no. Los AirTags, por desgracia, no funcionan.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <b>Necesitas:</b>
+        <ul>
+          <li>una <b>placa ESP32</b>: un ESP32 normal («ESP32 DevKit», «ESP-WROOM-32»), ESP32-C3 o ESP32-S3, unos 5 €</li>
+          <li>un <b>cable USB de datos</b> (algunos cables de carga solo llevan corriente)</li>
+          <li>un <b>ordenador con Chrome o Edge</b> (Firefox y Safari no pueden flashear; móviles y tabletas tampoco)</li>
+          <li>esta página abierta por <b>https</b> (Home Assistant con certificado, Nabu Casa o un proxy) y la contraseña de tu Wi-Fi</li>
+        </ul>
+      </div>
+
+      <h2>Paso a paso</h2>
+
+      <div class="step"><div class="num">1</div><div>
+        <b>Conecta e instala.</b> Enchufa el ESP32 al ordenador y pulsa <b>Instalar</b> abajo. Elige el puerto USB en la ventana (suele ser «USB Serial», «CP210x» o «CH340») y confirma <b>Install</b>. Tarda alrededor de un minuto.
+        <p class="sub">¿No aparece ningún puerto? Mira «Si algo no funciona» más abajo.</p>
+      </div></div>
+
+      <div class="step"><div class="num">2</div><div>
+        <b>Introduce tu Wi-Fi.</b> Justo después la página pide tu Wi-Fi. Escribe nombre y contraseña: el ESP32 se conecta y queda listo. Ya puedes enchufarlo a cualquier cargador USB de la casa.
+      </div></div>
+
+      <div class="step"><div class="num">3</div><div>
+        <b>Añádelo a Home Assistant.</b> Al poco Home Assistant avisa de un dispositivo nuevo: <b>Ajustes → Dispositivos y servicios</b> → en «Descubiertos» <b>NeonPlan Key</b> → <b>Añadir</b> → <b>Enviar</b>. (¿Sin aviso? «Añadir integración» → ESPHome → la dirección IP del ESP32.)
+      </div></div>
+
+      <div class="step"><div class="num">4</div><div>
+        <b>Ábrelo en CasaNeon.</b> Editor → <b>⚙ Ajustes → 📡 Localización</b> → <b>2 · Dispositivos</b>. En <b>🔑 Asistente de clave</b> pone ahora «Asistente de clave encontrado: NeonPlan Key …».
+        <ul>
+          <li>Elige <b>Para un Apple Watch</b> o <b>Para un iPhone / Android</b> (el asistente se reinicia un momento).</li>
+          <li>Escribe un <b>nombre</b> (p. ej. «Reloj de Lucía») y elige la <b>persona</b>.</li>
+        </ul>
+      </div></div>
+
+      <div class="step"><div class="num">5</div><div>
+        <b>Empareja.</b>
+        <ul>
+          <li><b>Apple Watch:</b> en el reloj <b>Ajustes → Bluetooth</b>, espera un momento: <b>NeonPlan Key</b> aparece en <b>«Dispositivos de salud»</b>. Tócalo.</li>
+          <li><b>iPhone:</b> <b>Ajustes → Bluetooth</b>: toca <b>NeonPlan Key</b> en «Otros dispositivos» (aparece como teclado; si muestra un código, no hace falta escribirlo).</li>
+        </ul>
+        <p class="sub">Después el dispositivo suele decir «No conectado»: es lo esperado, el asistente corta la conexión en cuanto tiene la clave.</p>
+      </div></div>
+
+      <div class="step"><div class="num">6</div><div>
+        <b>Guárdala.</b> CasaNeon muestra «Clave (IRK) leída del dispositivo que acaba de emparejarse». Toca <b>Añadir como «…»</b>: el dispositivo ya está en la lista con su nombre y su persona. Si CasaNeon ya conoce la clave, pone «Pertenece a: …».
+      </div></div>
+
+      <div class="step"><div class="num">7</div><div>
+        <b>Recoge.</b> En el reloj o el iPhone toca <b>NeonPlan Key</b> → ⓘ → <b>«Omitir este dispositivo»</b>.
+      </div></div>
+
+      <div class="step"><div class="num">8</div><div>
+        <b>¿Otro dispositivo?</b> Toca antes <b>🔄 Siguiente dispositivo</b> en CasaNeon (el asistente recibe una identidad Bluetooth nueva, así el dispositivo anterior no se conecta entretanto) y sigue desde el paso 4.
+      </div></div>
+
+      <h2>Instalar</h2>
+      <div class="card">
+        <esp-web-install-button manifest="manifest.json">
+          <button slot="activate">Instalar</button>
+          <span slot="unsupported" class="warn">Este navegador no puede flashear dispositivos: usa Chrome o Edge en un ordenador.</span>
+          <span slot="not-allowed" class="warn">Abre esta página por https: el navegador solo permite flashear desde una conexión segura.</span>
+        </esp-web-install-button>
+      </div>
+
+      <h2>Si algo no funciona</h2>
+      <details><summary>No aparece ningún puerto USB en la ventana</summary>
+        <ul>
+          <li>Prueba otro cable USB: muchos solo cargan y no llevan datos.</li>
+          <li>Falta el controlador (Windows): para placas con <b>CP210x</b> instala el de Silicon Labs, para <b>CH340</b> el de WCH, y vuelve a enchufar.</li>
+          <li>Algunas placas necesitan el botón <b>BOOT</b>: mantenlo pulsado mientras haces clic en «Instalar».</li>
+        </ul>
+      </details>
+      <details><summary>Home Assistant no encuentra «NeonPlan Key»</summary>
+        <ul>
+          <li>¿Está el ESP32 en la misma red que Home Assistant (no en la Wi-Fi de invitados)?</li>
+          <li>A mano: Ajustes → Dispositivos y servicios → Añadir integración → <b>ESPHome</b> → la dirección IP del ESP32 (la muestra tu router).</li>
+        </ul>
+      </details>
+      <details><summary>El reloj no muestra «NeonPlan Key»</summary>
+        <ul>
+          <li>En CasaNeon tiene que estar elegido <b>Para un Apple Watch</b> (perfil «sensor de pulso»). Tras cambiarlo, espera 20 segundos.</li>
+          <li>En el reloj espera un poco en Bluetooth y baja hasta «Dispositivos de salud».</li>
+          <li>Si antes se emparejó otro dispositivo: toca <b>🔄 Siguiente dispositivo</b> en CasaNeon.</li>
+        </ul>
+      </details>
+      <details><summary>«No conectado» y la clave no cambia</summary>
+        <ul>
+          <li>Normalmente un dispositivo emparejado antes (el iPhone, por ejemplo) se sigue conectando solo. Olvida allí «NeonPlan Key» (ⓘ → <b>Omitir este dispositivo</b>), toca <b>🔄 Siguiente dispositivo</b> en CasaNeon y vuelve a emparejar.</li>
+          <li>Si pone «Pertenece a: …», la clave ya está en CasaNeon: el que se emparejó era un dispositivo conocido.</li>
+        </ul>
+      </details>
+      <details><summary>¿Y después?</summary>
+        <p>Guarda el ESP32 (para más dispositivos) o flashéalo como <b>proxy Bluetooth de ESPHome</b>: así incluso ayuda a localizar. Los proxies ESP32 informan cada segundo aproximadamente; los Shelly, solo cada tres o cuatro segundos.</p>
+      </details>
+
+      <footer>
+        Todo se queda en casa: la clave va del ESP32 solo a tu Home Assistant. El firmware se basa en
+        <a href="https://github.com/DerekSeaman/irk-capture">irk-capture</a>
+        de Derek Seaman (licencia MIT), que a su vez parte de KyleTeal/irk-capture y ESPresense. ¡Gracias!
+      </footer>
+    </main>
+  </body>
+</html>

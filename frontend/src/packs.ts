@@ -38,6 +38,8 @@ export interface PackPart {
   glow?: boolean;
   /** A screen: shows the linked media player's app colour and picture on its front (+z). */
   screen?: boolean;
+  /** The measures that stay when the item is resized: "w", "d", "h" or several ("wdh"). */
+  fix?: string;
   /** Loft: centre and extent of the top rectangle (defaults: the same as the bottom). */
   tx?: number;
   tz?: number;
@@ -72,8 +74,16 @@ export interface PackItem {
   hole?: boolean;
   /** A lamp: how its light spreads. */
   light?: LampModel;
+  /** Parts (fractions of the size); a part's `fix` ("w", "d", "h" or several) keeps that measure when the item is resized. */
   parts: PackPart[];
   symbol?: PackSymbol[];
+  /** Library (pack format since 1.23): what it is, the rooms it is made for, words that find it. */
+  group?: string;
+  room?: string[];
+  tags?: string[];
+  /** Variants of one thing (a table in three lengths) share a family; the variant names the chip, by language. */
+  family?: string;
+  variant?: Record<string, string>;
 }
 
 export interface FurniturePack {
@@ -89,8 +99,11 @@ export interface FurniturePack {
   /** Pro features the pack unlocks (see features.ts). */
   features?: string[];
   items: PackItem[];
-  /** A module (code the shop delivers; see modules.ts) – the code itself is fetched apart. */
-  module?: { api: number; kind: string };
+  /** A module (code the shop delivers; see modules.ts) – the code itself is fetched apart. It runs only once an
+   * admin approved exactly this code (`approved`); `sha` is the code's fingerprint, `size` its length. */
+  module?: { api: number; kind: string; approved?: boolean; size?: number; sha?: string };
+  /** A new release of the module code that waits for an admin's approval (the approved one keeps running). */
+  pending?: { release: number; size: number; sha: string };
   imported_at?: number;
 }
 
@@ -142,6 +155,29 @@ export function packMovingPart(kind: PackMotion, p: PackPart): boolean {
 /** A robot vacuum: the built-in dock, or one from a pack (the smart home pack's robot with its dock, #470). */
 export function isRobotVacuum(type: string): boolean {
   return type === "robot_vacuum" || (isPackType(type) && type.endsWith(":robot_vacuum"));
+}
+
+/**
+ * A pack's robot vacuum model shows the dock at the back and the robot in front of it (+z). The robot's own parts
+ * are left out of the static model and drive around as the viewer's robot instead (#645).
+ */
+export function packRobotPart(p: Pick<PackPart, "z">): boolean {
+  return p.z > 0.05;
+}
+
+/** Where the pack's robot sits in its model: the centre of its largest disc (fraction of the depth; 0.227 when unknown). */
+export function packRobotCentre(item: PackItem | undefined): number {
+  const discs = (item?.parts ?? []).filter((p) => p.shape === "cyl" && packRobotPart(p));
+  if (!discs.length) return 0.227;
+  return discs.reduce((a, b) => (b.w * b.d > a.w * a.d ? b : a)).z;
+}
+
+/**
+ * A pack's heater with hot water (a heat pump's indoor unit, a gas boiler, a buffer tank, a hot water tank): besides a
+ * climate entity it takes a water_heater entity like the built-in water heater (#645).
+ */
+export function isPackHeater(type: string): boolean {
+  return isPackType(type) && /:(heat_pump_indoor|gas_boiler|buffer_tank|water_heater)$/.test(type);
 }
 
 /** The pack item of a furniture type (undefined for built-in types and removed packs). */

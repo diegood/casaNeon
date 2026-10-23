@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
 
 from custom_components.neonplan3d.const import DOMAIN
-from custom_components.neonplan3d.voice import sentences_yaml, write_sentences
+from custom_components.neonplan3d.voice import remove_sentences, sentences_yaml, write_sentences
 
 from .test_init import _setup
 
@@ -95,24 +95,71 @@ async def test_intent_without_a_view(hass: HomeAssistant) -> None:
     assert response.speech["plain"]["speech"] == "No hay ninguna pantalla de CasaNeon abierta ahora mismo."
 
 
-def test_sentences_are_written_once_and_rewritten_when_they_change(tmp_path: Path) -> None:
-    assert write_sentences(tmp_path) is True
+def test_sentences_are_written_only_on_request_and_never_over_a_changed_file(tmp_path: Path) -> None:
     es = tmp_path / "custom_sentences" / "es" / "neonplan3d.yaml"
+    hashes, kept, changed = write_sentences(tmp_path, "distinct", {})
+    assert changed and kept == []
     text = es.read_text(encoding="utf-8")
-    assert text == sentences_yaml("es")
+    assert text == sentences_yaml("es", "distinct")
     assert "(muestra|muéstrame|muestrame|enseña|enséñame|ensename) [por favor] {text}" in text
-    # by default only the distinct sentences: a question Home Assistant answers itself is not taken (#641)
+    # only the distinct sentences: a question Home Assistant answers itself is not taken (#641)
     assert "(dónde|donde) (está|esta|están|estan) {text}" not in text
-    # unchanged: nothing written, no reload
-    assert write_sentences(tmp_path) is False
-    es.write_text("old", encoding="utf-8")
-    assert write_sentences(tmp_path) is True
-    # "all" adds the questions, "off" removes the file
-    assert write_sentences(tmp_path, "all") is True
-    assert "(dónde|donde) (está|esta|están|estan) {text}" in es.read_text(encoding="utf-8")
-    assert write_sentences(tmp_path, "off") is True
+    # unchanged: nothing written
+    hashes, kept, changed = write_sentences(tmp_path, "distinct", hashes)
+    assert not changed
+    # "all" adds the questions
+    hashes, kept, changed = write_sentences(tmp_path, "all", hashes)
+    assert changed and "(dónde|donde) (está|esta|están|estan) {text}" in es.read_text(encoding="utf-8")
+    # a file the user changed is never overwritten, nor removed
+    es.write_text("my own sentences", encoding="utf-8")
+    hashes, kept, changed = write_sentences(tmp_path, "distinct", hashes)
+    assert kept == ["es"]
+    assert es.read_text(encoding="utf-8") == "my own sentences"
+    hashes, kept, _ = write_sentences(tmp_path, "off", hashes)
+    assert kept == ["es"] and es.exists()
+    # removing the integration takes only CasaNeon's own files
+    es.unlink()
+    hashes, _, _ = write_sentences(tmp_path, "distinct", hashes)
+    assert es.exists()
+    remove_sentences(tmp_path, hashes)
     assert not es.exists()
-    assert write_sentences(tmp_path, "off") is False
+
+
+def test_a_file_an_older_version_wrote_is_still_ours(tmp_path: Path) -> None:
+    """The file 1.22.0 wrote (older header, the sentences before locating) is replaced, not kept as the user's."""
+    es = tmp_path / "custom_sentences" / "es" / "neonplan3d.yaml"
+    es.parent.mkdir(parents=True)
+    old = "\n".join(
+        [
+            "# Written by CasaNeon: the sentences Assist hands to the open CasaNeon views (the first one that",
+            "# understands answers). Rewritten on every start: "
+            "put your own sentences for NeonPlanAsk into another file.",
+            "# Which sentences stand here is set in the editor: ⚙ Settings → Voice control → Sentences for Assist.",
+            'language: "es"',
+            "intents:",
+            "  NeonPlanAsk:",
+            "    data:",
+            "      - sentences:",
+            '          - "(muestra|muéstrame|muestrame|enseña|enséñame|ensename) [por favor] {text}"',
+            '          - "(ve|vete|ir|llévame|llevame|vamos) (a|al|a la|a las|a los) {text}"',
+            '          - "pregunta a la casa {text}"',
+            '          - "(casa|casaneon|casa neon) {text}"',
+            "lists:",
+            "  text:",
+            "    wildcard: true",
+            "",
+        ]
+    )
+    es.write_text(old, encoding="utf-8")
+    _, kept, changed = write_sentences(tmp_path, "distinct", {})
+    assert kept == [] and changed
+    assert es.read_text(encoding="utf-8") == sentences_yaml("es", "distinct")
+
+
+async def test_setup_writes_no_sentence_file(hass: HomeAssistant) -> None:
+    """Nothing lands in the configuration folder unless an admin picks the sentences."""
+    await _setup(hass)
+    assert not (Path(hass.config.config_dir) / "custom_sentences").exists()
 
 
 async def test_unload_removes_service_and_intent(hass: HomeAssistant) -> None:

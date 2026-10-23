@@ -1,7 +1,7 @@
 {
   "domain": "neonplan3d",
   "name": "CasaNeon",
-  "after_dependencies": ["recorder"],
+  "after_dependencies": ["bluetooth", "recorder"],
   "codeowners": ["@diegood"],
   "config_flow": true,
   "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],

@@ -5,7 +5,7 @@ import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { ref } from "lit/directives/ref.js";
 import { fetchImage, listHistory, restoreSnapshot, storeImage, takeSnapshot, type Snapshot, getVoiceSettings, setVoiceSentences, type SentenceMode } from "../api.ts";
 import { download, exportFile, parseExport } from "../transfer.ts";
-import { carEntities, type CarEntities, areaEntities, autoPlace, CLIMATE_CLASSES, defaultHeight, entityName, entityAreaId, furnitureEntities, groupByDevice, hasScreen, isMediaFurniture, isPlaceable, isRoomClimateSensor, kindOf, openingEntities, otherAreaEntities, pictureRuleMatches, roomClimateSensors, unassignedEntities, windowPosition, type ClimateKey } from "../devices.ts";
+import { carEntities, type CarEntities, areaEntities, autoPlace, hiddenInHa, CLIMATE_CLASSES, defaultHeight, entityName, entityAreaId, furnitureEntities, groupByDevice, hasScreen, isMediaFurniture, isPlaceable, isRoomClimateSensor, kindOf, openingEntities, otherAreaEntities, pictureRuleMatches, roomClimateSensors, unassignedEntities, windowPosition, type ClimateKey } from "../devices.ts";
 import { furnitureSymbol } from "./furniture2d.ts";
 import { clipConvex, netRoomArea } from "../geometry/area.ts";
 import { areaText, formatImperial, lengthText, lengthUnit, parseLength, unitLabel, type LengthUnit } from "../units.ts";
@@ -18,6 +18,7 @@ import { holeInRoom } from "../geometry/holes.ts";
 import { weatherEntity, isRainSource } from "../weather.ts";
 import { SHOW_PRESENCE } from "../flags.ts";
 import { hasFeature, labOn, manualUrl, released } from "../features.ts";
+import { loadLocate } from "../load-locate.ts";
 import { BIN_SHAPES, BIN_SIZE, binColors, binShape, householdCountry, isPackPlant, MAILBOX_SHAPES, MAILBOX_SIZE, mailboxShape, WASTE_KINDS, wasteColors } from "../household.ts";
 import { ACCESS_POINT_SIZE, ACCESS_POINT_WALL_SIZE, apChoices, apEntities, apOnWall } from "../access-point.ts";
 import { heaterCapacity, heaterEntities, WATER_HEATER_CAPACITIES, WATER_HEATER_SIZES } from "../water-heater.ts";
@@ -27,8 +28,8 @@ import { backdropImage } from "../backdrop.ts";
 import { screenName, setScreenName, setVoiceHere, setVoicePipeline, voiceOnHere, voicePipeline } from "../load-voice.ts";
 import { doorbellCamera, doorbellEntities, directorOnHere, HOLD_DEFAULT, HOLD_MAX, HOLD_MIN, setDirectorHere, type DirectorSettings } from "../director.ts";
 import { deviceSensors, energySummary, flowSegments, gridPoint, powerSensorFor, proposeEnergySensors, type EnergyPrefs, type FlowSegment, proposeMeters } from "../energy.ts";
-import { CLIMATE_ATTRS, isStatusSensor, robotRoomSensor, TOGGLE_KINDS } from "../devices.ts";
-import { sectionFloor, dormerParent, effectiveDormer, proposeDormer, sectionGeometry, floorOutline, polygonBox, headroomLines, ridgeHeight, sectionCutsBelow, roofSectionsFromRooms, sectionFrame, wallTopUnder } from "../roof-sections.ts";
+import { CLIMATE_ATTRS, isPulseDrive, isStatusSensor, robotRoomSensor, TOGGLE_KINDS } from "../devices.ts";
+import { activeSections, sectionFloor, dormerParent, effectiveDormer, proposeDormer, sectionGeometry, floorOutline, polygonBox, headroomLines, ridgeHeight, sectionAbove, sectionCutsBelow, roofSectionsFromRooms, sectionFrame, wallTopUnder } from "../roof-sections.ts";
 import { bestFace, clampField, faceAt, faceCompass, fieldFace, fieldModules, GROUND, moveField, pointOnFace, proposeField, proposeGroundField, proposeWindow, proposeWallField, roofFaces, rowCounts, turnGroundField, fieldCenter, wallFaces, windowAsField, windowCorners, onFace, onField, rayOnFace, type RoofFace } from "../solar.ts";
 import type { SurfaceGrab, SurfaceRay } from "../viewer/viewer3d.ts";
 import { storedImageIds } from "../transfer.ts";
@@ -50,10 +51,10 @@ import { type CarLinks, type Background, OUTDOOR_TOP, sidelightLayout, DEFAULT_W
   type ValvePosition,
 } from "../model.ts";
 import { furnishRoom, PACKAGES, type PackageId } from "../packages.ts";
-import { generateWalls, locateOpening, openingHost, pointOnRoomEdge, type Wall } from "../geometry/walls.ts";
+import { edgeReach, generateWalls, locateOpening, openingHost, pointOnRoomEdge, type Wall } from "../geometry/walls.ts";
 import { formatNumber, translate, type I18nKey } from "../i18n.ts";
 import { iconPath } from "../icons.ts";
-import { moduleAreaFields, moduleHelp, modulePipeRules, syncModules, type ModuleField, type ModuleHost, type PipeRules } from "../modules.ts";
+import { moduleAreaFields, moduleFurnitureFields, moduleHelp, modulePipeRules, syncModules, type ModuleField, type ModuleHost, type PipeRules } from "../modules.ts";
 import { pipePlanner } from "../pipe-planner.ts";
 import {
   bounds,
@@ -102,6 +103,8 @@ import {
   type LampMount,
   type RoofSection,
   type RoofShape,
+  type RoofEnd,
+  ROOF_ENDS,
   type SolarField,
   type SolarString,
   type RoofWindow,
@@ -118,22 +121,28 @@ import {
   type Vec2,
   DOOR_STYLES,
   WINDOW_STYLES,
+  SILL_BOARDS,
   openingStyle,
   isFrontDoor,
   type OpeningStyle,
+  type SillBoard,
   type ScreenPicture,
   STAIR_TYPES,
   setTerrain,
-  terrainAt,
+  clearFirstState,
 } from "../model.ts";
+import { windowGetsWell } from "../geometry/wells.ts";
 import { controls, tokens } from "../styles.ts";
 import "./entity-picker.ts";
 import type { HassArea, HassFloor, HomeAssistant } from "../types.ts";
 import { fetchBackup, restoreBackup, type BackupFile } from "../api.ts";
 import { load3d } from "../load3d.ts";
+import "./library.ts";
+import { basicTypes, buildIndex, roomKindOf, type LibraryEntry } from "../library-index.ts";
+import { packsVersion as libPacksVersion } from "../packs.ts";
 import type { WallMode } from "../viewer/viewer3d.ts";
 import { furnitureName } from "../furniture-names.ts";
-import { furnitureSize, isElectric, isPackType, isRobotVacuum, mountBase, packDisplay, packItem, packItemName, packMotion, packName, packType, setPacks, type FurniturePack } from "../packs.ts";
+import { furnitureSize, isElectric, isPackHeater, isPackType, isRobotVacuum, mountBase, packDisplay, packItem, packItemName, packMotion, packName, packType, setPacks, type FurniturePack } from "../packs.ts";
 
 /** Items that can be fixed against moving. */
 type FixKind = "room" | "opening" | "furniture" | "device" | "wall" | "outdoor";
@@ -191,7 +200,7 @@ const HISTORY = 100;
 const GATE_SWITCH = /^(switch|input_boolean)\./;
 
 /** Topics of the ⚙ settings menu (everything that belongs to the whole plan). */
-type SettingsTopic = "house" | "weather" | "director" | "voice" | "favorites" | "backdrop" | "terrain" | "backup";
+type SettingsTopic = "house" | "weather" | "director" | "voice" | "locate" | "favorites" | "backdrop" | "terrain" | "backup";
 
 /** Wall view side bar: what stands or hangs at a wall, by kind. */
 const WALL_CATS: Record<string, string[]> = {
@@ -349,8 +358,6 @@ export class Fp3dEditor extends LitElement {
     _roofWinId: { state: true },
     _energyNote: { state: true },
     _cableId: { state: true },
-    _furnQuery: { state: true },
-    _libOpen: { state: true },
     _expanded: { state: true },
     _notice: { state: true },
     _history: { state: true },
@@ -472,8 +479,6 @@ export class Fp3dEditor extends LitElement {
   /** The cables' ways for the plan, computed once per document. */
   private cableCache: { doc: Building; segs: FlowSegment[] } | null = null;
   /** Furniture library: the search text, and which sections are open (built-in groups and packs). */
-  private declare _furnQuery: string;
-  private declare _libOpen: Set<string>;
   /** Devices whose further entities are unfolded in the device list. */
   private declare _expanded: Set<string>;
   /** Short confirmation shown after an action (e.g. closed gaps). */
@@ -659,14 +664,6 @@ export class Fp3dEditor extends LitElement {
     this._roofWinId = null;
     this._energyNote = null;
     this._cableId = null;
-    this._furnQuery = "";
-    this._libOpen = new Set(["group:lights", "group:living"]);
-    try {
-      const saved = localStorage.getItem("neonplan3d.library");
-      if (saved) this._libOpen = new Set(JSON.parse(saved) as string[]);
-    } catch {
-      // no storage: the defaults stand
-    }
     this._expanded = new Set();
     this._notice = null;
     this._history = null;
@@ -2907,8 +2904,7 @@ export class Fp3dEditor extends LitElement {
       // along the wall: the arrow's share in the wall direction
       const along = (dx * (b[0] - a[0]) + dz * (b[1] - a[1])) / len;
       if (Math.abs(along) < 1e-9) return true;
-      const half = Math.min(o.width, len) / 2;
-      this.updateOpening({ offset: round(Math.min(len - half, Math.max(half, o.offset + along))) });
+      this.updateOpening({ offset: this.clampOffset(host.room, host.edge, o.width, o.offset + along) });
     } else if (this._wallId) {
       const id = this._wallId;
       this.change((_, f) => {
@@ -4233,6 +4229,28 @@ export class Fp3dEditor extends LitElement {
               <button aria-pressed=${sec.axis === "x"} ?disabled=${!admin} @click=${() => set({ axis: "x" })}>${this.t("roof_axis_x")}</button>
               <button aria-pressed=${sec.axis === "z"} ?disabled=${!admin} @click=${() => set({ axis: "z" })}>${this.t("roof_axis_z")}</button>
             </div>`}
+        ${sec.shape === "gable" || sec.shape === "hip" || sec.shape === "halfhip"
+          ? html`<div class="fp3d-form" title=${this.t("roof_end_hint")}>
+              ${([0, 1] as const).map((end) => {
+                // the u0 end is the left one (ridge across the plan) or the top one (ridge up and down)
+                const where = this.t(sec.axis === "x" ? (end === 0 ? "roof_side_left" : "roof_side_right") : end === 0 ? "roof_side_top" : "roof_side_bottom");
+                const value = (end === 0 ? sec.end_u0 : sec.end_u1) ?? "";
+                return html`<label class="fp3d-field"
+                  >${this.t("roof_end")} ${where}
+                  <select
+                    ?disabled=${!admin}
+                    @change=${(e: Event) => {
+                      const v = ((e.target as HTMLSelectElement).value || null) as RoofEnd | null;
+                      set(end === 0 ? { end_u0: v } : { end_u1: v });
+                    }}
+                  >
+                    <option value="" ?selected=${value === ""}>${this.t("roof_end_auto")}</option>
+                    ${ROOF_ENDS.map((e) => html`<option value=${e} ?selected=${value === e}>${this.t(e === "gable" ? "roof_end_gable" : `roof_shape_${e}`)}</option>`)}
+                  </select></label
+                >`;
+              })}
+            </div>`
+          : nothing}
         <label class="fp3d-check fp3d-wide" title=${this.t("roof_open_hint")}
           ><input type="checkbox" .checked=${!!sec.open} ?disabled=${!admin} @change=${(e: Event) => set({ open: (e.target as HTMLInputElement).checked })} />
           ${this.t("roof_open")}</label
@@ -4486,8 +4504,22 @@ export class Fp3dEditor extends LitElement {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
     const t = ((world[0] - a[0]) * (b[0] - a[0]) + (world[1] - a[1]) * (b[1] - a[1])) / len;
     const g = free ? 0.01 : this._doc.settings.grid;
-    const half = Math.min(width, len) / 2;
-    return round(Math.min(len - half, Math.max(half, Math.round(t / g) * g)));
+    return this.clampOffset(room, edge, width, Math.round(t / g) * g);
+  }
+
+  /**
+   * An opening's centre kept on its room edge with the whole opening inside the edge – or reaching on across
+   * a transition without a wall, where the outer wall carries on in line (#624).
+   */
+  private clampOffset(room: Room, edge: number, width: number, offset: number): number {
+    const a = room.points[edge];
+    const b = room.points[(edge + 1) % room.points.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const floor = this.floor;
+    const s = this._doc.settings;
+    const [before, after] = floor ? edgeReach(generateWalls(floor.rooms, { exterior: s.wall_exterior, interior: s.wall_interior }, floor.walls ?? []).walls, room, edge) : [0, 0];
+    const half = Math.min(width, len + before + after) / 2;
+    return round(Math.min(len, len + after - half, Math.max(0, half - before, offset)));
   }
 
   /** Add a door or window on the room edge nearest to a screen point. */
@@ -4676,7 +4708,7 @@ export class Fp3dEditor extends LitElement {
     >`;
   }
 
-  private addFurniture(type: string): void {
+  private addFurniture(type: string, mirror = false): void {
     const floor = this.floor;
     if (!floor || !this.isAdmin) return;
     const [w, d, h0] = furnitureSize(type);
@@ -4694,7 +4726,7 @@ export class Fp3dEditor extends LitElement {
       const b = bounds(room.points);
       rotation = (a && c ? Math.abs(c[1] - a[1]) > Math.abs(c[0] - a[0]) : b.x1 - b.x0 > b.z1 - b.z0) ? 90 : 0;
     }
-    const item: Furniture = { id: uid("furniture"), type, x: round(x), z: round(z), rotation, w, d, h, variant: null };
+    const item: Furniture = { id: uid("furniture"), type, x: round(x), z: round(z), rotation, w, d, h, variant: null, ...(mirror ? { mirror: true } : {}) };
     this.change((_, f) => f.furniture.push(item));
     this.selectItem("furniture", item.id);
     // small items are easy to lose in a large plan: bring the new one into view
@@ -5386,6 +5418,7 @@ export class Fp3dEditor extends LitElement {
       { key: "weather", icon: "🌦", label: this.t("settings_weather"), admin: true },
       { key: "director", icon: "🎬", label: this.t("card_director"), admin: true },
       { key: "voice", icon: "🎙", label: this.t("voice"), admin: false },
+      ...(released("locate") ? [{ key: "locate" as const, icon: "📡", label: this.t("locate"), admin: true }] : []),
       { key: "favorites", icon: "⭐", label: this.t("favorites"), admin: true },
       { key: "backdrop", icon: "🖼", label: this.t("backdrop"), admin: true },
       { key: "terrain", icon: "⛰", label: this.t("terrain"), admin: true },
@@ -5409,8 +5442,13 @@ export class Fp3dEditor extends LitElement {
                     role="menuitem"
                     class="fp3d-menu-item"
                     @click=${() => {
-                      this._settingsDialog = t.key;
                       this._settingsMenu = false;
+                      // locating has its own assistant (a bundle of its own), not a dialog
+                      if (t.key === "locate") {
+                        if (this.hass) void loadLocate().then((m) => m.openLocateSetup(this.hass!, this._doc, () => this.hass, (look) => this.setSettings({ person_look: look === "figure" ? null : look })));
+                        return;
+                      }
+                      this._settingsDialog = t.key;
                       // the modules' sentences for the voice list: loaded here as well (the editor is its own bundle), once per opening
                       if (t.key === "voice" && this.hass) void syncModules(this.hass, this.packs ?? []).then(() => this.requestUpdate());
                     }}
@@ -5434,6 +5472,7 @@ export class Fp3dEditor extends LitElement {
       weather: this.t("settings_weather"),
       director: this.t("card_director"),
       voice: this.t("voice"),
+      locate: this.t("locate"),
       favorites: this.t("favorites"),
       backdrop: this.t("backdrop"),
       terrain: this.t("terrain"),
@@ -9437,7 +9476,17 @@ export class Fp3dEditor extends LitElement {
   /** Fields a module adds to an outdoor area's form (Pool Pro: the pool's entities, the assistant), rendered here. */
   private renderModuleFields(a: OutdoorArea) {
     if (!this.hass) return nothing;
-    const fields = moduleAreaFields(this.editorHost(), a);
+    return this.renderFields(moduleAreaFields(this.editorHost(), a));
+  }
+
+  /** Fields a module adds to a piece of furniture's form (a device's entities, a setup assistant). */
+  private renderModuleFurnitureFields(f: Furniture) {
+    if (!this.hass) return nothing;
+    return this.renderFields(moduleFurnitureFields(this.editorHost(), f));
+  }
+
+  /** A module's fields, drawn like the editor's own. */
+  private renderFields(fields: ModuleField[], wrap = true) {
     if (!fields.length) return nothing;
     const admin = this.isAdmin;
     const field = (f: ModuleField) => {
@@ -9461,6 +9510,7 @@ export class Fp3dEditor extends LitElement {
           return html`<button class="fp3d-btn ${f.primary ? "fp3d-primary" : ""} fp3d-wide" ?disabled=${!admin} title=${f.title ?? ""} @click=${() => f.onTap()}>${f.label}</button>`;
       }
     };
+    if (!wrap) return fields.map(field);
     return html`<section>
       <div class="fp3d-form fp3d-links">${fields.map(field)}</div>
     </section>`;
@@ -10000,6 +10050,7 @@ export class Fp3dEditor extends LitElement {
     // open over the 3D pane, so the pane keeps its size
     return html`<aside class="fp3d-side fp3d-side-strip"></aside>
       <aside class="fp3d-side fp3d-side-overlay">
+        ${this.renderSideGrip()}
         ${this.renderPinRow(true)}
         ${this.renderSide(floor)}
       </aside>`;
@@ -10481,6 +10532,8 @@ export class Fp3dEditor extends LitElement {
     };
     const dc = (id: string) => this.hass?.states[id]?.attributes.device_class as string | undefined;
     const covers = this.entityOptions((id) => id.startsWith("cover."));
+    // a garage door's drive may also be a pulse switch or a button that the opener answers (#677)
+    const garageDrives = garage ? this.entityOptions((id) => id.startsWith("cover.") || isPulseDrive(id)) : covers;
     // sensors with a number for the live position of a blind
     const positions = this.entityOptions((id) => /^(sensor|number|input_number)\./.test(id) && Number.isFinite(Number(this.hass?.states[id]?.state)));
     // plain contacts, and handle sensors with three states (open / tilted / closed)
@@ -10583,6 +10636,14 @@ export class Fp3dEditor extends LitElement {
             </div>`
           : nothing}
         ${garage ? nothing : this.renderStyleSelect(o)}
+        ${window && o.style !== "glass_wall"
+          ? html`<label class="fp3d-field fp3d-wide" title=${this.t("sill_board_hint")}
+              >${this.t("sill_board")}
+              <select ?disabled=${!admin} @change=${(e: Event) => this.updateOpening({ sill_board: ((e.target as HTMLSelectElement).value || "auto") as SillBoard })}>
+                ${SILL_BOARDS.map((m) => html`<option value=${m} ?selected=${(o.sill_board ?? "auto") === m}>${this.t(`sill_board_${m}`)}</option>`)}
+              </select></label
+            >`
+          : nothing}
         ${this.renderSidelightFields(o)}
         <label class="fp3d-field fp3d-wide" title=${this.t("opening_mark_hint")}
           >${this.t("opening_mark")}
@@ -10600,10 +10661,11 @@ export class Fp3dEditor extends LitElement {
             <option value="right" ?selected=${o.hinge === "right"}>${this.t("hinge_right")}</option>
           </select></label
         >`}
-        ${window || garage || door ? this.entitySelect(this.t(window ? "cover_entity" : "door_cover"), o.cover, autoPick("cover"), covers, (v) => this.updateOpening({ cover: v })) : nothing}
+        ${window || garage || door ? this.entitySelect(this.t(window ? "cover_entity" : "door_cover"), o.cover, autoPick("cover"), garage ? garageDrives : covers, (v) => this.updateOpening({ cover: v })) : nothing}
+        ${garage && isPulseDrive(o.cover) ? html`<p class="fp3d-sub fp3d-wide">${this.t("garage_pulse_hint")}</p>` : nothing}
         ${(window || garage || door) && o.cover !== "none" && (o.cover || autoPick("cover"))
-          ? html`${this.entitySelect(this.t("cover_position_entity"), o.position ?? null, undefined, positions, (v) => this.updateOpening({ position: v === "none" ? null : v }))}
-              ${o.position
+          ? html`${isPulseDrive(o.cover) ? nothing : this.entitySelect(this.t("cover_position_entity"), o.position ?? null, undefined, positions, (v) => this.updateOpening({ position: v === "none" ? null : v }))}
+              ${o.position && !isPulseDrive(o.cover)
                 ? html`<label class="fp3d-check fp3d-wide"
                     ><input
                       type="checkbox"
@@ -10654,7 +10716,7 @@ export class Fp3dEditor extends LitElement {
               ${this.t("contact_invert")}</label
             >`
           : nothing}
-        ${o.type === "window" && this.floor && o.sill < terrainAt() - this.floor.elevation - 0.05
+        ${this.floor && windowGetsWell(this._doc, this.floor, o)
           ? html`<label class="fp3d-check fp3d-wide" title=${this.t("well_hint")}
                 ><input type="checkbox" .checked=${o.well !== false} ?disabled=${!admin} @change=${(ev: Event) => this.updateOpening({ well: (ev.target as HTMLInputElement).checked ? undefined : false })} />
                 ${this.t("well")}</label
@@ -10789,6 +10851,7 @@ export class Fp3dEditor extends LitElement {
             </div>`
         : nothing}
       ${isElectric(f.type) ? this.renderFurnitureLinks(f) : !NO_STATE_TYPES.has(f.type) ? html`<div class="fp3d-form fp3d-links">${this.renderStateLinks(f)}</div>` : nothing} ${f.type === "parking" ? this.renderParkingForm(f) : nothing} ${f.type === "wall_switch" ? this.renderWallSwitchForm(f) : f.type === "wall_socket" ? this.renderWallSocketForm(f) : nothing} ${f.type === "waste_bin" || f.type === "mailbox" ? this.renderHouseholdForm(f) : this.renderHouseholdExtras(f)}
+      ${this.renderModuleFurnitureFields(f)}
       ${f.type.startsWith("pack:mastershort.vehicles:") && this.isAdmin
         ? html`<section>
             <p class="fp3d-sub">${this.t("vehicle_to_spot_hint")}</p>
@@ -10921,8 +10984,8 @@ export class Fp3dEditor extends LitElement {
   /** Attic floors: dashed lines where the roof slope leaves 1.5 m and 2 m of headroom, with labels. */
   private renderHeadroom(floor: Floor) {
     const ceiling = floor.elevation + floor.height;
-    const sections = this._doc.settings.roof.sections ?? [];
-    if (!sections.some((s) => sectionCutsBelow(s, ceiling))) return nothing;
+    const sections = activeSections(this._doc);
+    if (!sections.some((s) => sectionCutsBelow(s, ceiling) && sectionAbove(s, floor.elevation))) return nothing;
     const b = { settings: this._doc.settings };
     return svg`${[1.5, 2].map((h) =>
       headroomLines(b, floor.elevation, h).map(([p, q]) => {
@@ -11187,6 +11250,8 @@ export class Fp3dEditor extends LitElement {
   private voicePipes: { id: string; name: string; stt: boolean }[] | null = null;
   private voicePipesAsked = false;
   private voiceSentences: SentenceMode | null = null;
+  /** What became of the last sentence choice (a file the user changed is kept, writing failed). */
+  private voiceSentencesMsg: string | null = null;
 
   /** The Assist pipeline for this device's voice control: Home Assistant's preferred one, or one chosen here. */
   private renderVoicePipeline() {
@@ -11199,7 +11264,7 @@ export class Fp3dEditor extends LitElement {
           this.voiceSentences = res.sentences;
           this.requestUpdate();
         })
-        .catch(() => (this.voiceSentences = "distinct"));
+        .catch(() => (this.voiceSentences = "off"));
       hass
         .callWS<{ pipelines: { id: string; name: string; stt_engine: string | null }[] }>({ type: "assist_pipeline/pipeline/list" })
         .then((res) => {
@@ -11218,13 +11283,23 @@ export class Fp3dEditor extends LitElement {
           @change=${(e: Event) => {
             const mode = (e.target as HTMLSelectElement).value as SentenceMode;
             this.voiceSentences = mode;
-            void setVoiceSentences(hass, mode).catch(() => undefined);
+            this.voiceSentencesMsg = null;
+            void setVoiceSentences(hass, mode)
+              .then((res) => {
+                if (res.kept?.length) this.voiceSentencesMsg = this.t("voice_sentences_kept", { langs: res.kept.join(", ") });
+                this.requestUpdate();
+              })
+              .catch(() => {
+                this.voiceSentencesMsg = this.t("voice_sentences_failed");
+                this.requestUpdate();
+              });
           }}
         >
-          ${modes.map((m) => html`<option value=${m} ?selected=${(this.voiceSentences ?? "distinct") === m}>${this.t(`voice_sentences_${m}`)}</option>`)}
+          ${modes.map((m) => html`<option value=${m} ?selected=${(this.voiceSentences ?? "off") === m}>${this.t(`voice_sentences_${m}`)}</option>`)}
         </select></label
       >
-      <p class="fp3d-sub fp3d-wide">${this.t("voice_sentences_hint")}</p>
+      ${this.voiceSentencesMsg ? html`<p class="fp3d-sub fp3d-wide fp3d-pack-error">${this.voiceSentencesMsg}</p>` : nothing}
+      <p class="fp3d-sub fp3d-wide">${this.t("voice_sentences_hint")} ${this.t("voice_sentences_file")}</p>
       <label class="fp3d-field fp3d-wide"
         >${this.t("voice_pipeline")}
         <select
@@ -11325,7 +11400,7 @@ export class Fp3dEditor extends LitElement {
 
   /** "State from": an entity lights the item's top (two light its halves) – any furniture, a bed with occupancy mats too (#116). */
   private renderStateLinks(f: Furniture) {
-    return html`${this.entitySelect(this.t("furn_state_entity"), f.state_entity ?? null, undefined, this.entityOptions((id) => /^(binary_sensor|switch|input_boolean|light|fan|person|device_tracker|sensor)\./.test(id)), (v) => this.updateFurniture({ state_entity: v === "none" ? null : v }))}
+    return html`${this.entitySelect(this.t("furn_state_entity"), f.state_entity ?? null, undefined, this.entityOptions((id) => /^(binary_sensor|switch|input_boolean|light|fan|person|device_tracker|sensor)\./.test(id)), (v) => this.updateFurniture(clearFirstState(f, v)))}
               ${f.state_entity && f.state_entity !== "none"
                 ? html`${this.entitySelect(this.t("furn_state_entity2"), f.state_entity2 ?? null, undefined, this.entityOptions((id) => /^(binary_sensor|switch|input_boolean|light|fan|person|device_tracker|sensor)\./.test(id)), (v) => this.updateFurniture({ state_entity2: v === "none" ? null : v }))}
                     ${f.state_entity2 && f.state_entity2 !== "none"
@@ -11520,7 +11595,22 @@ export class Fp3dEditor extends LitElement {
                   @change=${(e: Event) => this.updateFurniture({ bin_match: (e.target as HTMLInputElement).value.trim() || null })} /></label>
               ${this.num(this.t("bin_from"), this._doc.settings.household?.bin_from ?? 14, (v) => this.setHousehold({ bin_from: Math.max(0, Math.min(24, v)) }), 0.5)}
               ${this.num(this.t("bin_until"), this._doc.settings.household?.bin_until ?? 12, (v) => this.setHousehold({ bin_until: Math.max(0, Math.min(24, v)) }), 0.5)}
-              <p class="fp3d-sub fp3d-wide">${this.t("bin_hint")}</p>`
+              <p class="fp3d-sub fp3d-wide">${this.t("bin_hint")}</p>
+              ${this.entitySelect(this.t("bin_out"), f.bin_out ?? null, undefined, this.entityOptions((id) => /^(input_boolean|switch|binary_sensor)\./.test(id)), (v) => this.updateFurniture({ bin_out: v === "none" ? null : v }))}
+              <p class="fp3d-sub fp3d-wide">${this.t("bin_out_hint")}</p>
+              <label class="fp3d-check fp3d-wide"
+                ><input type="checkbox" .checked=${!!this._doc.settings.household?.bin_next_only} ?disabled=${!admin} @change=${(e: Event) => this.setHousehold({ bin_next_only: (e.target as HTMLInputElement).checked || null })} />
+                ${this.t("bin_next_only")}</label
+              >
+              <label class="fp3d-field"
+                >${this.t("bin_days")}
+                <input type="number" inputmode="numeric" min="0" max="60" step="1" placeholder=${this.t("bin_days_always")} .value=${this._doc.settings.household?.bin_days == null ? "" : String(this._doc.settings.household.bin_days)} ?disabled=${!admin}
+                  @change=${(e: Event) => {
+                    const v = parseInt((e.target as HTMLInputElement).value, 10);
+                    this.setHousehold({ bin_days: Number.isFinite(v) ? Math.max(0, Math.min(60, v)) : null });
+                  }}
+              /></label>
+              <p class="fp3d-sub fp3d-wide">${this.t("bin_tags_hint")}</p>`
           : teaser}
       </div>`;
     }
@@ -11579,6 +11669,10 @@ export class Fp3dEditor extends LitElement {
       ${electric
         ? html`${this.entitySelect(this.t("hh_service_entity"), f.service ?? null, undefined, services, (v) => this.updateFurniture({ service: ref(v) }))}
             ${f.service && f.service !== "none" ? this.num(this.t("hh_service_min"), f.service_min ?? 10, (v) => this.updateFurniture({ service_min: Math.max(0, v) }), 1) : nothing}
+            ${(f.service && f.service !== "none") || (f.service2 && f.service2 !== "none")
+              ? this.entitySelect(this.t("hh_service2_entity"), f.service2 ?? null, undefined, services, (v) => this.updateFurniture({ service2: ref(v) }))
+              : nothing}
+            ${f.service2 && f.service2 !== "none" ? this.num(this.t("hh_service2_min"), f.service2_min ?? 10, (v) => this.updateFurniture({ service2_min: Math.max(0, v) }), 1) : nothing}
             <p class="fp3d-sub fp3d-wide">${this.t("hh_service_hint")}</p>`
         : nothing}
     </div>`;
@@ -11686,6 +11780,8 @@ export class Fp3dEditor extends LitElement {
                 // (a robot vacuum from a pack, e.g. the one with its dock, follows its vacuum entity; a motorised
                 // curtain its cover, #286)
                 /^(switch|media_player|fan|input_boolean|climate|vacuum|cover)\./.test(id) ||
+                // a pack's heat pump indoor unit, boiler or buffer tank: its water_heater entity (#645)
+                (isPackHeater(f.type) && id.startsWith("water_heater.")) ||
                 isStatusSensor(hass.states[id]) ||
                 // alarms that report as binary sensors (binary_sensor.…_smoke, #490); a smoke detector takes any
                 (id.startsWith("binary_sensor.") && (f.type.endsWith("smoke_detector") || ALARM_CLASSES.has(String(hass.states[id]?.attributes.device_class ?? "")))),
@@ -11924,47 +12020,6 @@ export class Fp3dEditor extends LitElement {
     </section>`;
   }
 
-  private toggleLibrary(key: string): void {
-    const next = new Set(this._libOpen);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    this._libOpen = next;
-    try {
-      localStorage.setItem("neonplan3d.library", JSON.stringify([...next]));
-    } catch {
-      // no storage
-    }
-  }
-
-  /** A section of the library: folded away unless open (or while a search shows its hits). */
-  private librarySection(key: string, title: string, items: { type: string; label: string; search?: string }[], q: string) {
-    // every word of the query somewhere in the item's names, its id or its section's title (D155)
-    const words = fold(q).split(/\s+/).filter(Boolean);
-    const hits = words.length ? items.filter((it) => {
-      const hay = fold(`${it.label} ${it.search ?? ""} ${it.type.replace(/[_:.]/g, " ")} ${title}`);
-      return words.every((w) => hay.includes(w));
-    }) : items;
-    if (q && !hits.length) return nothing;
-    const open = q ? true : this._libOpen.has(key);
-    return html`<button class="fp3d-lib-head fp3d-lib-toggle" aria-expanded=${open} @click=${() => this.toggleLibrary(key)}>
-        <span class="fp3d-lib-caret">${open ? "▾" : "▸"}</span>${title} <span class="fp3d-lib-count">${hits.length}</span>
-      </button>
-      ${open ? html`<div class="fp3d-library">${hits.map((it) => this.libraryButton(it.type, it.label))}</div>` : nothing}`;
-  }
-
-  /** Whether the furniture library has any item for the query (else a "nothing found" line shows). */
-  private libraryHasHits(q: string): boolean {
-    const words = fold(q).split(/\s+/).filter(Boolean);
-    const all: string[] = [
-      ...Object.entries(FURNITURE_GROUPS).flatMap(([g, types]) => types.map((t) => `${this.t(`furn_${t}` as I18nKey)} ${translate(EN_HASS, `furn_${t}` as I18nKey)} ${t.replace(/_/g, " ")} ${this.t(`furn_group_${g}` as I18nKey)}`)),
-      ...(this.packs ?? []).flatMap((p) => p.items.map((it) => `${packItemName(it)} ${Object.values(it.name).join(" ")} ${it.id.replace(/_/g, " ")} ${p.name} ${packName(p)}`)),
-    ];
-    return all.some((s) => {
-      const hay = fold(s);
-      return words.every((w) => hay.includes(w));
-    });
-  }
-
   /** Ids of the stored pictures any screen of the plan uses (in order of first use). */
   private storedPictures(): string[] {
     const ids: string[] = [];
@@ -12147,71 +12202,59 @@ export class Fp3dEditor extends LitElement {
     this.updateFurniture({ pictures: rules.map((x, j) => (j === index ? { ...x, image: imageId } : x)) });
   }
 
+  private libIndex: { key: string; entries: LibraryEntry[] } | null = null;
+
+  /** The library's index, built once per language and pack state. */
+  private libraryEntries(lang: string): LibraryEntry[] {
+    // the smart fridge is exclusive: an installed pack with the feature "fridge_smart", or Haushalt Pro, offers it
+    const extra = hasFeature("fridge_smart") || hasFeature("household") ? ["fridge_smart"] : [];
+    const key = `${lang}|${libPacksVersion()}|${this.packs?.length ?? 0}|${extra.length}`;
+    if (this.libIndex?.key === key) return this.libIndex.entries;
+    const entries = buildIndex({
+      packs: this.packs ?? [],
+      basics: basicTypes(extra),
+      language: lang,
+      basicName: (t) => this.t(`furn_${t}` as I18nKey),
+      basicNameEn: (t) => translate(EN_HASS, `furn_${t}` as I18nKey),
+      kindName: (k) => this.t(`lib_kind_${k}` as I18nKey),
+      size: furnitureSize,
+    });
+    this.libIndex = { key, entries };
+    return entries;
+  }
+
+  /** A card's picture: drawn by the 3D bundle like the hover preview, smaller. */
+  private libraryThumb = async (entry: LibraryEntry): Promise<string | null> => {
+    const mod = await load3d();
+    const [w, d, h] = entry.size;
+    return mod.furniturePreview({ type: entry.type, w, d, h, variant: null, lamp: LAMP_MODEL[entry.type] ?? null }, 96, this.packs ?? []);
+  };
+
   private renderFurnitureLibrary() {
     const room = this.room;
-    const q = this._furnQuery.trim().toLowerCase();
+    const lang = this.hass?.language ?? "en";
     return html`<section>
       <h3>${this.t("furniture_add")}</h3>
       <p class="fp3d-sub">${room ? this.t("furniture_into", { room: room.name }) : this.t("furniture_pick_room")}</p>
-      <input
-        class="fp3d-search"
-        type="search"
-        placeholder=${this.t("furniture_search")}
-        .value=${this._furnQuery}
-        @input=${(e: Event) => (this._furnQuery = (e.target as HTMLInputElement).value)}
-        @keydown=${(e: KeyboardEvent) => {
-          if (e.key === "Escape") this._furnQuery = "";
+      <fp3d-library
+        .entries=${this.libraryEntries(lang)}
+        .language=${lang}
+        .roomHint=${room ? roomKindOf(room.name) : null}
+        .admin=${this.isAdmin}
+        .t=${(k: string, v?: Record<string, string | number>) => this.t(k as I18nKey, v)}
+        .thumb=${this.libraryThumb}
+        @library-add=${(e: CustomEvent<{ type: string; mirror?: boolean }>) => this.addFurniture(e.detail.type, !!e.detail.mirror)}
+        @library-preview=${(e: CustomEvent<{ type: string | null; element: HTMLElement | null }>) => {
+          if (e.detail.type && e.detail.element) void this.showPreview(e.detail.type, e.detail.element);
+          else this._preview = null;
         }}
-      />
-      ${q && !this.libraryHasHits(q) ? html`<p class="fp3d-sub">${this.t("furniture_search_none")}</p>` : nothing}
-      ${Object.entries(FURNITURE_GROUPS).map(([group, types]) =>
-        this.librarySection(
-          `group:${group}`,
-          this.t(`furn_group_${group}` as I18nKey),
-          // the smart fridge is exclusive: an installed pack with the feature "fridge_smart", or Haushalt Pro, offers it
-          [...types, ...(group === "kitchen" && (hasFeature("fridge_smart") || hasFeature("household")) ? ["fridge_smart"] : [])].map((t) => ({ type: t, label: this.t(`furn_${t}` as I18nKey), search: translate(EN_HASS, `furn_${t}` as I18nKey) })),
-          q,
-        ),
-      )}
-      ${(this.packs ?? [])
-        // feature-only packs (Pro add-ons) bring no furniture: no empty section
-        .filter((pack) => pack.items.length)
-        .map((pack) =>
-        this.librarySection(
-          `pack:${pack.id}`,
-          packName(pack),
-          pack.items.map((it) => ({ type: packType(pack.id, it.id), label: packItemName(it), search: Object.values(it.name).join(" ") })),
-          q,
-        ),
-      )}
+      ></fp3d-library>
     </section>
     <div class="fp3d-ext-teaser">
       <b>${this.t("ext_teaser_title")}</b>
       <span class="fp3d-sub">${this.t("ext_teaser_text")}</span>
       <button class="fp3d-btn fp3d-primary" @click=${() => this.dispatchEvent(new CustomEvent("open-extensions", { bubbles: true, composed: true }))}>${this.t("ext_open")}</button>
     </div>`;
-  }
-
-  private libraryButton(type: string, label: string) {
-    const show = (e: Event) => void this.showPreview(type, e.currentTarget as HTMLElement);
-    // a lamp can be switched from 3D, another electric item takes an entity and a power sensor
-    const badge = isLamp(type) ? "light" : isElectric(type) ? "switch" : null;
-    return html`<button
-      class="fp3d-btn ${badge ? "fp3d-lib-electric" : ""}"
-      title=${badge ? this.t(badge === "light" ? "lib_badge_light" : "lib_badge_electric") : label}
-      @click=${() => this.addFurniture(type)}
-      @mouseenter=${show}
-      @focus=${show}
-      @mouseleave=${() => (this._preview = null)}
-      @blur=${() => (this._preview = null)}
-    >
-      ${label}
-      ${badge
-        ? html`<svg class="fp3d-lib-badge" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d=${iconPath(badge)} />
-          </svg>`
-        : nothing}
-    </button>`;
   }
 
   /** Picture of an item, drawn by the 3D bundle and shown left of its button. */
@@ -12340,12 +12383,14 @@ export class Fp3dEditor extends LitElement {
     const admin = this.isAdmin;
     const hass = this.hass;
     const areaName = room.area_id ? hass?.areas?.[room.area_id]?.name : undefined;
-    const ids = hass ? areaEntities(hass, room.area_id).filter((id) => isPlaceable(kindOf(id))) : [];
+    const area = hass ? areaEntities(hass, room.area_id).filter((id) => isPlaceable(kindOf(id))) : [];
     // placed as a device, or as a lamp with this light
     const placedHere = new Set([
       ...(this.floor?.placements.filter((pl) => pointInPolygon([pl.x, pl.z], room.points)).map((pl) => pl.entity_id) ?? []),
       ...(this.floor?.furniture.filter((m) => isLamp(m.type) && m.entity && pointInPolygon([m.x, m.z], room.points)).map((m) => m.entity!) ?? []),
     ]);
+    // placed before it was hidden in Home Assistant: it stays in 3D, so it stays in the list too – to remove or hide it (#645)
+    const ids = hass ? [...area, ...[...placedHere].filter((id) => !area.includes(id) && hiddenInHa(hass, id) && isPlaceable(kindOf(id)))] : area;
     const groups = hass ? groupByDevice(hass, ids) : [];
     // the automatic placement only takes each device's main entity
     const unplacedMain = groups.map((g) => g.primary).filter((id) => !placedHere.has(id));
@@ -12467,7 +12512,7 @@ export class Fp3dEditor extends LitElement {
                         ${open ? this.t("devices_less") : this.t("devices_more", { n: g.others.length })}
                       </button>`
                     : nothing}
-                  ${open ? (q ? others : g.others).map((id) => row(id, false, areaName, true)) : nothing}`;
+                  ${open ? this.renderDeviceOthers(q ? others : g.others, (id) => row(id, false, areaName, true), hidden, admin) : nothing}`;
                 })}
               </div>
               ${admin && unplacedMain.length > 1
@@ -12475,6 +12520,30 @@ export class Fp3dEditor extends LitElement {
                 : nothing}
               <p class="fp3d-sub">${this.t("devices_hint")}</p>`}
     </section>`;
+  }
+
+  /**
+   * The further entities of an unfolded device: an LED strip from Govee2MQTT brings hundreds of segment lights
+   * (#645), so the list stops after a few dozen (the search narrows it) and one button hides or shows them all.
+   */
+  private renderDeviceOthers(ids: string[], row: (id: string) => unknown, hidden: Set<string>, admin: boolean) {
+    const LIMIT = 40;
+    const allHidden = ids.every((id) => hidden.has(id));
+    const toggleAll = () => {
+      const set = new Set(hidden);
+      for (const id of ids) {
+        if (allHidden) set.delete(id);
+        else set.add(id);
+      }
+      this.updateRoom({ hidden: [...set] });
+    };
+    return html`${admin && ids.length >= 5
+        ? html`<button class="fp3d-link fp3d-dev-all" @click=${toggleAll}>
+            ${this.t(allHidden ? "devices_show_all" : "devices_hide_all", { n: ids.length })}
+          </button>`
+        : nothing}
+      ${ids.slice(0, LIMIT).map(row)}
+      ${ids.length > LIMIT ? html`<p class="fp3d-sub">${this.t("devices_narrow", { n: ids.length - LIMIT })}</p>` : nothing}`;
   }
 
   /** Devices from other areas or without an area, for the chosen source (computed only when shown). */
@@ -12994,7 +13063,7 @@ export class Fp3dEditor extends LitElement {
         top: 0;
         right: 0;
         bottom: 0;
-        width: min(340px, 60%);
+        width: min(var(--fp3d-side-w, 340px), 60%);
         /* open over the 3D pane: above the toolbar too, so its buttons never sit on the sidebar's */
         z-index: 30;
         box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
@@ -13406,7 +13475,6 @@ export class Fp3dEditor extends LitElement {
         background: linear-gradient(90deg, rgba(55, 224, 255, 0.35), transparent);
       }
       .fp3d-side {
-        position: relative;
         border-left: 1px solid var(--fp3d-line);
         background: var(--fp3d-chrome-solid);
         overflow-y: auto;
@@ -13416,6 +13484,8 @@ export class Fp3dEditor extends LitElement {
         gap: 18px;
         min-height: 0;
       }
+      /* the grip's containing block; the overlay keeps its absolute position (#658: "position: relative" on
+         every side bar made the unpinned bar a third grid cell, which pushed the plan and the 3D pane aside) */
       .fp3d-side:not(.fp3d-side-overlay) {
         position: relative;
         z-index: 7;
@@ -15640,6 +15710,11 @@ export class Fp3dEditor extends LitElement {
         border-radius: 8px;
         padding: 7px 9px;
         margin: 2px 0 6px;
+      }
+      .fp3d-dev-all {
+        display: block;
+        padding: 2px 26px 6px;
+        font-size: 12px;
       }
       .fp3d-more {
         font: inherit;

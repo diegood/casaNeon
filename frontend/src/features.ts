@@ -9,12 +9,15 @@ export type Feature = "camera_cockpit" | "weather" | "screens" | "energy_pro" | 
 export const FEATURES: readonly Feature[] = ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "pool", "household"];
 /** Fun packs: free extras, shown in their own section of the extensions page and switched on and off there. */
 export const FUN: readonly Feature[] = ["fun_pets", "fun_halloween"];
+/** Free features built but not released yet (no pack unlocks them; only the lab switch shows them). */
+export type FreeFeature = "locate";
+export type Gated = Feature | FreeFeature;
 
 /**
  * Pro add-ons built but not released yet: they show nowhere (extensions page, teasers) unless the lab
  * switch is on (localStorage "neonplan3d.lab" = "1"). A release takes a feature off this list.
  */
-export const UNRELEASED: readonly Feature[] = ["pool"];
+export const UNRELEASED: readonly Gated[] = ["pool"];
 
 export function labOn(): boolean {
   try {
@@ -42,7 +45,7 @@ export function projectionOn(): boolean {
 
 
 /** Whether an add-on may be shown: released, or the lab switch is on. */
-export function released(feature: Feature): boolean {
+export function released(feature: Gated): boolean {
   return !UNRELEASED.includes(feature) || labOn();
 }
 

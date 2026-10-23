@@ -171,6 +171,20 @@ def test_turned_parts_and_stairs_holes_are_accepted() -> None:
         packs.validate_payload({**PAYLOAD, "items": [item]})
 
 
+def test_library_fields_are_accepted_and_checked() -> None:
+    """A pack may say what an item is, which rooms it is for and which variants belong together (1.23)."""
+    library = {"group": "seating", "room": ["living", "kids"], "tags": ["cube", "kids"], "family": "cube_chair"}
+    item = {**PAYLOAD["items"][0], **library, "variant": {"de": "80", "en": "80"}}
+    clean = packs.validate_payload({**PAYLOAD, "items": [item]})
+    assert clean["items"][0]["group"] == "seating"
+    assert clean["items"][0]["room"] == ["living", "kids"]
+    assert clean["items"][0]["variant"] == {"de": "80", "en": "80"}
+    with pytest.raises(packs.PackError):
+        packs.validate_payload({**PAYLOAD, "items": [{**item, "room": "living"}]})
+    with pytest.raises(packs.PackError):
+        packs.validate_payload({**PAYLOAD, "items": [{**item, "group": "Not An Id"}]})
+
+
 def test_feature_packs_need_no_items_but_a_pack_needs_something() -> None:
     """A feature pack unlocks Pro features without furniture; an empty pack is refused."""
     pro = {**PAYLOAD, "id": "test.pro", "items": [], "features": ["camera_cockpit", "weather"]}

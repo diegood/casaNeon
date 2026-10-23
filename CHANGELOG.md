@@ -100,7 +100,126 @@ earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastersho
 
 ---
 
-Las secciones siguientes, de la 1.19.2 a la 1.17.0, son las del repositorio original (Mastershort/neonplan3d) incorporadas en la 1.20.0; hablan de su tienda y licencias, que este fork no tiene.
+Las secciones siguientes, de la 2.0.0 a la 1.17.0, son las del repositorio original (Mastershort/neonplan3d); hablan de su tienda, licencias, módulos e idiomas, que este fork no tiene.
+
+## 2.0.0
+
+### Live Presence – who and what is where (new, free)
+
+- **Without Bermuda or ESPresense:** NeonPlan finds out which room a person, a phone or a key tag is in – from the Bluetooth scanners Home Assistant already has (Shelly Gen2/Gen3 with Bluetooth scanning, ESPHome Bluetooth proxies, the USB adapter). No new hardware, no YAML.
+- **Learning instead of guessing:** a setup assistant in the editor (⚙ Settings → 📡 Locating) places the scanners (from the Home Assistant area of their device, a pin or piece of furniture in the plan, or their name), finds Android phones (the Home Assistant app's BLE transmitter) and key tags nearby, and learns every room in 90 seconds of walking. Rooms without a scanner of their own (hall, guest toilet) are recognised too, and the plan's doors keep the result from jumping through walls. An accuracy check per room; after learning NeonPlan also tells where each scanner really stands.
+- **Faster with presence sensors:** motion and presence sensors of a room (radar like the Aqara FP2 too) move the right person there at once – Bluetooth tells who, the sensor tells when.
+- **In 3D:** people stand as a glowing figure in their own colour and glide from room to room; things are small symbols. People in 3D (assistant, Live step): figure, pin or off. The room panel shows who is here; an option shows people to admins only.
+- **A sensor per device** (`sensor.<device>_room`, state = room name, attributes `room_id`, `area_id`, `floor`, `probability`, `since`, `last_seen`) for automations.
+- **Voice:** "Where is my iPhone?", "Where is Torsten?", "Who is home?", "Ring my iPhone" (a loud notification through the Home Assistant app) – answered by Home Assistant itself, no screen needed. Picked Assist sentence files get new sentences after an update by themselves (a file you changed stays as it is).
+- **Key helper for iPhone and Apple Watch, no Mac needed:** an ESP32 (about 5 €) flashed right from the browser ([neonplan3d.mastershort.de/keys](https://neonplan3d.mastershort.de/keys/)) reads the Bluetooth key while the watch or phone pairs with it; the assistant shows the key and adds it with one tap. Keys can also be pasted (hex or Base64). Built on irk-capture by Derek Seaman (MIT) – thank you!
+- Everything is evaluated in Home Assistant; nothing leaves the house.
+
+## 1.26.0
+
+### Faster on wall tablets
+
+- **Moving decorations rest on the Tablet level:** the energy flow, the solar fields, the sound rings, the pool water, robot vacuums, colour effects and the pets draw about 5 frames a second instead of 15 and stand still 30 seconds after the last touch; a touch, or something new that starts to move, wakes them. In the busy demo house an untouched Fire tablet drew about 45 frames a second without end; now it draws about 5 for half a minute and then none. Auto and High are unchanged.
+- **Warnings:** on the Tablet level the warning at the top glows steadily instead of pulsing (the pulsing shadow kept the tablet's graphics busy all the time); the rooms still pulse. A pulse now recolours only the floors whose rooms change.
+- **Power sensors:** on the Tablet level a change of measured values alone (watts, temperatures …) reaches the 3D view at most every 2 seconds; a switch, a door or an alarm still shows at once.
+- **Blinds and doors in motion** recompute the light and sunlight in their room about 5 times a second on the Tablet level instead of every frame (and once more where they stop).
+- **Fire tablets found more reliably:** "Auto" now also picks the Tablet level on the Fire HD 10 Plus (model codes with five letters, such as KFTRPWI).
+- The glowing link lines of the holograms drop their blur filter on the Tablet level, like the other glows.
+
+### For modules
+
+- Modules can show more in the house: lines and glowing areas on the floor, round markers, richer glass cards (state line, a second value, a row of values, small cells, filled bars, a hint), fields in a piece of furniture's form and a section of their own in the editor's module dialog. Without a module nothing changes.
+
+### Fixed
+
+- **Awnings without a marker** (#688, thanks @fammastrodaiuto): a copied awning keeps its pin (two pieces of furniture on one entity each get one, like lamps), and a new awning over a terrace or garden area finds that area's awning cover by itself (never a roller blind).
+
+### Haushalt Pro
+
+- **Out of beta:** Household Pro is now in the shop for everyone (it stays in the Supporter Pass).
+
+Polished with the wishes of the beta testers on Discord – thanks to MacGywer, Frops, Obaid, Pol3cat and Michael M.
+
+- **Bin tags easier to read:** light, larger letters on a solid dark plate with the bin's colour as its edge (blue text on glass was hard to read); from afar they no longer shrink to unreadable. Bins standing together share one tag with a line per bin in pickup order, and tags that would still cover each other move up.
+- **Only the next pickup, only a few days before:** two new settings in the bin's form, for all bins of the plan – *Label only the next pickup* and *Show tags only … days before* (empty = always). Without them everything stays as before; bins without a tag still show in "Today in the household" and their pickups on a tap.
+- **"Put out" per bin:** an optional helper, switch or binary sensor that is on while the bin is outside – the bin stops glowing, its tag says "put out ✓", and a tap on the bin offers *Mark as put out* (for a helper or switch; a nightly automation resets it). Plan field `bin_out`.
+- **Mailbox and plants from afar:** a round letter or plant symbol instead of tiny text; the text appears when zooming in.
+- **Second service:** every electric item can have a second service sensor with its own threshold – a robot vacuum's brush and its dock's dust bag, say; each one due is a line on "Today in the household". Plan fields `service2`, `service2_min`.
+- **No phantom time left:** a washer, dryer or dishwasher shows its time left only while it runs – not when its plug or state says off, ready or standby, or its power is at standby, even if the display sensor still reports minutes after a power cut.
+
+## 1.25.1
+
+### New
+
+- **Door with a smart lock:** a tap on the door itself opens its menu with **Lock** or **Unlock** (by the lock's state, always asking first), and the leaf's free edge glows softly in the accent colour while the lock is unlocked – whatever the door contact says. The lock pin stays as it is; doors without a lock and doors with a drive behave as before (#682, thanks @ciechompl).
+- **Garage door with a pulse switch:** **Drive** also takes a `switch`, a `button` or an `input_button` (an opener that answers a short pulse). A tap on the door switches it on or presses it – asking first when *Ask first* is ticked – and the door's state comes from **Contact**, so the separate door contact stays. A switch chosen under *Contact* in older plans still counts as open while on (#677, thanks @ciechompl).
+
+### Fixed
+
+- **Door with a smart lock showed a roller shutter:** a blind's position sensor that stayed in the door's data after the drive was set to *None* (or after a window was turned into a door) lowered a shutter over it; the position sensor now only counts with a blind (#682, thanks @ciechompl).
+- **Voice: "Zeige mir Garage" showed the outdoor area:** between names of the same length a room's own name now wins over an outdoor area's, and own names over further names (the Home Assistant area's name, aliases), so the room "Garage" in the cellar is no longer lost to a driveway linked to the garage's area (#668, thanks @1970lexi).
+- **Wall lamps from furniture packs:** the halo and the light now sit in the lamp's glowing parts (the lantern's glass) instead of floating in front of it; pack lamps without glowing parts are unchanged (#680, thanks @LiveSide).
+
+## 1.25.0
+
+### New
+
+- **Window sill per window:** a window's form has **Sill** – *automatic* (default: board inside and sill outside from 30 cm sill height, as before), *none*, *inside only* or *outside only*. In automatic mode a window that sits directly on another window or a door of the same wall (a transom light, a split floor-to-ceiling front) no longer gets a board sticking out of the wall. Plan field `sill_board`, also in the import format. (#655, reported by LiveSide)
+- A window or door may reach across an open transition between two rooms when the outer wall carries on in a straight line (#624, thanks @Maddin2020).
+- **Roof sections with a different end at each end:** gable, hip and half-hip sections get **End left/right** (or top/bottom) – a hip at one end and an upright gable at the other, for example. Without a choice every end stays as the shape has it (#466, thanks @14RL67).
+
+### Changed
+
+- A light switch's button glows softly while what it switches is on: a light in its colour, anything else in the look's accent colour (#593, thanks @RkcCorian).
+- **Day look:** more contrast – walls, floors and furniture keep a wider range of shades and a bit more colour, lines are darker (#645, thanks @frops83).
+- **Rooms with hundreds of entities** (LED strip segments from Govee2MQTT): an unfolded device lists the first 40 (the search narrows it down), one button hides or shows all of its entities in the room panel, and a room can keep up to 2000 hidden entities (was 200, saving failed beyond that) (#645, thanks @frops83).
+
+### Fixed
+
+- A wall socket or switch placed a little into a wall is drawn on the wall's face in 3D (its glow and pin with it), and on a wall lower than its mounting height – a balcony parapet – it comes down to stay below the wall's top; it was hidden inside the wall (#593, thanks @RkcCorian).
+- Pack furniture with colours of its own (the Halloween pumpkins) keeps them down to the ground in the Day and Blueprint looks, like the waste bins; its lower half turned grey or blue (#609, thanks @TheBhim).
+- The **Light well** tick in the window form now comes from the same decision that draws the well in 3D (an outer wall, a floor in the ground, the sill under the ground), so it is offered for every window that gets a well and only for those (#524, thanks @1970lexi).
+- **Editor:** with "3D beside" and the side panel not pinned, the opened panel became an extra column (since 1.24.0) that pushed the plan and the 3D pane aside; it opens over the 3D pane again and can be made wider at its edge like the pinned one (#658, thanks @fschade).
+- **Editor with "3D beside" slowed down:** every change of the plan disposed the 3D materials before the new ones were drawn, so the shaders were compiled again on each rebuild; the old materials are now released after the next frame, when the new ones already use the same shaders (#645, thanks @frops83).
+- **Smart lock on a double (terrace) door:** the pin sits on the main leaf (hinge side) instead of on the seam or the second leaf (#645, thanks @frops83).
+- Walls cut by a roof that is no longer there: after **Back to one roof** the kept roof sections still trimmed the walls in 3D (a notch in the upper floor, odd slopes in the attic). Only a roof built from sections cuts walls now, and a lower storey's roof whose ridge just pokes through the floor above no longer cuts that floor (#621, thanks @Maddin2020).
+- Glowing top edges at wall joints: where a taller wall meets a lower one, its free end now gets its top edge and the edges down to the lower wall, and corner lines reach up to the tallest wall, so the top outline no longer breaks off at corners and T-joints (#417, thanks @rolandarends).
+- Robot vacuum with dock (pack): while the robot cleans, the dock stands empty – the model's own robot drives off instead of a second one appearing (#645, thanks @frops83).
+- An item with its own **Running from (watts)** shows only its state (or "Standby") on the pin below that value, not its standby watts (#645, thanks @frops83).
+- The 3D lock keeps the saved start views of the house, floors and rooms: flying to one takes its own angle (#645, thanks @frops83).
+- Setting the first **State from** entity to *none* moves the second one up instead of leaving it active but hidden in the form (#645, thanks @frops83).
+- The workshop light and other flat ceiling lights from packs get the **Height above floor** field (#645, thanks @frops83).
+- The tags on bins, mailboxes and plants (Haushalt Pro) grow with the symbol size like the pins' labels (#645, thanks @frops83).
+- The heat pump's indoor unit, gas boiler, buffer tank and water heater from the packs take a `water_heater` entity; the pin shows its mode and water temperature (#645, thanks @frops83).
+- Entities hidden or disabled in Home Assistant are no longer picked automatically (e.g. a robot vacuum for its dock); one placed in a room before stays in the editor's device list so it can be removed or hidden (#645, thanks @frops83).
+- Two roofs meeting at a right angle form a proper valley: a wing running into the slope of a higher roof reaches on into it and ends at its surface instead of standing up with a gable (#605, thanks @holle021272).
+- Overlapping roof sections cut each other cleanly: what lies under another section is left out, ridges and eaves stop where they go under it, and the valleys are drawn (#466, thanks @14RL67).
+- An attic floor under a half-hip no longer pokes through the roof at the gables: walls whose roof lies below the floor there are left out instead of standing as stubs (#638, thanks @Kuddelsoft).
+
+## 1.24.0
+
+### Changed
+
+- **Modules run only after an administrator approved their code.** A module installed from the shop or from a file waits under Extensions → Modules until an admin opens **View code & approve** (publisher, version, size, fingerprint and the whole code) and approves it. A new release of a module never replaces the running code by itself: it waits beside it until it is approved too. Modules installed before 1.24 ask for this approval once. Furniture and feature packs without code are unchanged.
+- **Assist sentence files only on request.** NeonPlan no longer writes `custom_sentences/…/neonplan3d.yaml` on start: the file is written only when an admin picks sentences under ⚙ Settings → 🎙 Voice control (default: none). A file you changed yourself is never overwritten or deleted, and removing the integration removes NeonPlan's files. Files written by 1.22–1.23 stay as they are and are recognised as NeonPlan's.
+
+## 1.23.1
+
+### Fixed
+
+- An add-on that is not released yet showed in the list of Pro add-ons and in the pool's form; it is hidden again.
+
+## 1.23.0
+
+### New
+
+- **Furniture library 2.0:** the built-in models and every pack's items stand together, sorted by what they are (sofas, tables, cabinets, lights, appliances, …) instead of by pack. Room chips preselect the open room's kind, filter chips for linkable, lit and outdoor items, a picture and the size on every card, families of one item in several sizes as one card with size chips (an item for one side gets a chip for the other, placed mirrored), favourites and recently used at the top, and a search that knows everyday words ("lamp", "cabinet"). Pictures are drawn once and kept in the browser; very weak devices show the cards without pictures and keep the big hover preview instead.
+- **Pack format:** optional `group`, `room`, `tags`, `family` and `variant` per item tell the library what an item is and which sizes belong together (packs with these fields need 1.23).
+- **Free sizes with fixed parts:** a pack part may say which of its measures stay when the item is resized (`fix`: legs, arms, plates, handles) – a sofa stretched to 3 m keeps its 20 cm arms and grows its seat, a taller one keeps the seat height and grows its back. The packs get these marks with their next releases; packs without them scale as before.
+
+### Changed
+
+- **Card loader:** the dashboard card's loader is served from NeonPlan's own path (`/neonplan3d_static/`); nothing is written into the user's `www` folder any more. A copy older versions left in `www/neonplan3d/` is removed and the dashboard resource is moved by itself.
 
 ## 1.22.1
 
@@ -124,9 +243,7 @@ Las secciones siguientes, de la 1.19.2 a la 1.17.0, son las del repositorio orig
 - **Modules may draw:** a module adds water, pipe flows and device glows to the 3D stage, glass cards, warnings and fields in the editor's outdoor form, and lends the pipe tools their rules – the host draws, the module knows (`scene`, `cards`, `alerts`, `areaFields`, `pipes`, `watched`, `pools`; module kind `stage`).
 - **No restart for the frontend:** the bundles, languages and pictures are served with `Cache-Control: no-cache` – after an update of the files a reload of the page is enough (Home Assistant still restarts for its Python side); a 304 answers unchanged files.
 - **Second free module in the shop, Fenster-Wächter:** warns when a window stands open in the cold for 20 minutes or the heating runs with a window open (10 minutes); the room pulses, the voice answers "Welche Fenster sind zu lange offen?". Manual 7.5 lists the modules.
-- **Technik zeichnen like a pen:** in the wall view a stroke becomes a pipe with right angles (wiggles go, corners stay); a stroke ending on a device or pipe joins there, one ending on nothing asks where the line goes (skimmer, drain, inlets, waste) and lays the hole and the way outside itself. Works with mouse and finger.
-- **Pool Pro is a module** (`mastershort.pro_pool`, from the shop): its code left the public repository. The pool's state, the living water, the glass card (now with **salt** and a traffic light per value), the warnings (pH, chlorine, salt, frost), the pool's roles in the editor and the rules of the pipe tools all live in the module. New: the **plant assistant** (🛠 Anlage aufbauen) sets the technical room up at a tap – devices along the wall, the pool's ports and the usual piping with ball valves, bypass and waste line. Free as before: pool shapes, above-ground pools, depth, cut-out and the sensor values at the pool area. Pool Pro is no longer hidden; it shows with its module. Manual 6.9.
-- Module **Das Haus antwortet**, release 2: around forty kinds of questions – open things (also how long), temperatures, humidity and CO₂, thermostats, appliances and their time left (Haushalt Pro), media, energy, lights, blinds, locks, people and motion, warnings, today's household lines, plants, cars (Auto Pro), the pool (Pool Pro), weather, sun and time, the house's rooms and sizes, the morning report ("Guten Morgen") and the night check ("Gute Nacht"), plus a little small talk. Hosts tell modules more of the house (household, warnings, cars, pools, weather, time left, thirsty plants).
+- Module **Das Haus antwortet**, release 2: around forty kinds of questions – open things (also how long), temperatures, humidity and CO₂, thermostats, appliances and their time left (Haushalt Pro), media, energy, lights, blinds, locks, people and motion, warnings, today's household lines, plants, cars (Auto Pro), weather, sun and time, the house's rooms and sizes, the morning report ("Guten Morgen") and the night check ("Gute Nacht"), plus a little small talk. Hosts tell modules more of the house (household, warnings, cars, pools, weather, time left, thirsty plants).
 
 ### Improved
 

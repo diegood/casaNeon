@@ -61,6 +61,9 @@ PART_SCHEMA = vol.Schema(
         vol.Optional("axis"): vol.In(["x", "y", "z"]),
         # turn of the part around its own centre (degrees around the vertical axis): spiral steps, diagonals
         vol.Optional("rot"): vol.All(vol.Coerce(float), vol.Range(min=-360, max=360)),
+        # free sizes (1.23): the measures that stay when the item is resized ("w", "d", "h" or several): legs,
+        # arms and plates keep their size and their distance from the edge, the parts between them stretch
+        vol.Optional("fix"): vol.All(str, vol.Match(r"^[wdh]{1,3}$")),
     }
 )
 
@@ -116,6 +119,13 @@ ITEM_SCHEMA = vol.Schema(
         ),
         vol.Required("parts"): vol.All([PART_SCHEMA], vol.Length(min=1, max=60)),
         vol.Optional("symbol"): vol.All([SYMBOL_SCHEMA], vol.Length(max=40)),
+        # the library (since 1.23): what the item is, the rooms it is made for, words that find it, and
+        # variants of one thing (a table in three lengths) as a family with the variant's name by language
+        vol.Optional("group"): _ID,
+        vol.Optional("room"): vol.All([_ID], vol.Length(max=12)),
+        vol.Optional("tags"): vol.All([vol.All(str, vol.Length(min=1, max=30))], vol.Length(max=12)),
+        vol.Optional("family"): _ID,
+        vol.Optional("variant"): vol.All({vol.All(str, vol.Length(min=2, max=5)): _TEXT}, vol.Length(min=1, max=10)),
     }
 )
 
