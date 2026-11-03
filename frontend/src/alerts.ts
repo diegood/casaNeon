@@ -26,9 +26,13 @@ export type AlertKind =
   | "window_rain"
   | "power_outage"
   | "fridge_door"
+  | "contact_unavailable"
   | "pve_node_down"
   | "pve_disk"
   | "pve_stopped";
+
+/** How long a contact must be unavailable before it is a warning: a restart of Home Assistant passes without one. */
+export const UNAVAILABLE_AFTER = 10 * 60_000;
 
 export interface Alert {
   /** One of the house's own kinds, or a module's ("pool_ph"). */
@@ -130,6 +134,27 @@ export function findAlerts(hass: HomeAssistant, building: Building, sources: Ale
     }
   }
   if (sources.outage && isOutage(hass.states[sources.outage])) out.push({ kind: "power_outage", entity: sources.outage, roomId: null, floorId: null });
+  // a window or door contact that has been unavailable for a while (switched on in ⚙ House): the opening would look
+  // shut although nobody knows – an empty battery, out of radio reach
+  if (building.settings.alert_unavailable) {
+    const now = Date.now();
+    const seen = new Set<string>();
+    for (const floor of building.floors) {
+      for (const o of floor.openings) {
+        const link = links.get(o.id);
+        if (!link) continue;
+        for (const id of [link.contact, link.tilt, link.contact2, link.tilt2]) {
+          if (!id || seen.has(id)) continue;
+          const st = hass.states[id];
+          if (!st || (st.state !== "unavailable" && st.state !== "unknown")) continue;
+          const since = Date.parse(st.last_changed ?? "");
+          if (Number.isFinite(since) && now - since < UNAVAILABLE_AFTER) continue;
+          seen.add(id);
+          out.push({ kind: "contact_unavailable", entity: id, roomId: o.room_id, floorId: floor.id });
+        }
+      }
+    }
+  }
   // Haushalt Pro: a fridge door open longer than its limit
   for (const fr of sources.fridges ?? []) {
     const f = building.floors.find((x) => x.id === fr.floorId)?.furniture.find((m) => m.id === fr.furnitureId);
@@ -167,6 +192,8 @@ export function alertColor(a: Pick<Alert, "kind" | "color">): [number, number, n
       return [0.45, 0.85, 1];
     case "pve_stopped":
       return [1, 0.62, 0.2];
+    case "contact_unavailable":
+      return [0.72, 0.62, 1];
     default:
       return [1, 0.2, 0.25];
   }

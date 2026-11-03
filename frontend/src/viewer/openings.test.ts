@@ -61,7 +61,20 @@ test("the sill setting overrides the automatic rule", () => {
   assert.deepEqual(sillBoards(outside, [outside]), { inside: false, outside: true });
   const none = info("n", 1, 1.2, 0.9, 2.2, { sill_board: "none" });
   assert.deepEqual(sillBoards(none, [none]), { inside: false, outside: false });
-  // a terrace door never gets a board, whatever the setting
-  const terrace = info("t", 1, 1.0, 0, 2.1, { sill_board: "inside" });
+  // a terrace door gets none by itself; one chosen by hand lies at the floor (#702)
+  const terrace = info("t", 1, 1.0, 0, 2.1);
   assert.deepEqual(sillBoards(terrace, [terrace]), { inside: false, outside: false });
+  const chosen = info("tc", 1, 1.0, 0, 2.1, { sill_board: "inside" });
+  assert.deepEqual(sillBoards(chosen, [chosen]), { inside: true, outside: false });
+});
+
+test("a board chosen by hand shows on a window down to the floor; a glass wall has none unless chosen (#702)", () => {
+  const floorLong = info("f", 1, 1.2, 0, 2.2, { sill_board: "inside" });
+  assert.deepEqual(sillBoards(floorLong, [floorLong]), { inside: true, outside: false });
+  const out = info("o", 1, 1.2, 0, 2.2, { sill_board: "outside" });
+  assert.deepEqual(sillBoards(out, [out]), { inside: false, outside: true });
+  const glass = info("g", 1, 2.4, 0.9, 2.4, { style: "glass_wall" });
+  assert.deepEqual(sillBoards(glass, [glass]), { inside: false, outside: false });
+  const glassBoard = info("gb", 1, 2.4, 0.9, 2.4, { style: "glass_wall", sill_board: "inside" });
+  assert.deepEqual(sillBoards(glassBoard, [glassBoard]), { inside: true, outside: false });
 });

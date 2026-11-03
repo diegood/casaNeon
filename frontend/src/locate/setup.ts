@@ -3,6 +3,7 @@
 
 import { css, html, LitElement, nothing } from "lit";
 import type { Building } from "../model.ts";
+import { deviceAreaId } from "../devices.ts";
 import type { HomeAssistant } from "../types.ts";
 import { manualUrl } from "../features.ts";
 import { doorPairs, locateRooms, roomAt, type LocateRoom } from "./graph.ts";
@@ -29,6 +30,8 @@ interface Device {
 interface Config {
   enabled: boolean;
   admins_only: boolean;
+  /** spoken questions fly the open views into the room (default on) */
+  fly?: boolean;
   devices: Device[];
   scanner_rooms: Record<string, string>;
   scanners: Scanner[];
@@ -91,7 +94,7 @@ const ES = {
   helper_build: "Configurar el asistente de clave",
   helper_found: "Asistente de clave encontrado: {name}",
   helper_watch: "Para un Apple Watch",
-  helper_phone: "Para un iPhone / Android",
+  helper_phone: "Para un iPhone",
   helper_watch_steps: "En el reloj: Ajustes → Bluetooth → en «Dispositivos de salud» toca «NeonPlan Key» y enlázalo.",
   helper_phone_steps: "En el móvil: Ajustes → Bluetooth → enlaza «NeonPlan Key» (aparece como teclado).",
   helper_key: "Clave leída:",
@@ -134,6 +137,16 @@ const ES = {
   not_heard: "sin señal",
   next: "Siguiente",
   need_device: "Primero añade un dispositivo.",
+  app_title: "Android con la app de Home Assistant",
+  app_none: "¿Móvil Android? En la app de Home Assistant: Ajustes → Companion app → Gestionar sensores → activa «BLE Transmitter». Luego aparece aquí solo.",
+  app_off: "El transmisor está apagado: actívalo en la app",
+  app_power: "Potencia de emisión demasiado baja: ponla en «High» en la app",
+  app_mode: "Pon el modo de emisión en «Low latency» en la app",
+  helper_android: "No emparejes aquí móviles ni tabletas Android: no envían esta clave en segundo plano. Para Android usa el BLE Transmitter de la app de Home Assistant (abajo).",
+  unheard: "⚠ sin señal",
+  unheard_hint: "Ahora mismo ningún receptor oye este dispositivo. ¿Está encendido y emitiendo? Android: el BLE Transmitter de la app de Home Assistant.",
+  fly: "Volar a las habitaciones con «¿Dónde está …?» y «¿Quién está en casa?»",
+  fly_hint: "Las vistas abiertas de CasaNeon vuelan a la habitación de la respuesta y, con «¿Quién está en casa?», a todas por turno. Un toque lo detiene. No para personas mientras solo se muestren a administradores.",
 };
 
 export function irkHex(raw: string): string | null {
@@ -147,6 +160,59 @@ export function irkHex(raw: string): string | null {
     // not Base64
   }
   return null;
+}
+
+/** An Android phone's BLE Transmitter as the Home Assistant app reports it (a sensor of the phone's device). */
+export interface AppTransmitter {
+  entity: string;
+  name: string;
+  /** uuid + major + minor as hex, the way the backend keys iBeacons */
+  key: string;
+  state: string;
+  power: string;
+  mode: string;
+  person: string | null;
+}
+
+// the app's sensor attribute "id": "<uuid>_<major>_<minor>"
+const BEACON_ID = /^([0-9a-f]{8})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{4})-?([0-9a-f]{12})_(\d{1,5})_(\d{1,5})$/i;
+
+/** The BLE Transmitters of the Home Assistant Android app, found by their sensor: no need to hold the phone near a receiver. */
+export function appTransmitters(hass: HomeAssistant): AppTransmitter[] {
+  const out: AppTransmitter[] = [];
+  const hex4 = (n: number) => n.toString(16).padStart(4, "0");
+  for (const [entity, st] of Object.entries(hass.states)) {
+    if (!entity.startsWith("sensor.")) continue;
+    const a = st.attributes ?? {};
+    if (!("Transmitting power" in a)) continue;
+    const m = BEACON_ID.exec(String(a.id ?? ""));
+    if (!m) continue;
+    const major = Number(m[6]);
+    const minor = Number(m[7]);
+    if (major > 0xffff || minor > 0xffff) continue;
+    const deviceId = hass.entities?.[entity]?.device_id ?? null;
+    const device = deviceId ? hass.devices?.[deviceId] : undefined;
+    const fallback = String(a.friendly_name ?? entity).replace(/\s*BLE[\s_-]*Transmitter\s*$/i, "");
+    // the person whose device tracker sits on the same phone
+    const person =
+      (deviceId &&
+        Object.entries(hass.states).find(
+          ([id, p]) =>
+            id.startsWith("person.") &&
+            ((p.attributes?.device_trackers as string[] | undefined) ?? []).some((tr) => hass.entities?.[tr]?.device_id === deviceId),
+        )?.[0]) ||
+      null;
+    out.push({
+      entity,
+      name: device?.name_by_user || device?.name || fallback,
+      key: (m.slice(1, 6).join("") + hex4(major) + hex4(minor)).toLowerCase(),
+      state: String(st.state),
+      power: String(a["Transmitting power"] ?? ""),
+      mode: String(a["Advertise mode"] ?? ""),
+      person,
+    });
+  }
+  return out.sort((x, y) => x.name.localeCompare(y.name));
 }
 
 export class LocateSetup extends LitElement {
@@ -196,7 +262,8 @@ export class LocateSetup extends LitElement {
   }
 
   private get rooms(): LocateRoom[] {
-    return locateRooms(this.building);
+    // an outdoor area without a name of its own goes by its Home Assistant area's name
+    return locateRooms(this.building).map((r) => (r.name || !r.area_id ? r : { ...r, name: this.hass.areas?.[r.area_id]?.name ?? r.area_id }));
   }
 
   connectedCallback(): void {
@@ -267,7 +334,7 @@ export class LocateSetup extends LitElement {
     const deviceId =
       s.device_id ?? Object.values(this.hass.devices ?? {}).find((d) => [d.name_by_user, d.name].some((n) => n && n.toLowerCase() === s.name.toLowerCase()))?.id ?? null;
     const entityAreas = deviceId ? Object.values(this.hass.entities ?? {}).filter((e) => e.device_id === deviceId && e.area_id).map((e) => e.area_id!) : [];
-    const area = s.area_id ?? (deviceId ? this.hass.devices?.[deviceId]?.area_id : null) ?? entityAreas[0] ?? null;
+    const area = s.area_id ?? deviceAreaId(this.hass, deviceId) ?? entityAreas[0] ?? null;
     if (area) {
       const room = this.rooms.find((r) => r.area_id === area);
       if (room) return room.id;
@@ -443,7 +510,8 @@ export class LocateSetup extends LitElement {
         <h4>${t.helper_title}</h4>
         <a class="install" href=${KEY_HELPER_URL} target="_blank" rel="noopener">⚡ ${t.helper_install} ↗</a>
       </div>
-      <p class="hint">${t.helper_pitch}</p>`;
+      <p class="hint">${t.helper_pitch}</p>
+      <p class="hint">${t.helper_android}</p>`;
     if (!helper) return head;
     const watch = helper.option === "Heart Sensor";
     const pick = (option: string) => void this.hass.callService("select", "select_option", { entity_id: helper.select, option });
@@ -526,6 +594,16 @@ export class LocateSetup extends LitElement {
     </select>`;
   }
 
+  /** "not heard" next to a device while locating runs and no receiver hears it (an Android phone added by key, a
+   * switched-off transmitter): learning with it would collect nothing. */
+  private unheardBadge(id: string) {
+    const live = this._live;
+    if (!live?.running) return nothing;
+    const d = live.devices.find((x) => x.id === id);
+    if (!d || d.room || (d.last_seen && Date.now() / 1000 - d.last_seen < 120)) return nothing;
+    return html`<small class="warn" title=${this.t.unheard_hint}>${this.t.unheard}</small>`;
+  }
+
   private addDevice(cfg: Config, device: Omit<Device, "id" | "person" | "icon">, person: string | null = null): void {
     const id = `${device.kind}_${device.key.replace(/[^a-z0-9]/gi, "").slice(-10).toLowerCase()}`;
     if (cfg.devices.some((d) => d.id === id)) return;
@@ -536,6 +614,7 @@ export class LocateSetup extends LitElement {
     const t = this.t;
     const has = (key: string) => cfg.devices.some((d) => d.key.toLowerCase() === key.toLowerCase());
     const setDevice = (id: string, patch: Partial<Device>) => void this.save({ devices: cfg.devices.map((d) => (d.id === id ? { ...d, ...patch } : d)) });
+    const apps = appTransmitters(this.hass);
     return html`<p>${t.devices_intro}</p>
       ${cfg.devices.length
         ? html`<ul class="list">
@@ -548,10 +627,31 @@ export class LocateSetup extends LitElement {
                   ><input type="checkbox" .checked=${!!d.wearable} @change=${(e: Event) => setDevice(d.id, { wearable: (e.target as HTMLInputElement).checked })} />⌚
                   ${t.worn}</label
                 >
+                ${this.unheardBadge(d.id)}
                 <button @click=${() => void this.save({ devices: cfg.devices.filter((x) => x.id !== d.id) })}>${t.remove}</button>
               </li>`,
             )}
           </ul>`
+        : nothing}
+      ${apps.length
+        ? html`<h4>📱 ${t.app_title}</h4>
+            <ul class="list">
+              ${apps.map((a) => {
+                const warnings = [
+                  a.state !== "Transmitting" ? t.app_off : null,
+                  a.power === "ultraLow" || a.power === "low" ? t.app_power : null,
+                  a.mode === "lowPower" ? t.app_mode : null,
+                ].filter((w): w is string => !!w);
+                return html`<li>
+                  <span
+                    ><b>${a.name}</b>${warnings.map((w) => html`<small class="warn">⚠ ${w}</small>`)}</span
+                  >
+                  ${has(a.key)
+                    ? html`<small>${t.added}</small>`
+                    : html`<button @click=${() => this.addDevice(cfg, { name: a.name, kind: "ibeacon", key: a.key }, a.person)}>${t.add}</button>`}
+                </li>`;
+              })}
+            </ul>`
         : nothing}
       ${this.renderKeyHelper(cfg)}
       <details
@@ -562,12 +662,16 @@ export class LocateSetup extends LitElement {
       >
         <summary>📱 ${t.near_summary}</summary>
         <p class="hint">${t.near_intro}</p>
+        ${apps.length ? nothing : html`<p class="hint">${t.app_none}</p>`}
         <ul class="list">
           ${(() => {
-            // only what is held close to a scanner: beacons first (the Android app), then the strongest
+            // beacons first (the Android app sends weakly by default, so they count from -90 dBm), then what is held
+            // close to a scanner; one row per beacon although its address rotates
+            const seen = new Set<string>();
             const close = this._near
-              .filter((n) => (n.ibeacon || !n.random) && n.rssi >= -68)
+              .filter((n) => (n.ibeacon ? n.rssi >= -90 : !n.random && n.rssi >= -68))
               .sort((x, y) => Number(!!y.ibeacon) - Number(!!x.ibeacon) || y.rssi - x.rssi)
+              .filter((n) => !n.ibeacon || (!seen.has(n.ibeacon) && !!seen.add(n.ibeacon)))
               .slice(0, 5);
             return close.length
               ? close.map(
@@ -630,7 +734,7 @@ export class LocateSetup extends LitElement {
                     this.requestUpdate();
                   }}
                 />
-                ${d.name}</label
+                ${d.name} ${this.unheardBadge(d.id)}</label
               >`,
             )}
           </div>`
@@ -687,6 +791,9 @@ export class LocateSetup extends LitElement {
       <p class="hint">${t.voice_hint}</p>
       <label class="row"><input type="checkbox" .checked=${cfg.enabled} @change=${(e: Event) => void this.save({ enabled: (e.target as HTMLInputElement).checked })} /> ${t.enabled}</label>
       <label class="row"><input type="checkbox" .checked=${cfg.admins_only} @change=${(e: Event) => void this.save({ admins_only: (e.target as HTMLInputElement).checked })} /> ${t.admins_only}</label>
+      <label class="row" title=${t.fly_hint}
+        ><input type="checkbox" .checked=${cfg.fly !== false} @change=${(e: Event) => void this.save({ fly: (e.target as HTMLInputElement).checked })} /> ${t.fly}</label
+      >
       ${this.setLook
         ? html`<div class="row">
             <b>${t.look_title}</b>
@@ -846,6 +953,11 @@ export class LocateSetup extends LitElement {
     .hint {
       opacity: 0.8;
       font-size: 13px;
+    }
+    .warn {
+      display: block;
+      color: #ffb74d;
+      font-size: 12px;
     }
     .end {
       display: flex;

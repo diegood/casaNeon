@@ -22,6 +22,8 @@ export interface ControlEvents {
   grab?(x: number, y: number): boolean;
   drag?(x: number, y: number): void;
   drop?(): void;
+  /** A short right click (with rightClickBack on): one step back. */
+  back?(): void;
   /**
    * A one-finger drag starts at (x, y) moving by (dx, dy): return true to take it as a swipe on an
    * object (dimming a lamp, moving a blind) instead of turning the view. Moves then report the
@@ -33,6 +35,18 @@ export interface ControlEvents {
 }
 
 const HOLD_MS = 500;
+/**
+ * A move or wheel event this old when it is handled waited out a freeze (building the house just after
+ * opening, a slow tablet): it is dropped, not replayed – replayed, the view caught up seconds later and landed
+ * somewhere else in the house (#712). A second, so a slow wall tablet (a frame of half a second) still turns.
+ */
+const STALE_MS = 1000;
+
+/** The event waited longer than STALE_MS to be handled (timestamps on the performance clock, as all browsers now). */
+export function stale(e: { timeStamp: number }, now: number): boolean {
+  const age = now - e.timeStamp;
+  return age > STALE_MS && age < 60_000;
+}
 
 const MIN_PHI = 0.12;
 const MAX_PHI = 1.35;
@@ -50,6 +64,8 @@ export class OrbitControls {
   leftDragTurns = true;
   /** 3D lock (idea from dlavrantonis' fork): the angle stays put – a drag moves the view, zooming still works. */
   angleLock = false;
+  /** A short right click goes one step back (room → floor → house) instead of tapping (a setting, default off). */
+  rightClickBack = false;
 
   private pointers = new Map<number, { x: number; y: number; button: number; type: string }>();
   private velocity = { theta: 0, phi: 0 };
@@ -191,6 +207,13 @@ export class OrbitControls {
       if (this.events.drag) this.events.drag(...this.local(e));
       return;
     }
+    if (stale(e, performance.now()) && !this.swiping) {
+      // only the position is taken: the next fresh move continues from here
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (this.pointers.size > 1) this.pinch = this.pinchState();
+      return;
+    }
     const dx = e.clientX - p.x;
     const dy = e.clientY - p.y;
     if (this.swiping) {
@@ -251,7 +274,8 @@ export class OrbitControls {
   }
 
   private onUp(e: PointerEvent): void {
-    if (!this.pointers.has(e.pointerId)) return;
+    const button = this.pointers.get(e.pointerId)?.button;
+    if (button === undefined) return;
     if (this.grabbing) {
       this.grabbing = false;
       this.pointers.delete(e.pointerId);
@@ -275,7 +299,10 @@ export class OrbitControls {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const now = performance.now();
-      if (now - this.lastTap < 320) {
+      if (button === 2 && this.rightClickBack && this.events.back) {
+        this.lastTap = 0;
+        this.events.back();
+      } else if (now - this.lastTap < 320) {
         this.lastTap = 0;
         this.events.doubleTap(x, y);
       } else {
@@ -289,6 +316,7 @@ export class OrbitControls {
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
+    if (stale(e, performance.now())) return;
     this.flight = null;
     this.zoom(Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0015)));
     this.events.change();

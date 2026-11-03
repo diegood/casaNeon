@@ -8,19 +8,20 @@ from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import instance_id
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.loader import async_get_integration
 import voluptuous as vol
 
-from .const import DATA_ASK, DATA_VOICE, DOMAIN, SIGNAL_ASK, SIGNAL_BUILDING_UPDATED
+from .const import DATA_ASK, DATA_VOICE, DOMAIN, SIGNAL_ANNOUNCE, SIGNAL_ASK, SIGNAL_BUILDING_UPDATED
 from .locate.recorder import ws_locate_rec
 from .locate.ws import COMMANDS as LOCATE_COMMANDS
 from .packs import MAX_PACK_SIZE, PackError, fingerprint, parts_of, verify_pack
 from .schema import BUILDING_SCHEMA, IMAGE_DATA
 from .storage import FloorplanData, complete
 from .timetravel import ws_timetravel_history
-from .voice import SENTENCE_MODES, AskBroker, VoiceSettings
+from .voice import SENTENCE_MODES, AskBroker, VoiceSettings, async_converse_here
 
 _IMAGE_ID = vol.All(str, vol.Length(min=1, max=64), vol.Match(r"^[A-Za-z0-9_\-.]+$"))
 
@@ -48,6 +49,7 @@ def async_register_commands(hass: HomeAssistant) -> None:
         ws_voice_answer,
         ws_voice_settings,
         ws_voice_settings_set,
+        ws_voice_converse,
         ws_locate_rec,
     ):
         websocket_api.async_register_command(hass, command)
@@ -320,16 +322,32 @@ async def ws_backup_import(
     )
 
 
-@websocket_api.websocket_command({vol.Required("type"): "neonplan3d/voice/subscribe"})
+@websocket_api.websocket_command(
+    {vol.Required("type"): "neonplan3d/voice/subscribe", vol.Optional("announce", default=False): bool}
+)
 @callback
 def ws_voice_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Every sentence Assist (or the service `neonplan3d.ask`) hands to the views; each open view listens."""
+    """Every sentence Assist (or the service `neonplan3d.ask`) hands to the views; each open view listens. A view
+    that knows them (`announce`) also gets the announcements of the service `neonplan3d.announce` for the screens."""
 
     @callback
     def forward(ask: dict[str, Any]) -> None:
         connection.send_message(websocket_api.event_message(msg["id"], ask))
 
-    connection.subscriptions[msg["id"]] = async_dispatcher_connect(hass, SIGNAL_ASK, forward)
+    @callback
+    def forward_announce(announce: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"announce": announce}))
+
+    unsubs = [async_dispatcher_connect(hass, SIGNAL_ASK, forward)]
+    if msg["announce"]:
+        unsubs.append(async_dispatcher_connect(hass, SIGNAL_ANNOUNCE, forward_announce))
+
+    @callback
+    def unsubscribe() -> None:
+        for unsub in unsubs:
+            unsub()
+
+    connection.subscriptions[msg["id"]] = unsubscribe
     connection.send_result(msg["id"])
 
 
@@ -376,3 +394,28 @@ async def ws_voice_settings_set(
         connection.send_error(msg["id"], "write_failed", str(err))
         return
     connection.send_result(msg["id"], {"sentences": settings.sentences, "kept": kept})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "neonplan3d/voice/converse",
+        vol.Required("text"): vol.All(str, vol.Length(min=1, max=300)),
+        vol.Required("area_id"): vol.All(str, vol.Length(min=1, max=64)),
+        vol.Optional("language"): vol.All(str, vol.Length(max=16)),
+    }
+)
+@websocket_api.async_response
+async def ws_voice_converse(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """A sentence for Assist from a wall tablet that hangs in a room (any user, like Assist's own
+    `conversation/process`): "enciende la luz" switches the lights of that room."""
+    try:
+        result = await async_converse_here(
+            hass, msg["text"], msg.get("language"), msg["area_id"], connection.context(msg)
+        )
+    except (KeyError, ValueError, HomeAssistantError) as err:
+        # Assist is not set up: the view hands the sentence to Assist the usual way
+        connection.send_error(msg["id"], "converse_failed", str(err))
+        return
+    connection.send_result(msg["id"], result)

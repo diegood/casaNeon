@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import intent
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.neonplan3d.const import DOMAIN
-from custom_components.neonplan3d.voice import remove_sentences, sentences_yaml, write_sentences
+from custom_components.neonplan3d.voice import area_device, remove_sentences, sentences_yaml, write_sentences
 
 from .test_init import _setup
 
@@ -168,3 +173,92 @@ async def test_unload_removes_service_and_intent(hass: HomeAssistant) -> None:
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert not hass.services.has_service(DOMAIN, "ask")
+
+
+# a file an early version wrote with its own, shorter set of sentences
+_EARLY_FILE = """# Written by CasaNeon: the sentences Assist hands to the open CasaNeon views (the first one that
+# understands answers). Rewritten on every start: put your own sentences for NeonPlanAsk into another file.
+language: "es"
+intents:
+  NeonPlanAsk:
+    data:
+      - sentences:
+          - "(muestra|muéstrame|muestrame|enseña|enséñame|ensename) [por favor] {text}"
+          - "(dónde|donde) (está|esta|están|estan) {text}"
+          - "pregunta a la casa {text}"
+lists:
+  text:
+    wildcard: true
+"""
+
+
+def test_an_early_file_with_other_sentences_is_still_ours(tmp_path: Path) -> None:
+    """Only CasaNeon's sentences under CasaNeon's header: replaced (it lacked "quién está en casa"); one sentence
+    of the user's own in it, and it stays."""
+    es = tmp_path / "custom_sentences" / "es" / "neonplan3d.yaml"
+    es.parent.mkdir(parents=True)
+    es.write_text(_EARLY_FILE, encoding="utf-8")
+    _, kept, changed = write_sentences(tmp_path, "distinct", {})
+    assert kept == [] and changed
+    assert "(quién|quien) (está|esta|hay) [ahora] en casa" in es.read_text(encoding="utf-8")
+    es.write_text(
+        _EARLY_FILE.replace('          - "pregunta a la casa {text}"\n', '          - "apaga la luz"\n'),
+        encoding="utf-8",
+    )
+    _, kept, _ = write_sentences(tmp_path, "distinct", {})
+    assert kept == ["es"]
+
+
+def test_the_names_locating_knows_are_a_list_not_a_wildcard(tmp_path: Path) -> None:
+    """ "¿Dónde está Lucía?" matches a list of names exactly, so Assist handles it locally and an AI agent behind
+    it never gets the question."""
+    es = tmp_path / "custom_sentences" / "es" / "neonplan3d.yaml"
+    hashes, _, _ = write_sentences(tmp_path, "distinct", {}, ["Apple Watch de Lucía", "Lucía", 'Ma "M"'])
+    text = es.read_text(encoding="utf-8")
+    assert "(dónde|donde) (está|esta|están|estan) [el|la|los|las|mi|mis] {neonplan_who}" in text
+    assert '      - "Apple Watch de Lucía"' in text and '      - "Ma \\"M\\""' in text
+    # the names change: the file follows; no names: the list goes
+    _, kept, changed = write_sentences(tmp_path, "distinct", hashes, ["Lucía"])
+    assert kept == [] and changed and "Apple Watch" not in es.read_text(encoding="utf-8")
+    write_sentences(tmp_path, "distinct", {}, [])
+    assert "neonplan_who" not in es.read_text(encoding="utf-8")
+
+
+async def test_a_sentence_said_in_a_room_goes_to_assist_with_a_device_of_that_room(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    """On the kitchen's tablet "enciende la luz" reaches Assist from a device in the kitchen (the room is its area)."""
+    await _setup(hass)
+    kitchen = ar.async_get(hass).async_create("Cocina")
+    hall = ar.async_get(hass).async_create("Pasillo")
+    entry = MockConfigEntry(domain="hue", data={})
+    entry.add_to_hass(hass)
+    devices = dr.async_get(hass)
+    lamp = devices.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("hue", "lamp")})
+    devices.async_update_device(lamp.id, area_id=kitchen.id)
+    off = devices.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("hue", "off")})
+    devices.async_update_device(off.id, area_id=kitchen.id, disabled_by=dr.DeviceEntryDisabler.USER)
+    assert area_device(hass, kitchen.id) == lamp.id
+    assert area_device(hass, hall.id) is None
+    assert area_device(hass, "gone") is None
+
+    result = MagicMock()
+    result.as_dict.return_value = {"response": {"speech": {"plain": {"speech": "Luz encendida"}}}}
+    converse = AsyncMock(return_value=result)
+    client = await hass_ws_client(hass)
+    # Assist itself stands in: its requirements (hassil) are not installed for the tests
+    with patch.dict(sys.modules, {"homeassistant.components.conversation": SimpleNamespace(async_converse=converse)}):
+        await client.send_json(
+            {
+                "id": 1,
+                "type": "neonplan3d/voice/converse",
+                "text": "enciende la luz",
+                "area_id": kitchen.id,
+                "language": "es",
+            }
+        )
+        res = await client.receive_json()
+    assert res["success"]
+    assert res["result"]["response"]["speech"]["plain"]["speech"] == "Luz encendida"
+    assert converse.await_args.args[1] == "enciende la luz"
+    assert converse.await_args.kwargs == {"language": "es", "device_id": lamp.id}

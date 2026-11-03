@@ -8,7 +8,7 @@
 import type { Floor, Vec2 } from "../model.ts";
 import { outdoorSurface } from "./outdoor.ts";
 import { groundDrop, outdoorStanding, pointInPolygon } from "../model.ts";
-import type { Wall } from "../geometry/walls.ts";
+import { slopeTop, type Wall } from "../geometry/walls.ts";
 import type { OpeningInfo } from "./build.ts";
 import { LOWER_OFFSET, triangulate } from "./geo.ts";
 import { clipConvex } from "../geometry/area.ts";
@@ -48,8 +48,10 @@ export interface LightSurface {
 export interface Blocker {
   a: Vec2;
   b: Vec2;
-  /** Height of the wall. */
+  /** Height of the wall (at its end a). */
   h: number;
+  /** A sloping wall's height at its end b: the top runs straight from `h` to it (#821). */
+  h1?: number;
   /** Room (light zone) index on each side; the outside zone for the outer side of an exterior wall. */
   ra: number;
   rb: number;
@@ -179,7 +181,9 @@ export function buildLightSurface(
     const bucket = wallBuckets[wi];
     const gaps = openingSpans(w, u, len, openings);
     const sideRoom = (id: string | null, outer: boolean) => (id ? floor.rooms.findIndex((r) => r.id === id) : outer ? outside : -1);
-    blockers.push({ a: w.a, b: w.b, h: H, ra: sideRoom(w.roomLeft, false), rb: sideRoom(w.roomRight, w.exterior), gaps });
+    // a sloping wall blocks the light only below its slope (#821)
+    const ends = w.slope ? { h: Math.min(H, slopeTop(w.slope, w.a[0], w.a[1])), h1: Math.min(H, slopeTop(w.slope, w.b[0], w.b[1])) } : { h: H };
+    blockers.push({ a: w.a, b: w.b, ...ends, ra: sideRoom(w.roomLeft, false), rb: sideRoom(w.roomRight, w.exterior), gaps });
     // the cells break at the cut and at every sill, top and side of an opening, so the hole a window
     // leaves in the lit face matches the window (a cell is lit or dark as a whole)
     const marks = (vals: number[], lo: number, hi: number) =>
@@ -194,10 +198,12 @@ export function buildLightSurface(
       const face = (side > 0 ? w.left : w.right) + FACE_GAP;
       const n: Vec2 = [nLeft[0] * side, nLeft[1] * side];
       const at = (s: number, y: number) => [w.a[0] + u[0] * s + n[0] * face, y, w.a[1] + u[1] * s + n[1] * face];
+      // the lit face ends below the roof slope and below the wall's own slope (#821)
       const under = (s: number) => {
         const p = at(s, 0);
         const y = roofUnder?.(p[0], p[2]);
-        return y == null ? Infinity : y - 0.02;
+        const own = w.slope ? slopeTop(w.slope, w.a[0] + u[0] * s, w.a[1] + u[1] * s) - 0.02 : Infinity;
+        return Math.min(y == null ? Infinity : y - 0.02, own);
       };
       for (let p = 0; p < cols.length - 1; p++) {
         const span = cols[p + 1] - cols[p];
@@ -217,7 +223,15 @@ export function buildLightSurface(
             const topA = Math.min(y1, under(s0));
             const topB = Math.min(y1, under(s1));
             if (topA <= y0 + 0.005 && topB <= y0 + 0.005) continue;
-            quad(at(s0, y0), at(s1, y0), at(s1, Math.max(y0, topB)), at(s0, Math.max(y0, topA)), [n[0], 0, n[1]], ri, f);
+            // the top crosses the cell's lower edge: only the triangle below the top is lit, the rest of the
+            // cell would stand out over the slope (#821)
+            if (topA < y0 || topB < y0) {
+              const sx = s0 + ((s1 - s0) * (y0 - topA)) / (topB - topA);
+              if (topA < y0) quad(at(sx, y0), at(s1, y0), at(s1, topB), at(sx, y0), [n[0], 0, n[1]], ri, f);
+              else quad(at(s0, y0), at(sx, y0), at(sx, y0), at(s0, topA), [n[0], 0, n[1]], ri, f);
+              continue;
+            }
+            quad(at(s0, y0), at(s1, y0), at(s1, topB), at(s0, topA), [n[0], 0, n[1]], ri, f);
           }
         }
       }
@@ -344,39 +358,83 @@ export function lightColors(surface: LightSurface, sources: LightSource[], stren
       }
       const level = Math.max(c[0], c[1], c[2]);
       if (level < 0.01) continue;
-      all.push({ x: door.x, y: door.y, z: door.z, color: [c[0] / level, c[1] / level, c[2] / level], level: Math.min(1, level * 0.9 * (0.35 + 0.65 * open)), kind: "wall", room: to });
+      // in steps of 2 %: a colour effect changes it a little all the time, and every step would be new to the cache
+      all.push({ x: door.x, y: door.y, z: door.z, color: [c[0] / level, c[1] / level, c[2] / level], level: Math.round(Math.min(1, level * 0.9 * (0.35 + 0.65 * open)) * 50) / 50, kind: "wall", room: to });
     }
   });
-  const byRoom = new Map<number, (LightSource & { walls: Blocker[] })[]>();
+  const cache = cacheOf(surface);
+  const { pos, room } = surface;
+  const sum = new Float32Array(pos.length);
+  const used = new Set<string>();
   for (const s of all) {
-    // warm light stays warm on the blue floor (the same curve as before); only the walls of its own
-    // room can stand between a lamp and what it lights
-    const walls = surface.blockers.filter((w) => w.ra === s.room || w.rb === s.room);
-    const t = { ...s, color: s.color.map((v) => Math.pow(v, 1.5)) as [number, number, number], walls };
-    byRoom.set(s.room, [...(byRoom.get(s.room) ?? []), t]);
+    const weights = weightsOf(surface, cache, s);
+    used.add(weights.key);
+    // warm light stays warm on the blue floor (the same curve as before)
+    const c = s.color.map((v) => Math.pow(v, 1.5));
+    const { verts, k } = weights;
+    for (let n = 0; n < verts.length; n++) {
+      const i = verts[n] * 3;
+      sum[i] += c[0] * k[n];
+      sum[i + 1] += c[1] * k[n];
+      sum[i + 2] += c[2] * k[n];
+    }
   }
-  const { pos, normal, room } = surface;
+  // only the lamps of now are kept (a colour effect keeps the same ones, a switched lamp drops out)
+  for (const key of cache.weights.keys()) if (!used.has(key)) cache.weights.delete(key);
   const out = new Float32Array(pos.length);
   for (let v = 0; v < room.length; v++) {
-    const list = byRoom.get(room[v]);
-    if (!list) continue;
     const i = v * 3;
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    for (const s of list) {
-      if (s.walls.length && shadowed(s, s.walls, pos[i], pos[i + 1], pos[i + 2])) continue;
-      const k = contribution(s, pos[i], pos[i + 1], pos[i + 2], normal[i], normal[i + 1], normal[i + 2]);
-      r += s.color[0] * k;
-      g += s.color[1] * k;
-      b += s.color[2] * k;
-    }
     // soft saturation: several lamps add up without clipping to flat white
-    out[i] = 1 - Math.exp(-r * strength * 1.6);
-    out[i + 1] = 1 - Math.exp(-g * strength * 1.6);
-    out[i + 2] = 1 - Math.exp(-b * strength * 1.6);
+    if (sum[i] || sum[i + 1] || sum[i + 2]) {
+      out[i] = 1 - Math.exp(-sum[i] * strength * 1.6);
+      out[i + 1] = 1 - Math.exp(-sum[i + 1] * strength * 1.6);
+      out[i + 2] = 1 - Math.exp(-sum[i + 2] * strength * 1.6);
+    }
   }
   return out;
+}
+
+/**
+ * How much of a lamp reaches each vertex of its room (walls of its own room may stand between), kept per surface:
+ * a colour effect only recolours the lamps, so the costly part – distances, facing, shadows – is done once (#885).
+ */
+interface LightCache {
+  roomVerts: Map<number, Uint32Array>;
+  weights: Map<string, { key: string; verts: Uint32Array; k: Float32Array }>;
+}
+const caches = new WeakMap<LightSurface, LightCache>();
+
+function cacheOf(surface: LightSurface): LightCache {
+  let cache = caches.get(surface);
+  if (!cache) {
+    const lists = new Map<number, number[]>();
+    surface.room.forEach((r, v) => {
+      const list = lists.get(r);
+      if (list) list.push(v);
+      else lists.set(r, [v]);
+    });
+    cache = { roomVerts: new Map([...lists].map(([r, l]) => [r, Uint32Array.from(l)])), weights: new Map() };
+    caches.set(surface, cache);
+  }
+  return cache;
+}
+
+function weightsOf(surface: LightSurface, cache: LightCache, s: LightSource): { key: string; verts: Uint32Array; k: Float32Array } {
+  const key = `${s.x},${s.y},${s.z},${s.kind},${s.level},${s.room}`;
+  const known = cache.weights.get(key);
+  if (known) return known;
+  const verts = cache.roomVerts.get(s.room) ?? new Uint32Array(0);
+  const walls = surface.blockers.filter((w) => w.ra === s.room || w.rb === s.room);
+  const { pos, normal } = surface;
+  const k = new Float32Array(verts.length);
+  for (let n = 0; n < verts.length; n++) {
+    const i = verts[n] * 3;
+    if (walls.length && shadowed(s, walls, pos[i], pos[i + 1], pos[i + 2])) continue;
+    k[n] = contribution(s, pos[i], pos[i + 1], pos[i + 2], normal[i], normal[i + 1], normal[i + 2]);
+  }
+  const w = { key, verts, k };
+  cache.weights.set(key, w);
+  return w;
 }
 
 /**
@@ -400,12 +458,22 @@ export function shadowed(s: { x: number; y: number; z: number }, walls: readonly
     const k = (ax * dz - az * dx) / den;
     if (k < 0 || k > 1) continue;
     const y = s.y + (py - s.y) * t;
-    if (y >= w.h) continue;
+    if (y >= (w.h1 === undefined ? w.h : w.h + (w.h1 - w.h) * k)) continue;
     const along = k * Math.hypot(ex, ez);
     if (w.gaps.some((g) => along > g.s0 && along < g.s1 && y > g.y0 && y < g.y1)) continue;
     return true;
   }
   return false;
+}
+
+/**
+ * How far a window's light at night reaches out over the ground (at most `reach`): it ends where the ground
+ * under it leaves the level at the window's foot – the edge of a balcony or a terrace (#822). `groundAt(s, d)`
+ * is the ground at `s` across the patch (0–1) and `d` metres out.
+ */
+export function spillLength(groundAt: (s: number, d: number) => number, foot: number, reach: number): number {
+  for (let d = 0.1; d < reach; d += 0.1) if ([0.1, 0.5, 0.9].some((s) => Math.abs(groundAt(s, d) - foot) > 0.1)) return d - 0.05;
+  return reach;
 }
 
 /** Index of the room a point lies in; outside every room: the outside zone (rooms.length). */

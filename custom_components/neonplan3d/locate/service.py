@@ -20,7 +20,7 @@ from homeassistant.helpers.storage import Store
 
 from .engine import AWAY_AFTER, OWN_SHARE, STEP, THING_AWAY_AFTER, Fingerprints, RoomTracker, evidence
 from .identity import Identity, ibeacon_key
-from .scanners import ScanReader, scanner_list
+from .scanners import ScanReader, device_area_id, scanner_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,6 +69,7 @@ class LocateService:
         self._store: Store[dict[str, Any]] = Store(hass, 1, STORAGE_KEY_LOCATE)
         self.enabled = False
         self.admins_only = False
+        self.fly = True  # spoken questions fly the open views into the room
         self.devices: list[dict[str, Any]] = []
         self.scanner_rooms: dict[str, str] = {}
         self.scanner_names: dict[str, str] = {}  # last known names (a scanner that is offline keeps its row)
@@ -95,6 +96,7 @@ class LocateService:
         data = await self._store.async_load() or {}
         self.enabled = bool(data.get("enabled"))
         self.admins_only = bool(data.get("admins_only"))
+        self.fly = data.get("fly", True) is not False
         self.devices = _clean_devices(data.get("devices") or [])
         self.scanner_rooms = {str(k): str(v) for k, v in (data.get("scanner_rooms") or {}).items()}
         self.scanner_names = {str(k): str(v) for k, v in (data.get("scanner_names") or {}).items()}
@@ -112,6 +114,7 @@ class LocateService:
         return {
             "enabled": self.enabled,
             "admins_only": self.admins_only,
+            "fly": self.fly,
             "devices": self.devices,
             "scanner_rooms": self.scanner_rooms,
             "scanner_names": self.scanner_names,
@@ -166,6 +169,8 @@ class LocateService:
             self.doors = [(str(a), str(b)) for a, b in changes["doors"]]
         if "admins_only" in changes:
             self.admins_only = bool(changes["admins_only"])
+        if "fly" in changes:
+            self.fly = bool(changes["fly"])
         self._rebuild()
         if "enabled" in changes:
             self.enabled = bool(changes["enabled"])
@@ -191,6 +196,7 @@ class LocateService:
         return {
             "enabled": self.enabled,
             "admins_only": self.admins_only,
+            "fly": self.fly,
             "devices": self.devices,
             "scanner_rooms": self.scanner_rooms,
             "scanners": self._scanners(),
@@ -276,7 +282,7 @@ class LocateService:
         area = entry.area_id if entry else None
         if entry and not area and entry.device_id:
             device = dr.async_get(self.hass).async_get(entry.device_id)
-            area = device.area_id if device else None
+            area = device_area_id(self.hass, device) if device else None
         if area:
             room = next((r["id"] for r in self.rooms if r.get("area_id") == area), None)
         self._sensor_rooms[entity_id] = room
@@ -330,7 +336,8 @@ class LocateService:
         self._nearby_until = time.time() + 60
         now = time.time()
         rows = [dict(v, address=a) for a, v in self.nearby.items() if now - v["t"] < NEARBY_KEEP]
-        rows.sort(key=lambda r: -r["rssi"])
+        # beacons first (an Android phone among many strong lamps and plugs), then the strongest
+        rows.sort(key=lambda r: (r["ibeacon"] is None, -r["rssi"]))
         return rows[:25]
 
     @callback
@@ -347,10 +354,13 @@ class LocateService:
                 tracker = self._trackers.get(dev)
                 if tracker is not None:
                     tracker.add(r.t, r.source, r.rssi)
-            elif watch_nearby and r.rssi > -75:
+            elif watch_nearby:
+                beacon = ibeacon_key(r.adv)
+                # beacons also when weak: the Android app sends at the lowest power unless changed
+                if r.rssi <= -75 and beacon is None:
+                    continue
                 prev = self.nearby.get(r.address)
                 if prev is None or now - prev["t"] > 3 or r.rssi > prev["rssi"]:
-                    beacon = ibeacon_key(r.adv)
                     self.nearby[r.address] = {
                         "t": now,
                         "rssi": r.rssi,

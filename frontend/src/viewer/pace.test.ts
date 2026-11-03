@@ -39,3 +39,10 @@ test("tablet level: sensor-only changes wait for the rest of two seconds after t
   assert.equal(lowSyncDelay(SENSOR_SYNC_MS), 0);
   assert.equal(lowSyncDelay(60_000), 0);
 });
+
+test("pets keep walking on the tablet level: about 15 frames a second, 4 while the view rests (#752)", async () => {
+  const { petDelay, PET_LOW_MS, PET_REST_MS } = await import("./pace.ts");
+  assert.equal(petDelay(false, 0), 0);
+  assert.equal(petDelay(true, 0), PET_LOW_MS);
+  assert.equal(petDelay(true, 10 * DECOR_REST_MS), PET_REST_MS);
+});

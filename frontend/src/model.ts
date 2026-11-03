@@ -62,6 +62,8 @@ export interface Room {
    * into parts of their own (each with its own height), e.g. a 2.5 m wall next to a 1.7 m one in line.
    */
   wall_splits?: (number[] | null)[];
+  /** What a module keeps for this room (a speaker for the announcements …), by the module's id. */
+  mods?: ModuleData | null;
 }
 
 export type OpeningType = "door" | "window" | "garage";
@@ -123,6 +125,11 @@ export interface Opening {
   tilt_invert?: boolean;
   /** Door: drawn closed when no sensor says otherwise (default: half open, so the door is seen). */
   shut?: boolean;
+  /**
+   * Door: how far the leaf stands open, in degrees – without a sensor always, with one while it reports open.
+   * null (default) = as before: half open (about 43°) without a sensor, fully open (about 86°) with one.
+   */
+  open_angle?: number | null;
   /** The contact sensors report the other way round (on = closed, #329). */
   contact_invert?: boolean;
   /** Windows: no rain warning for this one (it may stay open in the rain, under a canopy, D328). */
@@ -131,6 +138,8 @@ export interface Opening {
   well?: boolean;
   /** How far the light well's rim and grate stand above the ground in m (null = level with it), e.g. above gravel. */
   well_rim?: number | null;
+  /** How far the light well reaches out from the wall in m (null = 0.8 m), e.g. to stay within a path (#890). */
+  well_depth?: number | null;
   /** Highlight in 3D while open (null, default) or while closed (a WC or a child's room door). */
   mark?: "closed" | null;
   /**
@@ -263,6 +272,8 @@ export interface Furniture {
   /** Energie Pro, inverter: its plant card moved from its field's middle along the eave (m, + = right) and up the slope (#335). */
   plant_right?: number;
   plant_up?: number;
+  /** Energie Pro, inverter: where its cable ends – the meter (null, default) or the grid point (#841). */
+  cable_to?: "meter" | "grid" | null;
   status?: EntityRef;
   /** Robot vacuum: sensor naming the room it cleans right now (null = automatic, "none" = the dock's room). */
   room_sensor?: EntityRef;
@@ -301,6 +312,11 @@ export interface Furniture {
   scale?: number;
   /** What a module keeps for this item (its settings, the entities it found), by the module's id. */
   mods?: ModuleData | null;
+  /**
+   * The look of a placed camera (its entity id): the camera keeps its pin with everything set there, this item is only
+   * how it looks – it moves and turns with the camera and goes with it (#779).
+   */
+  look_of?: string | null;
   /** Parking spots: a sensor naming the kind of vehicle, and which vehicle each state means. */
   type_entity?: string | null;
   types?: { state: string; vehicle: string }[];
@@ -354,6 +370,8 @@ export interface Placement {
   cone?: boolean | null;
   /** Cameras: detection pins (person, car, animal) over the camera (null = yes); false leaves only the wedge turning red (#267). */
   detect_pins?: boolean | null;
+  /** Cameras: the detection sensors that count, chosen by hand (any device's); null = those of the camera's device (#815). */
+  detect_sensors?: string[] | null;
 }
 
 export interface Background {
@@ -395,6 +413,8 @@ export interface FreeWall {
   thickness?: number | null;
   /** Height in metres (null = full floor height), e.g. a half-height wall or a counter. */
   height?: number | null;
+  /** A sloping top (#834): the height at end a and at end b, straight in between; null = the plain height. */
+  slope?: [number, number] | null;
 }
 
 /** "custom": the roof is made of sections (wings of an L- or T-shaped house, a barn, a lean-to …). */
@@ -432,6 +452,11 @@ export interface RoofSection {
   base: number;
   /** Overhang beyond the walls (null = the roof setting). */
   overhang?: number | null;
+  /**
+   * Overhang per side set by hand (#863), in the order a, b, u0, u1: a number wins over the automatic one (the
+   * overhang above, none against a taller part of the house); null or a missing list = automatic.
+   */
+  overhang_sides?: (number | null)[] | null;
   /** Sides a and b swapped: side a is the high coordinate (a pent roof then rises the other way). */
   flip?: boolean;
   /**
@@ -451,6 +476,13 @@ export interface RoofSection {
    */
   end_u0?: RoofEnd | null;
   end_u1?: RoofEnd | null;
+  /**
+   * Turned (degrees, clockwise as the plan shows it) about `pivot`: a wing at an angle (#634, #724). x0 … z1 and
+   * the axis describe the section before the turn; null or 0 = not turned (every roof drawn so far).
+   */
+  rotation?: number | null;
+  /** The point it turns about, set with the first turn and moved with the section; null = the rectangle's middle. */
+  pivot?: Vec2 | null;
 }
 
 export interface RoofSettings {
@@ -705,10 +737,25 @@ export interface BuildingSettings {
   rain_entity?: string | null;
   /** Warnings name the device after the room (default on); off = only "Room · Smoke" when the warning has a room (#374). */
   alert_names?: boolean;
+  /**
+   * Warn when a window or door contact has been unavailable for 10 minutes (an empty battery, out of radio reach):
+   * the window would look shut although nobody knows. Off by default.
+   */
+  alert_unavailable?: boolean;
   /** An entity that reports a power outage (a grid or UPS sensor); null = no outage warning (#214). */
   outage_entity?: string | null;
   /** Sunlight falls through the windows as patches on the floor (default on, #266). */
   sun_patches?: boolean;
+  /** The sun's arc over the house and the house's shadow on the ground (default on). */
+  sun_shadow?: boolean;
+  /** What the sun's arc and its compass ring stand around: the house (null, default) or everything drawn on the plot (#833). */
+  sun_arc?: "house" | "plot" | null;
+  /** At night lit rooms throw their light out of the windows onto the ground in front (default on). */
+  window_glow?: boolean;
+  /** Devices switch only in an opened room: in the house and floor views a tap opens the room instead (default off). */
+  tap_in_room?: boolean;
+  /** A short right click in the 3D view goes one step back (room → floor → house) instead of tapping (default off). */
+  right_click_back?: boolean;
   /** The ground around the house: its height and the earth around cellars. */
   terrain?: Terrain | null;
   /**
@@ -726,6 +773,8 @@ export interface BuildingSettings {
   lock_plan?: boolean;
   /** The camera the house view opens with (3D view, card, kiosk); null = fitted from the front left. */
   start_view?: StartView | null;
+  /** What a module keeps for the whole house (its settings), by the module's id. */
+  mods?: ModuleData | null;
 }
 
 /** A camera position around the house: azimuth and polar angle (radians) and the distance (m). */
@@ -886,6 +935,58 @@ export interface CarLinks {
   tracker?: EntityRef;
 }
 
+/** A gate: one leaf (a garden gate), two leaves (a driveway gate) or a leaf sliding along the fence. */
+export const GATE_KINDS = ["swing", "double", "slide"] as const;
+export type GateKind = (typeof GATE_KINDS)[number];
+
+/** A gate in a fence (#818): a gap in one of its edges, cut like a door in a wall, with a leaf that opens with its entity. */
+export interface FenceGate {
+  id: string;
+  /** The edge it sits in: from point `edge` to the next one, as drawn. */
+  edge: number;
+  /** Distance of the gate's middle from the edge's start, m. */
+  at: number;
+  width: number;
+  kind?: GateKind;
+  /** The hinge at the other end (a sliding leaf runs the other way). */
+  flip?: boolean;
+  /** Opens outwards instead of into the fenced area. */
+  outward?: boolean;
+  /** What opens it and tells its state: a cover (gate, garage), a switch, an input_boolean or a lock. */
+  entity?: EntityRef | null;
+  /** A contact that tells "open" (wins over the entity's state). */
+  contact?: EntityRef | null;
+  /** Seconds for a full run while only opening or closing is known (null = 4 s, sliding 15 s). */
+  time?: number | null;
+}
+
+/** Where a gate lies: its edge's ends and the gap along the edge (s0 … s1 from the edge's start), clamped into the edge. */
+export interface GateSpan {
+  gate: FenceGate;
+  p: Vec2;
+  q: Vec2;
+  s0: number;
+  s1: number;
+}
+
+export function gateSpans(a: OutdoorArea): GateSpan[] {
+  if (a.type !== "fence" || !a.gates?.length) return [];
+  const n = a.points.length;
+  const out: GateSpan[] = [];
+  for (const gate of a.gates) {
+    // an open fence has no closing edge
+    if (gate.edge < 0 || gate.edge >= n || (a.open && gate.edge === n - 1)) continue;
+    const p = a.points[gate.edge];
+    const q = a.points[(gate.edge + 1) % n];
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (len < 0.4) continue;
+    const w = Math.min(Math.max(0.3, gate.width), len - 0.1);
+    const mid = Math.min(Math.max(w / 2 + 0.05, gate.at), len - w / 2 - 0.05);
+    out.push({ gate, p, q, s0: mid - w / 2, s1: mid + w / 2 });
+  }
+  return out;
+}
+
 /** Area outside the house (lawn, terrace, pool, hedge …), drawn like a room. */
 export interface OutdoorArea {
   id: string;
@@ -904,6 +1005,8 @@ export interface OutdoorArea {
   open?: boolean;
   /** Pergola: diagonal X-bracing on every side. */
   bracing?: boolean;
+  /** Fences: gates cut into the edges (#818), each opening with its entity. */
+  gates?: FenceGate[];
   /** This area is cut out of every area beneath it that contains it (a wild patch or pond inside a lawn). */
   cut?: boolean;
   /** Pool: round or oval (chosen before drawing); its outline is made from its box and resized as a whole. */
@@ -1087,7 +1190,10 @@ export function poolShapePoints(shape: "rect" | "round" | "oval", x0: number, z0
 
 /** Energy flow: meter position and power sensors (W). Grid positive = import, battery positive = discharging. */
 export interface EnergySettings {
+  /** The meter spot of older plans, or the cable hub set by hand (with `hub_point`). */
   meter: { floor_id: string; x: number; z: number } | null;
+  /** The cables meet at `meter` (e.g. the house board) instead of the meter cabinet in the plan (default off, #841). */
+  hub_point?: boolean;
   grid: string | null;
   grid_invert: boolean;
   solar: string | null;
@@ -1870,3 +1976,38 @@ export const LAMP_MODEL: Record<string, LampModel> = {
   lamp_wall: "wall",
   led_strip: "strip",
 };
+
+/**
+ * A camera and its look (a furniture item, #779) stay together: when one of them moved or turned, the other follows;
+ * when the camera's pin is gone, its look goes too.
+ */
+export function syncCameraLooks(next: Building, base: Building): void {
+  for (const floor of next.floors) {
+    const before = base.floors.find((f) => f.id === floor.id);
+    floor.furniture = floor.furniture.filter((m) => {
+      if (!m.look_of) return true;
+      const pl = floor.placements.find((p) => p.entity_id === m.look_of);
+      if (!pl) return false;
+      const pl0 = before?.placements.find((p) => p.entity_id === m.look_of);
+      const m0 = before?.furniture.find((x) => x.id === m.id);
+      const camMoved = !pl0 || pl0.x !== pl.x || pl0.z !== pl.z || (pl0.rotation ?? 0) !== (pl.rotation ?? 0);
+      const lookMoved = !!m0 && (m0.x !== m.x || m0.z !== m.z || m0.rotation !== m.rotation);
+      if (lookMoved && !camMoved) {
+        pl.x = m.x;
+        pl.z = m.z;
+        pl.rotation = m.rotation;
+      } else {
+        m.x = pl.x;
+        m.z = pl.z;
+        m.rotation = pl.rotation ?? 0;
+      }
+      // the look hangs where the camera does: its middle at the symbol's height, under the ceiling for a ceiling
+      // camera (the same default heights as the pin's)
+      const ceiling = pl.mount === "ceiling";
+      const y = pl.y ?? (ceiling ? Math.max(0.5, floor.height - 0.05) : 2.2);
+      const mountY = Math.round(Math.max(0, ceiling && pl.y == null ? floor.height - m.h : y - m.h / 2) * 1000) / 1000;
+      if (m.mount_y !== mountY) m.mount_y = mountY;
+      return true;
+    });
+  }
+}

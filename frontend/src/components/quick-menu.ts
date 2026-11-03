@@ -2,7 +2,7 @@
 // up/stop/down for blinds, on/off for switches, with a slider and a way to the full details.
 
 import { css, html, LitElement, nothing } from "lit";
-import { type CarState, entityName, isUnavailable, kindOf } from "../devices.ts";
+import { type CarState, coverTiltButtons, entityName, isUnavailable, kindOf } from "../devices.ts";
 import { hasFeature } from "../features.ts";
 import { translate, type I18nKey } from "../i18n.ts";
 import { openMoreInfo, stateText } from "../markers.ts";
@@ -218,7 +218,7 @@ export class Fp3dQuickMenu extends LitElement {
           aria-label=${this.t("cover_tilt")}
           @change=${(e: Event) => this.call("cover", "set_cover_tilt_position", { tilt_position: Number((e.target as HTMLInputElement).value) })}
       /></label>`;
-    if (features & (COVER_OPEN_TILT | COVER_CLOSE_TILT))
+    if (coverTiltButtons(st))
       return html`<div class="qm-tilt-buttons">
         ${features & COVER_OPEN_TILT ? html`<button class="qm-swatch qm-slot" @click=${() => this.call("cover", "open_cover_tilt")}>${this.t("cover_tilt_open")}</button>` : nothing}
         ${features & COVER_CLOSE_TILT ? html`<button class="qm-swatch qm-slot" @click=${() => this.call("cover", "close_cover_tilt")}>${this.t("cover_tilt_close")}</button>` : nothing}

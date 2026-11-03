@@ -114,7 +114,8 @@ function copyFonts() {
 // 3D 790 KB on 2026-10-16: this fork targets Chrome 87 (optional chaining lowered for old Fire-tablet WebViews)
 // 3D 800 KB on 2026-10-20 for upstream 1.22 (live director, voice, light between floors, clock, backdrop)
 // 3D 830 KB and locate 60 KB on 2026-10-23 for upstream 2.0 (locating, people in 3D, the new library, robot packs)
-const BUDGET = { "neonplan3d.js": 600 * 1024, "neonplan3d-fun.js": 40 * 1024, "neonplan3d-voice.js": 60 * 1024, "neonplan3d-locate.js": 60 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 830 * 1024, "neonplan3d-editor.js": 820 * 1024, "neonplan3d-card-editor.js": 240 * 1024 };
+// main 630 KB, 3D 850 KB, editor 825 KB on 2026-11-03 for upstream 2.2 (sun arc and shadows, gates in fences, settings over the 3D view, "here" for wall tablets)
+const BUDGET = { "neonplan3d.js": 630 * 1024, "neonplan3d-fun.js": 40 * 1024, "neonplan3d-voice.js": 60 * 1024, "neonplan3d-locate.js": 60 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 850 * 1024, "neonplan3d-editor.js": 825 * 1024, "neonplan3d-card-editor.js": 240 * 1024 };
 
 copyFonts();
 if (watch) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { emptyBuilding, lockAlong, floorElevation, newFloor, outdoorZones, zonesOf, openingPreset, openingStyle, normalizeBuilding, outdoorDrop, outdoorGround, resizeFurniture, roomTiles, sidelightLayout, spotGrid, surfaceHeight, type Furniture } from "./model.ts";
+import { emptyBuilding, lockAlong, floorElevation, newFloor, outdoorZones, zonesOf, openingPreset, openingStyle, normalizeBuilding, outdoorDrop, outdoorGround, resizeFurniture, roomTiles, sidelightLayout, spotGrid, surfaceHeight, syncCameraLooks, type Furniture } from "./model.ts";
 
 test("a sidelight sits opposite the hinge, on the hinge side when asked, and keeps the leaf at least half a metre", () => {
   const none = {};
@@ -211,4 +211,49 @@ test("a lock sits on the main leaf of a double door, not on the seam (#645)", ()
   const lit = { type: "door" as const, style: "sidelight" as const, width: 1.6, leaves: 1 as const };
   const l = sidelightLayout(1.6, "sidelight", true, {})!;
   assert.ok(Math.abs(lockAlong(lit, true) - (l.x0 + l.x1) / 2) < 1e-9);
+});
+
+test("a camera and its look stay together: either one moved takes the other along, the camera gone takes its look (#779)", () => {
+  const make = () => {
+    const b = emptyBuilding();
+    const f = newFloor("eg", "EG", 0);
+    f.placements.push({ entity_id: "camera.flur", x: 1, z: 1, y: null, rotation: 0 });
+    f.furniture.push({ id: "look", type: "camera_dome", x: 1, z: 1, rotation: 0, w: 0.2, d: 0.2, h: 0.2, variant: null, entity: "none", look_of: "camera.flur" } as Furniture);
+    b.floors = [f];
+    return b;
+  };
+  const base = make();
+  const moved = structuredClone(base);
+  moved.floors[0].placements[0].x = 3;
+  syncCameraLooks(moved, base);
+  assert.equal(moved.floors[0].furniture[0].x, 3);
+  const dragged = structuredClone(base);
+  dragged.floors[0].furniture[0].z = 4;
+  dragged.floors[0].furniture[0].rotation = 90;
+  syncCameraLooks(dragged, base);
+  assert.equal(dragged.floors[0].placements[0].z, 4);
+  assert.equal(dragged.floors[0].placements[0].rotation, 90);
+  const gone = structuredClone(base);
+  gone.floors[0].placements = [];
+  syncCameraLooks(gone, base);
+  assert.equal(gone.floors[0].furniture.length, 0);
+});
+
+test("a camera's look hangs at the camera's height, not on the floor (#779)", () => {
+  const b = emptyBuilding();
+  const f = newFloor("eg", "EG", 0);
+  f.placements.push({ entity_id: "camera.flur", x: 1, z: 1, y: 1.8, rotation: 0 }, { entity_id: "camera.decke", x: 2, z: 2, y: null, rotation: 0, mount: "ceiling" });
+  f.furniture.push(
+    { id: "a", type: "camera_dome", x: 1, z: 1, rotation: 0, w: 0.2, d: 0.2, h: 0.2, variant: null, entity: "none", look_of: "camera.flur" } as Furniture,
+    { id: "b", type: "camera_dome", x: 2, z: 2, rotation: 0, w: 0.2, d: 0.2, h: 0.2, variant: null, entity: "none", look_of: "camera.decke" } as Furniture,
+  );
+  b.floors = [f];
+  const next = structuredClone(b);
+  syncCameraLooks(next, b);
+  assert.equal(next.floors[0].furniture[0].mount_y, 1.7);
+  assert.equal(next.floors[0].furniture[1].mount_y, 2.3);
+  next.floors[0].placements[0].y = 2.4;
+  const later = structuredClone(next);
+  syncCameraLooks(later, next);
+  assert.equal(later.floors[0].furniture[0].mount_y, 2.3);
 });

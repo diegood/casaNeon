@@ -2,7 +2,7 @@
 // furniture has the type "pack:<pack id>:<item id>". Every bundle (main, editor, 3D) keeps its own
 // registry, filled with setPacks() from the packs the backend returns.
 
-import { builtinBase, ELECTRIC_FURNITURE, FURNITURE_SIZE, LIFT_SPOTS, spotDepth, surfaceHeight, WALL_LAMP_Y, type Floor, type Furniture } from "./model.ts";
+import { builtinBase, ELECTRIC_FURNITURE, FURNITURE_SIZE, LIFT_SPOTS, outdoorGround, pointInPolygon, spotDepth, surfaceHeight, WALL_LAMP_Y, type Floor, type Furniture } from "./model.ts";
 import type { LampModel } from "./viewer/viewer3d.ts";
 import { ACCESS_POINT_WALL_Y } from "./access-point.ts";
 
@@ -152,6 +152,15 @@ export function packMovingPart(kind: PackMotion, p: PackPart): boolean {
   return kind === "curtain" ? p.color === "fabric" : p.shape !== "cyl";
 }
 
+/**
+ * A pack's sensor model (motion, mmWave presence, contact, leak, CO₂, temperature …): it follows a sensor of its own,
+ * whatever class the integration gave it (Local Tuya's motion sensors have none, #810).
+ */
+export function isPackSensor(type: string): boolean {
+  if (!isPackType(type)) return false;
+  return packItem(type)?.family === "sensor" || /:(\w+_sensor|door_contact|presence_mmwave)$/.test(type);
+}
+
 /** A robot vacuum: the built-in dock, or one from a pack (the smart home pack's robot with its dock, #470). */
 export function isRobotVacuum(type: string): boolean {
   return type === "robot_vacuum" || (isPackType(type) && type.endsWith(":robot_vacuum"));
@@ -237,7 +246,13 @@ export function packItemName(item: PackItem): string {
 // Spanish names of our own packs: a pack file carries one (German) name
 const PACK_NAMES_ES: Record<string, string> = {
   architecture: "Arquitectura y acabados",
+  balcony: "Balcón y espacios pequeños",
   bath: "Baño",
+  cabinet_kit: "Armarios y estanterías – kit",
+  deco: "Decoración y plantas",
+  dining_hall: "Comedor y recibidor",
+  fun_halloween: "Pack divertido: Halloween",
+  fun_pets: "Pack divertido: Mascotas",
   bedroom: "Dormitorio",
   cinema: "Cine en casa y Hi-Fi",
   exclusive: "Exclusivo: frigorífico inteligente",
@@ -262,6 +277,8 @@ const PACK_NAMES_ES: Record<string, string> = {
   pro_screens: "Pro: Pantallas en directo",
   pro_sound: "Pro: Sonido y Cine",
   pro_weather: "Pro: Tiempo exterior",
+  pro_heat: "Pro: Calor Pro",
+  pro_household: "Pro: Hogar Pro",
 };
 
 /** A pack's name: our own packs in Spanish, others as they come. */
@@ -284,13 +301,25 @@ export function mountBase(floor: Floor, f: Pick<Furniture, "type" | "x" | "z" | 
   if (f.type === "led_strip") return Math.max(0, floor.height - 0.04 - Math.max(0.02, f.h));
   switch (item?.mount) {
     case "surface":
-      return surfaceHeight(floor, f.x, f.z, f.h);
+      return groundUnder(floor, f) + surfaceHeight(floor, f.x, f.z, f.h);
     case "wall":
       return item.wall_y ?? 1;
     case "ceiling":
       return Math.max(0, floor.height - f.h);
     default:
       // built-in models: where they are drawn by default (a wall cabinet at 1.45 m)
-      return item ? 0 : builtinBase(f);
+      if (item) return groundUnder(floor, f);
+      return builtinBase(f) || groundUnder(floor, f);
   }
+}
+
+/**
+ * Where an item standing on the ground stands: 0 in a room, outside on the lawn, terrace or lowered ground beneath
+ * it – a bin, a mower or outdoor steps no longer float above a garden lower than the floor (#708).
+ */
+export function groundUnder(floor: Floor, f: Pick<Furniture, "x" | "z">): number {
+  // a floor without rooms has no outside (a plan of free walls only)
+  const rooms = floor.rooms.filter((r) => r.points.length >= 3);
+  if (!rooms.length || rooms.some((r) => pointInPolygon([f.x, f.z], r.points))) return 0;
+  return outdoorGround(floor, f.x, f.z);
 }

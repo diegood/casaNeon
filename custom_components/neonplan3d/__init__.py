@@ -122,13 +122,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await data.async_load()
     hass.data[DOMAIN] = data
 
-    # Assist asks the house: service, intent and the sentences Assist understands
-    await async_setup_voice(hass)
-
     # locating (who and what is where, from the Bluetooth scanners): idle unless an admin switched it on
     locate = LocateService(hass)
     await locate.async_load()
     hass.data[DATA_LOCATE] = locate
+
+    # Assist asks the house: service, intent and the sentences Assist understands (with the names locating knows)
+    await async_setup_voice(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     await _async_register_static(hass)

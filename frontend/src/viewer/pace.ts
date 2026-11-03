@@ -16,6 +16,19 @@ export function decorDelay(ms: number, low: boolean, idleMs: number, lowMs = LOW
 }
 
 /**
+ * Tablet level: pets, the ghost and the fish are what people watch – about 15 frames a second while the view is
+ * used, and still about 4 a second when it rests (they stood still before and looked jerky, #752).
+ */
+export const PET_LOW_MS = 66;
+export const PET_REST_MS = 250;
+
+/** Delay until the next frame of a living decoration (pets, ghost, fish): never a full rest. */
+export function petDelay(low: boolean, idleMs: number): number {
+  if (!low) return 0;
+  return idleMs >= DECOR_REST_MS ? PET_REST_MS : PET_LOW_MS;
+}
+
+/**
  * A device that gets the tablet level on its own ("auto"): little memory, few cores, or an Amazon Fire tablet –
  * Silk, or a Fire's model code (KFTRWI, KFMAWI …) in an Android user agent (Fully Kiosk and other WebViews), whose
  * eight slow cores would pass the core count.

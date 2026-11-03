@@ -2,7 +2,7 @@
 // scenes and scripts). Shown next to the 3D view when a room is selected.
 
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
-import { areaEntities, entityName, groupByDevice, isUnavailable, kindOf, roomClimateSensors, roomClimateValue, roomPanelEntities, fromCelsius, tempUnit, type DeviceKind } from "../devices.ts";
+import { areaEntities, coverTiltButtons, entityName, groupByDevice, isUnavailable, kindOf, roomClimateSensors, roomClimateValue, roomPanelEntities, fromCelsius, tempUnit, type DeviceKind } from "../devices.ts";
 import { formatNumber, translate, type I18nKey } from "../i18n.ts";
 import { hasFeature, released } from "../features.ts";
 import { locatedPersons, personsShown } from "../presence.ts";
@@ -49,6 +49,7 @@ export class Fp3dRoomPanel extends LitElement {
     floor: { attribute: false },
     building: { attribute: false },
     confirmEntities: { attribute: false },
+    sheets: { attribute: false },
     readOnly: { type: Boolean },
     _showAll: { state: true },
     _tick: { state: true },
@@ -64,6 +65,8 @@ export class Fp3dRoomPanel extends LitElement {
   declare confirmEntities: Set<string> | null;
   /** Time travel: the panel shows the past and switches nothing. */
   declare readOnly: boolean;
+  /** What modules offer in this room (📢 an announcement …): a button each, a tap fires "sheet-open" with its id. */
+  declare sheets: { id: string; icon: string; title: string }[] | null;
   /** Show the other devices of the area as well (their main entities). */
   private declare _showAll: boolean;
   /** Bumped every few seconds while the panel is open, so camera snapshots refresh. */
@@ -77,6 +80,7 @@ export class Fp3dRoomPanel extends LitElement {
     this.room = null;
     this.floor = null;
     this.building = null;
+    this.sheets = null;
     this.readOnly = false;
     this._showAll = false;
     this._tick = 0;
@@ -167,7 +171,12 @@ export class Fp3dRoomPanel extends LitElement {
     const extra = groupByDevice(this.hass, more).map((g) => g.primary);
     const hiddenCount = extra.length;
     const ids = this._showAll ? [...shown, ...extra] : shown;
-    const by = (kinds: DeviceKind[]) => ids.filter((id) => kinds.includes(kindOf(id)!)).map((id) => this.hass.states[id]);
+    // an entity placed in the plan but since removed from Home Assistant has no state: left out (the panel threw)
+    const by = (kinds: DeviceKind[]) =>
+      ids
+        .filter((id) => kinds.includes(kindOf(id)!))
+        .map((id) => this.hass.states[id])
+        .filter((st): st is NonNullable<typeof st> => !!st);
     const lights = by(["light"]);
     const covers = by(["cover"]);
     const climates = by(["climate"]);
@@ -186,6 +195,15 @@ export class Fp3dRoomPanel extends LitElement {
           ${facts.length ? html`<p class="fp3d-rp-facts">${facts.join(" · ")}</p>` : nothing}
           ${this.renderHere(room)}
           ${this.readOnly ? html`<p class="fp3d-rp-facts fp3d-rp-ro-note">⏪ ${this.t("tt_readonly")}</p>` : nothing}
+          ${this.sheets?.length && !this.readOnly
+            ? html`<div class="fp3d-rp-sheets">
+                ${this.sheets.map(
+                  (sh) => html`<button class="fp3d-rp-sheet" @click=${() => this.dispatchEvent(new CustomEvent("sheet-open", { detail: { id: sh.id }, bubbles: true, composed: true }))}>
+                    <span aria-hidden="true">${sh.icon}</span>${sh.title}
+                  </button>`,
+                )}
+              </div>`
+            : nothing}
         </div>
         <button class="fp3d-rp-close" aria-label=${this.t("close")} @click=${() => this.fire("close")}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
@@ -378,7 +396,7 @@ export class Fp3dRoomPanel extends LitElement {
               .value=${String(a.current_tilt_position)}
               @change=${(e: Event) => this.call("cover", "set_cover_tilt_position", { entity_id: id, tilt_position: Number((e.target as HTMLInputElement).value) })}
           /></label>`
-        : features & 48
+        : coverTiltButtons(this.hass?.states[id])
           ? html`<div class="fp3d-rp-buttons">
               ${features & 16 ? html`<button class="fp3d-btn fp3d-rp-small" ?disabled=${na} @click=${() => this.call("cover", "open_cover_tilt", { entity_id: id })}>${this.t("cover_tilt_open")}</button>` : nothing}
               ${features & 32 ? html`<button class="fp3d-btn fp3d-rp-small" ?disabled=${na} @click=${() => this.call("cover", "close_cover_tilt", { entity_id: id })}>${this.t("cover_tilt_close")}</button>` : nothing}
@@ -562,6 +580,29 @@ export class Fp3dRoomPanel extends LitElement {
       .fp3d-rp-head > div {
         flex: 1;
         min-width: 0;
+      }
+      .fp3d-rp-sheets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .fp3d-rp-sheet {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--fp3d-line);
+        background: color-mix(in srgb, var(--fp3d-accent, #37e0ff) 12%, transparent);
+        color: inherit;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .fp3d-rp-sheet:hover {
+        border-color: var(--fp3d-accent, #37e0ff);
       }
       h2 {
         margin: 0;

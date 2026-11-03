@@ -27,10 +27,28 @@ export interface Ask {
   screen: string | null;
   /** The view speaks its answer (a satellite that asked speaks itself). */
   speak: boolean;
+  /** Plan rooms to fly into instead of a sentence ("Where is Torsten?": his room; "Who is home?": a tour). */
+  show_rooms?: string[];
+  /** The rooms are people's while people are shown to admins only: only an admin's view flies there. */
+  admins_only?: boolean;
 }
 
-export function subscribeAsk(hass: HomeAssistant, callback: (ask: Ask) => void): Promise<() => Promise<void>> {
-  return hass.connection.subscribeMessage<Ask>(callback, { type: "neonplan3d/voice/subscribe" });
+/** An announcement for the open screens (the service `neonplan3d.announce` with "On NeonPlan screens"). */
+export interface ScreenAnnouncement {
+  id: string;
+  message: string;
+  /** Only the views with these screen names (empty: every open view). */
+  screens: string[];
+}
+
+export function subscribeAsk(hass: HomeAssistant, callback: (ask: Ask) => void, onAnnounce?: (a: ScreenAnnouncement) => void): Promise<() => Promise<void>> {
+  return hass.connection.subscribeMessage<Ask | { announce: ScreenAnnouncement }>(
+    (ev) => {
+      if ("announce" in ev) onAnnounce?.(ev.announce);
+      else callback(ev);
+    },
+    { type: "neonplan3d/voice/subscribe", ...(onAnnounce ? { announce: true } : {}) },
+  );
 }
 
 /** The view's answer; `taken` is false when another view was first. */

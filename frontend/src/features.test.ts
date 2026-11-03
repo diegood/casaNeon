@@ -17,6 +17,9 @@ test("an unreleased add-on stays locked and hidden, even with its pack", async (
   const { released, UNRELEASED } = await import("./features.ts");
   const { setPacks } = await import("./packs.ts");
   assert.ok(UNRELEASED.includes("pool"));
+  setPacks([]);
+  assert.equal(released("auto_pro"), true);
+  assert.equal(released("pool"), false);
   setPacks([{ id: "mastershort.pro_pool", name: "Pro: Pool Pro", items: [], features: ["pool"] } as never]);
   assert.equal(released("pool"), false);
   assert.equal(hasFeature("pool"), false);

@@ -29,6 +29,8 @@ export interface CardConfig {
   roof_fade?: boolean;
   /** Show the roof (default true); false leaves it out altogether, as if the house had none (D601). */
   roof?: boolean;
+  /** A plain floor plan: walls, doors and stairs without furniture (default false); the devices stay. */
+  plain?: boolean;
   quality?: Quality;
   /** Show the performance display (frames per second, draw calls). */
   stats?: boolean;
@@ -48,8 +50,8 @@ export interface CardConfig {
   ghost?: boolean;
   /** Own buttons in the central menu (replace the ones set in the editor): label, icon, action, target, data (D143). */
   buttons?: { label: string; icon?: string; action: "navigate" | "more_info" | "service" | "fire_dom_event"; target?: string; data?: Record<string, unknown> }[];
-  /** Heatmap of the rooms: none | temperature | humidity | co2. */
-  heatmap?: "none" | "temperature" | "humidity" | "co2";
+  /** Heatmap of the rooms: none | temperature | humidity | co2 | values (the numbers at the room names). */
+  heatmap?: "none" | "temperature" | "humidity" | "co2" | "values";
   /** Look: neon | blueprint | day. */
   /** The look; "auto" shows Day while the sun is up and Neon at night. */
   theme?: "neon" | "blueprint" | "day" | "auto";
@@ -94,6 +96,8 @@ export interface CardConfig {
   voice?: boolean;
   /** This card's screen name for Assist and the service `neonplan3d.ask`: a sentence that names a screen is only for it. */
   screen?: string;
+  /** The Home Assistant area this card's tablet hangs in: sentences without a room ("Lights on") apply there; else the device's setting. */
+  voice_area?: string;
   /** Scene and script chips of the selected room (default true). */
   scenes?: boolean;
   /** Motion trail: where motion was reported in the last half hour, with times (default off). */
