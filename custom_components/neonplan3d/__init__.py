@@ -35,6 +35,7 @@ from .const import (
     URL_BASE,
 )
 from .locate.service import DATA_LOCATE, LocateService
+from .screens import async_setup_screens, async_unload_screens
 from .storage import FloorplanData
 from .voice import async_remove_sentences, async_setup_voice, async_unload_voice
 from .websocket import async_register_commands
@@ -129,6 +130,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Assist asks the house: service, intent and the sentences Assist understands (with the names locating knows)
     await async_setup_voice(hass)
+    # card templates: the open wall tablets load their page again on request
+    async_setup_screens(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     await _async_register_static(hass)
@@ -161,6 +164,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     with contextlib.suppress(KeyError, ValueError):
         frontend.remove_extra_js_url(hass, await _async_main_url(hass))
     async_unload_voice(hass)
+    async_unload_screens(hass)
     await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if (locate := hass.data.pop(DATA_LOCATE, None)) is not None:
         locate.stop()

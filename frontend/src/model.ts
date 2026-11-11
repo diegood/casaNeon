@@ -1,6 +1,7 @@
 // Data model shared by editor, 3D view and backend (see custom_components/neonplan3d/schema.py).
 // Units are metres; x grows to the right, z grows downwards (as in the 2D editor).
 
+import type { CardConfig } from "./card-config.ts";
 import { packItem } from "./packs.ts";
 import type { LampModel } from "./viewer/viewer3d.ts";
 import { WATER_HEATER_Y } from "./water-heater.ts";
@@ -27,6 +28,8 @@ export interface Room {
   /** Further names the voice answers to ("Stube", "Lounge"). */
   aliases?: string[];
   area_id: string | null;
+  /** The script, button or scene that sends the robot vacuum to clean this room ("🧹 Clean", "vacuum here"). */
+  cleaning?: string | null;
   /** The camera the room opens with when it is tapped in 3D (null: framed from above). */
   start_view?: StartView | null;
   points: Vec2[];
@@ -95,6 +98,8 @@ export interface Opening {
   leaves: 1 | 2;
   /** Doors swing into their room ("in") or to the other side ("out"). */
   swing: "in" | "out";
+  /** Windows: hung at the top, the bottom opening outwards (#327, common in Scandinavia); open and tilted look alike. */
+  top_hung?: boolean;
   /** Look of the door or window (null = automatic: a front door in an exterior wall, else a room door). */
   style?: OpeningStyle | null;
   /** One sidelight: on the hinge side instead of opposite the hinge. */
@@ -169,6 +174,8 @@ export interface ScreenPicture {
 export interface Furniture {
   /** Fixed against moving by accident. */
   locked?: boolean | null;
+  /** Shown in 3D only while an entity is in a state (decoration for a season, show-if.ts); the editor always shows it. */
+  show_if?: { entity: string; state?: string | null } | null;
   /** Furniture block: items with the same group id are selected, moved and turned together (a kitchen, a wall unit). */
   group?: string | null;
   /** Pool Pro, sand filter: the six-way valve's position (null = filter). */
@@ -197,6 +204,8 @@ export interface Furniture {
    * signal (yellow: water) does not show its other colours here. Null: every colour.
    */
   only_color?: string | null;
+  /** Lamps: always drawn in this colour ("#rrggbb"), whatever the light reports – on/off and brightness still follow it (#977). Null: the light's colour. */
+  glow_color?: string | null;
   /** With a power sensor: the item counts as running above this many watts (null = the default, 10 W). */
   run_w?: number | null;
   /** Awning: the fabric's fall in degrees (null = 12°). */
@@ -231,6 +240,19 @@ export interface Furniture {
   bin_match?: string | null;
   /** Haushalt Pro: an entity that is on while the bin is out (input_boolean, switch, binary_sensor; null = none). */
   bin_out?: EntityRef;
+  /** Digital picture frames: what the frame's face shows (null = nothing, a dark pane). */
+  frame_kind?: "calendar" | "camera" | "media" | "person" | "photo" | "weather" | "todo" | "board" | "persons" | null;
+  /**
+   * Digital picture frames: where it comes from – calendar entities (several separated by commas), a camera, a media
+   * player, a person, a weather entity, or for a photo an http(s) URL or a stored picture (see pictureUrl).
+   */
+  frame_source?: string | null;
+  /** Camera frame: an entity (doorbell, motion, event) that pops the frame up large, or "detect" for the camera's own detections. */
+  frame_trigger?: string | null;
+  /** Calendar and board: minutes before an event an announcement and a note remind of it (null = none). */
+  frame_remind?: number | null;
+  /** Photo slideshow: seconds per picture (null = 30). */
+  frame_interval?: number | null;
   /** Haushalt Pro, mailbox: the sensor of the door it is emptied through (post counts until it opens). */
   mailbox_door?: EntityRef;
   /** Haushalt Pro, plant: a plant.* entity or a soil moisture sensor; thirsty below `moisture_min`. */
@@ -328,7 +350,7 @@ export type LampMount = "ceiling" | "floor" | "table" | "wall";
 export type ModuleData = Record<string, Record<string, unknown>>;
 
 /** How a device's marker shows in 3D (null = automatic by the marker mode). */
-export const MARKER_SHOWS = ["always", "no_power", "never"] as const;
+export const MARKER_SHOWS = ["always", "active", "no_power", "never"] as const;
 export type MarkerShow = (typeof MARKER_SHOWS)[number];
 
 export interface Placement {
@@ -370,6 +392,8 @@ export interface Placement {
   cone?: boolean | null;
   /** Cameras: detection pins (person, car, animal) over the camera (null = yes); false leaves only the wedge turning red (#267). */
   detect_pins?: boolean | null;
+  /** Cameras (Kamera-Cockpit): a new detection opens the camera's picture as a small pop-up for a while (#442, off by default). */
+  detect_popup?: boolean;
   /** Cameras: the detection sensors that count, chosen by hand (any device's); null = those of the camera's device (#815). */
   detect_sensors?: string[] | null;
 }
@@ -493,6 +517,12 @@ export interface RoofSettings {
   overhang: number;
   /** Gable roof: ridge along the long side (default) or across, along the short side (terraced houses). */
   ridge?: "long" | "short" | null;
+  /**
+   * The footprint a flat or gable roof spans [x0, z0, x1, z1] (the top floor's rooms, without walls and overhang)
+   * when it is not that of the rooms present: a card that shows only some rooms keeps the whole house's roof over
+   * them (#997). Never saved; set by roomsOnly.
+   */
+  frame?: [number, number, number, number] | null;
   /** Roof sections of a "custom" roof. */
   sections?: RoofSection[];
   /** Solar fields on the roof faces. */
@@ -769,6 +799,8 @@ export interface BuildingSettings {
   person_look?: "figure" | "pin" | "off" | null;
   /** Fun pack "Halloween": the ghost that floats through the house now and then (on unless switched off). */
   halloween?: { ghost?: boolean } | null;
+  /** Fun pack "Winter & Christmas": fairy lights along the eaves, snow on roof and lawn, the New Year's firework (winter.ts). */
+  winter?: { roof_lights?: boolean; roof_entity?: string | null; roof_color?: boolean; roof_outline?: boolean; snow?: boolean; firework?: boolean } | null;
   /** Plan lock: rooms, walls, doors, windows and outdoor areas cannot be moved by accident. */
   lock_plan?: boolean;
   /** The camera the house view opens with (3D view, card, kiosk); null = fitted from the front left. */
@@ -919,6 +951,17 @@ export function outdoorGround(floor: Floor, x: number, z: number): number {
   // an area cut out of the one beneath it wins over that one
   const a = [...inside].reverse().find((o) => o.cut) ?? inside[0];
   return a ? outdoorTopAt(floor, a, x, z) : groundLevel(floor);
+}
+
+/**
+ * The surface seen from above at a point outside the rooms: an area cut out of another wins, else the highest of the
+ * areas lying there – a terrace drawn on a lawn is on top. The window light at night lies on it, not under it (#893).
+ */
+export function outdoorSurface(floor: Floor, x: number, z: number): number {
+  const inside = (floor.outdoor ?? []).filter((o) => !outdoorStanding(o.type) && o.type !== "pool" && pointInPolygon([x, z], o.points));
+  const cut = [...inside].reverse().find((o) => o.cut);
+  if (cut) return outdoorTopAt(floor, cut, x, z);
+  return inside.length ? Math.max(...inside.map((a) => outdoorTopAt(floor, a, x, z))) : groundLevel(floor);
 }
 
 /** Auto Pro: which entities tell the car's state; null = automatic (an entity of the car's Home Assistant device). */
@@ -1220,6 +1263,23 @@ export interface Building {
   settings: BuildingSettings;
   energy: EnergySettings;
   presence: PresenceLink[];
+  /** Card templates: a dashboard card names one (option `template`) and takes its options from here (absent: none). */
+  card_templates?: CardTemplate[];
+}
+
+/** A dashboard card set up in the editor: a wall tablet only picks it, a change here reaches every tablet showing it. */
+export interface CardTemplate {
+  /** Named in the card's YAML (`template: kueche_fire`); made from the first name, kept when it is renamed. */
+  id: string;
+  name: string;
+  /** Earlier ids (the template was renamed): cards set up with them still find it. */
+  aliases?: string[];
+  /** The card's options (as its visual editor makes them), without `type`: what the tablets show. */
+  config: Partial<CardConfig>;
+  /** false: changes collect in `draft` and reach the tablets only with "Send to the tablets" (absent: live). */
+  live?: boolean;
+  /** The changes not sent yet (only while not live). */
+  draft?: Partial<CardConfig>;
 }
 
 export const DEFAULT_ENERGY: EnergySettings = {
@@ -1292,6 +1352,15 @@ export function roomTiles(floor: Floor, areas: { area_id: string; name: string }
  * Resizes a furniture item by dragging one corner (`corner`: signs of the corner in the item's own
  * frame) to a plan point; the opposite corner stays in place. Sizes snap to `grid`.
  */
+/** A corner of an item in the plan, optionally `out` metres further out along both of its sides. */
+export function furnitureCorner(f: Pick<Furniture, "x" | "z" | "w" | "d" | "rotation">, corner: [1 | -1, 1 | -1], out = 0): Vec2 {
+  const a = (f.rotation * Math.PI) / 180;
+  const [sx, sz] = corner;
+  const hw = f.w / 2 + out;
+  const hd = f.d / 2 + out;
+  return [f.x + sx * hw * Math.cos(a) - sz * hd * Math.sin(a), f.z + sx * hw * Math.sin(a) + sz * hd * Math.cos(a)];
+}
+
 export function resizeFurniture(f: Furniture, corner: [1 | -1, 1 | -1], p: Vec2, grid: number): Pick<Furniture, "x" | "z" | "w" | "d"> {
   const a = (f.rotation * Math.PI) / 180;
   const c = Math.cos(a);
@@ -1747,7 +1816,8 @@ export const OPENING_DEFAULTS = {
 /** Door looks: room doors, front doors (with glass, one or two sidelights), a glass door, a sliding door. */
 export const DOOR_STYLES = ["interior", "front", "front_glass", "sidelight", "sidelights", "glass", "sliding", "passage"] as const;
 /** "glass_wall": fixed floor-to-ceiling glazing without sashes, slim mullions (an indoor glass wall, #163). */
-export const WINDOW_STYLES = ["standard", "bars", "glass_wall"] as const;
+/** "slide": a lift-and-slide door or sliding window – one pane fixed, the other slides in front of it (#397, #361). */
+export const WINDOW_STYLES = ["standard", "bars", "glass_wall", "slide"] as const;
 export type OpeningStyle = (typeof DOOR_STYLES)[number] | (typeof WINDOW_STYLES)[number];
 
 /** The style an opening is drawn with: its own, or the automatic one for its wall. */
@@ -1816,6 +1886,8 @@ export const OPENING_PRESETS = {
   terrace_double: { type: "window", leaves: 2, width: 1.8, sill: 0, height: 2.1 },
   garage: { type: "garage", leaves: 1, width: 2.5, sill: 0, height: 2.1 },
   glass_wall: { type: "window", leaves: 1, width: 2.0, sill: 0, height: 2.4, style: "glass_wall" },
+  terrace_slide: { type: "window", leaves: 1, width: 2.4, sill: 0, height: 2.15, style: "slide" },
+  window_slide: { type: "window", leaves: 1, width: 1.6, sill: 0.9, height: 1.3, style: "slide" },
 } as const satisfies Record<string, { type: OpeningType; leaves: 1 | 2; width: number; sill: number; height: number; style?: OpeningStyle }>;
 
 export type OpeningPreset = keyof typeof OPENING_PRESETS;
@@ -1824,6 +1896,7 @@ export type OpeningPreset = keyof typeof OPENING_PRESETS;
 export function openingPreset(o: Pick<Opening, "type" | "leaves" | "sill" | "style">): OpeningPreset {
   if (o.type === "garage") return "garage";
   if (o.type === "window" && o.style === "glass_wall") return "glass_wall";
+  if (o.type === "window" && o.style === "slide") return o.sill < 0.1 ? "terrace_slide" : "window_slide";
   const two = o.leaves === 2;
   if (o.type === "door") {
     if (!two && o.style && isFrontDoor(o.style)) return "front";

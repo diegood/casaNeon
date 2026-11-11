@@ -160,9 +160,29 @@ const shots = [
   { name: "editor-opening", query: "", width: 1280, height: 800, editor: true, editorState: { _openingId: "o2", _roomId: "wohnen" } },
   { name: "editor-camera-wedge", query: "", width: 1280, height: 800, editor: true, editorState: { _floorId: "eg", _deviceId: "camera.wohnzimmer", _roomId: "wohnen", _tool: "select" } },
   { name: "editor-picture-rules", query: "", width: 1280, height: 900, editor: true, editorScript: "const f = e._doc.floors[0].furniture.find((m) => m.pictures); e._roomId = 'wohnen'; e._furnitureId = f.id; e.renderRoot.querySelector('aside').scrollTop = 900;" },
-  // the opt-in reports (unreleased: only with the lab switch) and the exact JSON they send
   { name: "editor-library", query: "", width: 1280, height: 900, editor: true, editorScript: "e._roomId = 'wohnen'; e._furnQuery = 'sofa';" },
+  // "only show while …": a piece shown in 3D only while an entity is in a state (drawn faint in the plan while it is away)
+  // several floor plans (3.0): the picker in the header, ⚙ → Floor plans in the editor, a card for one room
+  { name: "plans-picker", query: "?plans", width: 1280, height: 800, viewScript: "const p = v.getRootNode().host; p.renderRoot.querySelector('fp3d-plan-picker')._open = true;", wait: 1200 },
+  { name: "plans-manager", query: "?plans", width: 1280, height: 900, editor: true, editorScript: "e.openSettings('plans');", wait: 1200 },
+  { name: "card-room-one", query: "?card&rooms=kind", width: 1400, height: 900, wait: 2500 },
+  // ⚙ Settings → Fun packs: the free extras and their settings (moved from the extensions page)
+  { name: "editor-fun-packs", query: "", width: 1280, height: 900, editor: true, editorScript: "e._settingsDialog = 'fun';", afterWait: 1200 },
+  { name: "editor-card-templates", query: "", width: 1600, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kueche_fire', name: 'Küche Fire-Tablet', config: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche' }, live: false, draft: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche', voice: true, clock: 'tr' } }, { id: 'flur', name: 'Flur', config: {} }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards';", afterWait: 1500 },
+  { name: "view-room-actions", query: "", width: 1280, height: 800, editor: true, editorScript: "e._doc.floors[0].rooms.find((r) => r.id === 'wohnen').cleaning = 'script.gute_nacht'; e.setDoc(structuredClone(e._doc));", then3d: "Wohnzimmer" },
+  { name: "editor-card-screens", query: "", width: 1280, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kueche_fire', name: 'Küche Fire-Tablet', config: { floor: 'eg' } }, { id: 'flur', name: 'Flur', config: {} }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards'; setTimeout(() => { const d = e.shadowRoot.querySelector('.fp3d-dialog'); if (d) d.scrollTop = 99999; }, 2500);", afterWait: 3500 },
+  { name: "rel-templates-en", query: "?lang=en", width: 1600, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kitchen_tablet', name: 'Kitchen tablet', config: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche', voice: true, clock: 'tr', fill: true } }, { id: 'hall', name: 'Hallway', config: { floor: 'og' } }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards';", afterWait: 2500 },
+  { name: "rel-screens-en", query: "?lang=en", width: 1600, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kitchen_tablet', name: 'Kitchen tablet', config: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche', voice: true, clock: 'tr', fill: true } }, { id: 'hall', name: 'Hallway', config: { floor: 'og' } }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards'; setTimeout(() => { const d = e.shadowRoot.querySelector('.fp3d-dialog'); if (d) d.scrollTop = 99999; }, 2500);", afterWait: 3500 },
+  { name: "rel-card-dialog-en", query: "?card&tpl&lang=en", width: 1400, height: 900, wait: 1500 },
+  { name: "rel-room-actions-en", query: "?lang=en", width: 1280, height: 800, editor: true, editorScript: "e._doc.floors[0].rooms.find((r) => r.id === 'wohnen').cleaning = 'script.gute_nacht'; e.setDoc(structuredClone(e._doc));", then3d: "Wohnzimmer" },
+  { name: "rel-templates-de", query: "", width: 1600, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kitchen_tablet', name: 'Küchen-Tablet', config: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche', voice: true, clock: 'tr', fill: true } }, { id: 'hall', name: 'Flur', config: { floor: 'og' } }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards';", afterWait: 2500 },
+  { name: "rel-screens-de", query: "", width: 1600, height: 1000, editor: true, editorScript: "e._doc.card_templates = [{ id: 'kitchen_tablet', name: 'Küchen-Tablet', config: { floor: 'eg', room: 'kueche', idle_return: 120, voice_area: 'kueche', voice: true, clock: 'tr', fill: true } }, { id: 'hall', name: 'Flur', config: { floor: 'og' } }]; e.setDoc(structuredClone(e._doc)); e._settingsDialog = 'cards'; setTimeout(() => { const d = e.shadowRoot.querySelector('.fp3d-dialog'); if (d) d.scrollTop = 99999; }, 2500);", afterWait: 3500 },
+  { name: "rel-card-dialog-de", query: "?card&tpl", width: 1400, height: 900, wait: 1500 },
+  { name: "rel-room-actions-de", query: "", width: 1280, height: 800, editor: true, editorScript: "e._doc.floors[0].rooms.find((r) => r.id === 'wohnen').cleaning = 'script.gute_nacht'; e.setDoc(structuredClone(e._doc));", then3d: "Wohnzimmer" },
+  { name: "editor-show-if", query: "", width: 1280, height: 1000, editor: true, editorScript: "const f = e._doc.floors[0].furniture.find((m) => m.id === 'm2'); f.show_if = { entity: 'input_boolean.gaeste', state: 'on' }; e.setDoc(structuredClone(e._doc)); e._furnitureId = 'm2';" },
   { name: "editor-split-3d", query: "", width: 1400, height: 900, editor: true, editorScript: "e._split = true; e._furnitureId = 'm2';" },
+  { name: "editor-split-3d-en", query: "?lang=en", width: 1440, height: 900, editor: true, editorScript: "setTimeout(() => (e._diagInvite = false), 400); e._split = true; e._furnitureId = 'm2';", afterWait: 1500 },
+  { name: "editor-split-3d-de", query: "", width: 1440, height: 900, editor: true, editorScript: "setTimeout(() => (e._diagInvite = false), 400); e._split = true; e._furnitureId = 'm2';", afterWait: 1500 },
   { name: "editor-free-wall", query: "", width: 1280, height: 800, editor: true, editorState: { _floorId: "og", _tool: "select" } },
   { name: "editor-room-wall-heights", query: "", width: 1280, height: 1000, editor: true, editorState: { _floorId: "og", _tool: "select", _roomId: "kind", _edgeHi: 1 }, scrollSide: true },
   { name: "view-free-wall", query: "", width: 1280, height: 800, click: "Obergeschoss", then: "Gästezimmer" },
@@ -364,6 +384,7 @@ const shots = [
   { name: "view-pro-locked", query: "?nopro", width: 1280, height: 800, click: "Erdgeschoss", then: "Wohnzimmer", viewScript: "v.lookThrough('camera.wohnzimmer');" },
   { name: "view-weather-rain", query: "?weather=pouring", width: 1280, height: 800, wait: 1200 },
   { name: "view-weather-snow", query: "?weather=snowy", width: 1280, height: 800, wait: 1200 },
+  { name: "view-weather-fog", query: "?weather=fog", width: 1280, height: 800, viewScript: "v.building.settings.weather_effects = ['rain', 'snow', 'fog', 'clouds', 'lightning', 'sky']; v.syncDevices(true);", wait: 1200, afterWait: 1500 },
   { name: "view-trail", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Spur", wait: 1500 },
   // Zeitreise (Pro): the invented week of the demo replayed – time bar, clock, amber frame, read-only room panel
   { name: "view-timetravel", query: "?tt=07:42", width: 1280, height: 800, click: "Erdgeschoss" },
@@ -381,6 +402,7 @@ const shots = [
   { name: "view-timetravel-energy", query: "?tt=13:00&flows", width: 1280, height: 800, wait: 1500 },
   { name: "tablet-timetravel-7d", query: "?tt=-20h", width: 800, height: 1280, click: "Tablet", then: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; const s = p.tt.session; const bar = p.renderRoot.querySelector('fp3d-time-bar'); s.setRange('7d');", afterWait: 3000 },
   // "fill the screen" reaches the bottom edge, measured from where the card starts (#344)
+  { name: "card-template", query: "?card&tpl", width: 1400, height: 900, wait: 1500 },
   { name: "card-fill", query: "?card&fill", width: 1280, height: 800, wait: 1500 },
   { name: "card-timetravel", query: "?card&tt", width: 1400, height: 900, click: "⏪ Zeitreise" },
   { name: "view-timetravel-locked", query: "?nopro", width: 1280, height: 800, click: "🔒 Zeitreise" },
@@ -390,6 +412,7 @@ const shots = [
   { name: "card-kiosk-orbit", query: "?card&kiosk", width: 1400, height: 900, wait: 2600 },
   { name: "view-floor-stack-panel", query: "", width: 1280, height: 800, click: "Obergeschoss", then: "Einzeln" },
   { name: "view-room-names-off", query: "", width: 1280, height: 800, click: "Erdgeschoss", then: "Raumnamen" },
+  { name: "view-values-no-names", query: "", width: 1280, height: 800, click: "Erdgeschoss", viewScript: "const p = v.getRootNode().host; p._roomNames = false; p._heat = 'values';", wait: 1500 },
   { name: "empty", query: "?empty", width: 1280, height: 800 },
   { name: "view-household", query: "", width: 1600, height: 1000, editor: true, editorScript: HOUSEHOLD_SCRIPT, then3d: "Erdgeschoss", camera: { target: { x: 12, y: 0.6, z: 7.8 }, radius: 7, phi: 0.95 }, afterWait: 1500 },
   // Haushalt Pro tags: only the next pickup labelled, the big residual waste container already put out

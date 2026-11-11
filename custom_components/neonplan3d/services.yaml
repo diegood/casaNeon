@@ -15,3 +15,16 @@ ask:
       default: false
       selector:
         boolean:
+reload_screens:
+  fields:
+    templates:
+      required: false
+      example: "cocina_tablet"
+      selector:
+        text:
+          multiple: true
+    plan:
+      required: false
+      example: "main"
+      selector:
+        text:

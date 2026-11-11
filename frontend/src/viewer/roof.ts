@@ -6,9 +6,9 @@
 import { Color } from "three";
 import type { Building, Floor, RoofSection, SolarField, Vec2 } from "../model.ts";
 import { polygonArea } from "../model.ts";
-import { coversIn, cutHole, cutUnder, lineOutside, meetLine, sectionCovers, sectionFloor, sectionsCut, dormerHoles, dormerParent, effectiveDormer, offsetPolygon, sectionGeometry, sectionHeightAt, sectionPolygon, sectionFrame, sectionOverhang, sectionProfile, sectionUV, wingJunction, wingSection, type LocalCover, type Q, type SectionOverhang } from "../roof-sections.ts";
+import { coversIn, cutHole, cutUnder, lineOutside, meetLine, sectionCovers, sectionFloor, sectionsCut, dormerHoles, dormerParent, effectiveDormer, turnedDormer, offsetPolygon, sectionGeometry, sectionHeightAt, sectionPolygon, sectionFrame, sectionOverhang, sectionProfile, sectionUV, wingJunction, wingSection, type LocalCover, type Q, type SectionOverhang } from "../roof-sections.ts";
 import { DEG, GeoBuffer, LineBuffer, pushPrism, shade } from "./geo.ts";
-import { fieldModules, roofFaces, roofWindowRoom, windowCorners, type RoofFace } from "../solar.ts";
+import { fieldModules, roofFaces, roofFootprint, roofWindowRoom, windowCorners, type RoofFace } from "../solar.ts";
 
 const ROOF = 0x1a2338;
 const ROOF_TOP = 0x222d48;
@@ -203,13 +203,12 @@ function buildSingleRoof(b: Building): RoofGeometry | null {
   const roof = b.settings.roof;
   const floor = roofFloor(b);
   if (!floor || !roof || roof.type === "none" || roof.type === "custom") return null;
-  const xs = floor.rooms.flatMap((r) => r.points.map((p) => p[0]));
-  const zs = floor.rooms.flatMap((r) => r.points.map((p) => p[1]));
+  const [fx0, fz0, fx1, fz1] = roofFootprint(b, floor);
   const m = b.settings.wall_exterior + roof.overhang;
-  const x0 = Math.min(...xs) - m;
-  const x1 = Math.max(...xs) + m;
-  const z0 = Math.min(...zs) - m;
-  const z1 = Math.max(...zs) + m;
+  const x0 = fx0 - m;
+  const x1 = fx1 + m;
+  const z0 = fz0 - m;
+  const z1 = fz1 + m;
   const solid = new GeoBuffer();
   const lines = new LineBuffer();
   if (roof.type === "flat") {
@@ -275,7 +274,8 @@ function buildSections(b: Building, sections: readonly RoofSection[], overhang: 
     usable.map((sec) => {
       const parent = dormerParent(sections, sec);
       const junction = parent ? null : wingJunction(sections, sec);
-      const drawn = parent ? effectiveDormer(parent, sec) : junction ? wingSection(sec, junction) : sec;
+      // a turned cross gable keeps its whole length: its roof cuts it where it runs under the slope
+      const drawn = parent ? (turnedDormer(sections, sec) ? sec : effectiveDormer(parent, sec)) : junction ? wingSection(sec, junction) : sec;
       const own = sectionOverhang(b, parent ? drawn : sec, drawn.overhang ?? overhang);
       const ov: SectionOverhang = junction ? { ...own, [junction.end === 0 ? "u0" : "u1"]: 0 } : own;
       const sloped = !drawn.open && drawn.shape !== "flat" && drawn.shape !== "parapet";
@@ -297,7 +297,8 @@ function buildSections(b: Building, sections: readonly RoofSection[], overhang: 
     const parent = plan.parent;
     const attic = floor.elevation + floor.height > sec.base + 0.05 && !sec.dormer && !parent;
     // the slope opens under every dormer and cross gable sitting on this section, and under its roof windows
-    const holes = sections.filter((d) => d !== sec && dormerParent(sections, d) === sec).flatMap((d) => dormerHoles(sec, d));
+    // (a turned one cuts the slope by its planes instead, see sectionsCut)
+    const holes = sections.filter((d) => d !== sec && dormerParent(sections, d) === sec && !turnedDormer(sections, d)).flatMap((d) => dormerHoles(sec, d));
     for (const w of b.settings.roof.windows ?? []) {
       const face = faceMap.get(w.face);
       const corners = face && face.section === sec.id ? windowCorners(face, w) : null;

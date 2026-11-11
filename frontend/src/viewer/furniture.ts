@@ -9,7 +9,7 @@ import { builtinBase, stairsULayout, POOL_VALVE_Y, SOCKET_Y, SWITCH_Y } from "..
 import { plateModules, switchKeys } from "../wall-switch.ts";
 import { WATER_HEATER_Y } from "../water-heater.ts";
 import { apOnWall } from "../access-point.ts";
-import { isRobotVacuum, mountBase, packItem, packMotion, packMovingPart, packRobotCentre, packRobotPart, packScreen, type PackItem, type PackMotion, type PackPart } from "../packs.ts";
+import { adventCandles, isRobotVacuum, mountBase, packItem, packMotion, packMovingPart, packRobotCentre, packRobotPart, packScreen, type PackItem, type PackMotion, type PackPart } from "../packs.ts";
 import { fitParts } from "../pack-scale.ts";
 import { binColors, binShape, householdCountry, mailboxShape, type BinShape, type MailboxShape } from "../household.ts";
 import type { Floor } from "../model.ts";
@@ -1984,8 +1984,11 @@ function packModel(
   skip: ((p: PackItem["parts"][number]) => boolean) | null = null,
 ): void {
   const onlyGlow = !!only;
+  const advent = item.parts.some((p) => p.advent) ? adventCandles() : 4;
   for (const q of fitParts(item, w, d, h)) {
     if (skip?.(q)) continue;
+    // an Advent candle's flame burns only from its Sunday on
+    if (q.advent && q.advent > advent) continue;
     // only some parts (the glowing ones of a speaker, a car's windows), a hair larger so they cover the item's own
     if (only && !only(q)) continue;
     const p = onlyGlow ? { ...q, glow: true, w: q.w + 0.006 / w, d: q.d + 0.006 / d, y: Math.max(0, q.y - 0.002 / h), h: q.h + 0.004 / h } : q;
@@ -2147,6 +2150,34 @@ export function packGlowCentre(item: PackItem, f: Pick<Furniture, "x" | "z" | "r
   const s = Math.sin(a);
   const mx = f.mirror ? -1 : 1;
   return [f.x + mx * x * c - z * s, base + sy / weight, f.z + mx * x * s + z * c];
+}
+
+/**
+ * Every glowing part of a pack lamp as a point of its own (a track with three spots, a chandelier's candles): the
+ * light and the cones come from each of them, not from their middle (#1034). Parts that touch each other (a shade
+ * built from several pieces) count as one.
+ */
+export function packGlowCentres(item: PackItem, f: Pick<Furniture, "x" | "z" | "rotation" | "w" | "d" | "h" | "mirror">, base: number): [number, number, number][] {
+  const w = Math.max(0.05, f.w);
+  const d = Math.max(0.05, f.d);
+  const h = Math.max(0.005, f.h);
+  const pts: { x: number; y: number; z: number; r: number }[] = [];
+  for (const p of fitParts(item, w, d, h)) {
+    if (!p.glow) continue;
+    const x = ((p.x + (p.shape === "loft" ? (p.tx ?? p.x) : p.x)) / 2) * w;
+    const z = ((p.z + (p.shape === "loft" ? (p.tz ?? p.z) : p.z)) / 2) * d;
+    const y0 = p.y * h;
+    const y1 = Math.min(h, (p.y + p.h) * h);
+    const r = Math.max(p.w * w, p.d * d) / 2;
+    const near = pts.find((q) => Math.hypot(q.x - x, q.z - z) < q.r + r + 0.01);
+    if (near) continue;
+    pts.push({ x, y: (y0 + y1) / 2, z, r });
+  }
+  const a = f.rotation * DEG;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const mx = f.mirror ? -1 : 1;
+  return pts.map((p) => [f.x + mx * p.x * c - p.z * s, base + p.y, f.z + mx * p.x * s + p.z * c]);
 }
 
 export function pushPackLamp(buf: GeoBuffer, item: PackItem, f: Pick<Furniture, "x" | "z" | "rotation" | "w" | "d" | "h" | "mirror">, base: number, glow: number): void {

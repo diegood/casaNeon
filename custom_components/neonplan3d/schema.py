@@ -64,6 +64,8 @@ ROOM_SCHEMA = vol.Schema(
         # further names the voice answers to
         vol.Optional("aliases"): vol.All([vol.All(str, vol.Length(min=1, max=60))], vol.Length(max=12)),
         vol.Required("area_id"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        # the script or button that sends the robot vacuum to clean this room
+        vol.Optional("cleaning"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Required("points"): vol.All([_POINT], vol.Length(min=3, max=MAX_POINTS)),
         vol.Required("floor_material"): vol.All(str, vol.Length(max=32)),
         # the camera this room opens with when it is tapped (None = framed from above)
@@ -118,7 +120,7 @@ ROOM_SCHEMA = vol.Schema(
 
 # door looks (room door, front doors with glass and sidelights, glass and sliding door) and window looks
 _OPENING_STYLES = ["interior", "front", "front_glass", "sidelight", "sidelights", "glass", "sliding", "passage"]
-_OPENING_STYLES += ["standard", "bars", "glass_wall"]
+_OPENING_STYLES += ["standard", "bars", "glass_wall", "slide"]
 
 OPENING_SCHEMA = vol.Schema(
     {
@@ -139,6 +141,8 @@ OPENING_SCHEMA = vol.Schema(
         vol.Optional("leaves", default=1): vol.In([1, 2]),
         # doors: swing into the room ("in") or to the other side ("out")
         vol.Optional("swing", default="in"): vol.In(["in", "out"]),
+        # windows: hung at the top, the bottom opens outwards
+        vol.Optional("top_hung", default=False): bool,
         # look: None = automatic (front door in an exterior wall, room door inside; plain window)
         vol.Optional("style", default=None): vol.Any(None, vol.In(_OPENING_STYLES)),
         # front doors with sidelights: one on the hinge side, and the widths (None = automatic)
@@ -230,6 +234,8 @@ _VEHICLE_TYPE_SCHEMA = vol.Schema(
 
 # the kinds of waste a bin can take (household.ts WASTE_KINDS)
 WASTE_KINDS = ["rest", "bio", "paper", "plastic", "glass", "garden", "recycling", "other"]
+# digital picture frames: what a frame's face shows
+FRAME_KINDS = ["calendar", "camera", "media", "person", "photo", "weather", "todo", "board", "persons"]
 
 FURNITURE_SCHEMA = vol.Schema(
     {
@@ -251,6 +257,8 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("glow_scale", default=None): vol.Any(
             None, vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.5))
         ),
+        # lamps: always drawn in this colour ("#rrggbb"), whatever the light reports (None = the light's colour)
+        vol.Optional("glow_color", default=None): vol.Any(None, vol.Match(r"^#[0-9a-fA-F]{6}$")),
         # linked entities (e.g. the TV's media player, a power sensor): None = automatic, "none" = no entity
         vol.Optional("entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("power", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
@@ -278,13 +286,14 @@ FURNITURE_SCHEMA = vol.Schema(
         # ask before switching the linked entity
         vol.Optional("confirm", default=False): bool,
         # its marker in 3D: None = automatic, always, without watts, or hidden
-        vol.Optional("marker", default=None): vol.Any(None, vol.In(["always", "no_power", "never"])),
+        vol.Optional("marker", default=None): vol.Any(None, vol.In(["always", "active", "no_power", "never"])),
         # an own symbol for the marker: a Material Design icon name without "mdi:"
         vol.Optional("icon", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
         # parking spots: the vehicle shown (a pack item type) while the entity reports a car, its size
         # factor, and a sensor naming the kind of vehicle with a state -> vehicle mapping
         # height of the bottom edge above the floor (None = default: the floor, a pack item's mount)
-        vol.Optional("mount_y", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=10))),
+        # below 0 only outside the rooms (outdoor steps down to a sunken terrace, #897); the editor keeps rooms at 0
+        vol.Optional("mount_y", default=None): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=-5, max=10))),
         # any furniture: an entity whose state the item shows (glows while on / occupied / home), optionally
         # two of them for the halves of a bed (left/right) or a bunk bed (bottom/top)
         vol.Optional("state_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
@@ -309,6 +318,12 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("bin_source"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         vol.Optional("bin_match"): vol.Any(None, vol.All(str, vol.Length(max=120))),
         vol.Optional("mailbox_door"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        # digital picture frames: what the face shows and where it comes from (entities, or a URL for a photo)
+        vol.Optional("frame_kind"): vol.Any(None, vol.In(FRAME_KINDS)),
+        vol.Optional("frame_source"): vol.Any(None, vol.All(str, vol.Length(max=4000))),
+        vol.Optional("frame_trigger"): vol.Any(None, vol.All(str, vol.Length(max=255))),
+        vol.Optional("frame_remind"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=1440))),
+        vol.Optional("frame_interval"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=3, max=3600))),
         # Haushalt Pro: on while the bin is out (an input_boolean a nightly automation resets)
         vol.Optional("bin_out"): vol.Any(None, vol.All(str, vol.Length(max=255))),
         # Haushalt Pro: a plant's moisture, an appliance's time left, a service, a fridge's door alarm
@@ -369,6 +384,16 @@ FURNITURE_SCHEMA = vol.Schema(
         vol.Optional("group", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
         # fixed against moving by accident
         vol.Optional("locked", default=None): vol.Any(None, bool),
+        # shown in 3D only while an entity is in a state (decoration for a season)
+        vol.Optional("show_if", default=None): vol.Any(
+            None,
+            vol.Schema(
+                {
+                    vol.Required("entity"): vol.All(str, vol.Length(max=255)),
+                    vol.Optional("state", default=None): vol.Any(None, vol.All(str, vol.Length(max=120))),
+                }
+            ),
+        ),
         # a module's own data for this item
         vol.Optional("mods"): _MODULE_DATA,
     },
@@ -394,7 +419,7 @@ PLACEMENT_SCHEMA = vol.Schema(
         # ask before switching this device from the 3D view, the quick menu or the room panel
         vol.Optional("confirm", default=False): bool,
         # its marker in 3D: None = automatic, always, without watts, or hidden
-        vol.Optional("marker", default=None): vol.Any(None, vol.In(["always", "no_power", "never"])),
+        vol.Optional("marker", default=None): vol.Any(None, vol.In(["always", "active", "no_power", "never"])),
         # an own symbol for the marker: a Material Design icon name without "mdi:"
         vol.Optional("icon", default=None): vol.Any(None, vol.All(str, vol.Length(max=64))),
         # an own name in the plan, without renaming the entity; show_name puts it under the marker
@@ -411,6 +436,7 @@ PLACEMENT_SCHEMA = vol.Schema(
         vol.Optional("cone", default=None): vol.Any(None, bool),
         # detection pins over the camera (None = shown); off leaves only the wedge turning red
         vol.Optional("detect_pins", default=None): vol.Any(None, bool),
+        vol.Optional("detect_popup", default=False): bool,
         # fixed against moving by accident
         vol.Optional("locked", default=None): vol.Any(None, bool),
     },
@@ -914,6 +940,20 @@ SETTINGS_SCHEMA = vol.Schema(
         vol.Optional("halloween", default=None): vol.Any(
             None, vol.Schema({vol.Optional("ghost", default=True): bool}, extra=vol.ALLOW_EXTRA)
         ),
+        # fun pack "Winter & Christmas": fairy lights along the eaves, snow, the New Year's firework
+        vol.Optional("winter", default=None): vol.Any(
+            None,
+            vol.Schema(
+                {
+                    vol.Optional("roof_lights", default=True): bool,
+                    vol.Optional("roof_entity", default=None): vol.Any(None, vol.All(str, vol.Length(max=255))),
+                    vol.Optional("roof_color", default=False): bool,
+                    vol.Optional("snow", default=True): bool,
+                    vol.Optional("firework", default=True): bool,
+                },
+                extra=vol.ALLOW_EXTRA,
+            ),
+        ),
         # the ground around the house: its height and the earth around cellars
         vol.Optional("terrain", default=None): vol.Any(
             None,
@@ -1013,6 +1053,17 @@ PRESENCE_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 
+# A card template (see the editor's settings "Card templates"): a dashboard card on a wall tablet names it and takes
+# its options from here, so a change in the editor reaches every tablet. The options are the card's (checked there).
+CARD_TEMPLATE_SCHEMA = vol.Schema(
+    {
+        vol.Required("id"): vol.All(str, vol.Length(min=1, max=60)),
+        vol.Required("name"): vol.All(str, vol.Length(max=80)),
+        vol.Optional("config", default=dict): vol.Schema({}, extra=vol.ALLOW_EXTRA),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
 BUILDING_SCHEMA = vol.Schema(
     {
         vol.Required("version"): 1,
@@ -1020,6 +1071,7 @@ BUILDING_SCHEMA = vol.Schema(
         vol.Required("settings"): SETTINGS_SCHEMA,
         vol.Optional("energy", default=lambda: dict(ENERGY_DEFAULTS)): ENERGY_SCHEMA,
         vol.Optional("presence", default=list): vol.All([PRESENCE_SCHEMA], vol.Length(max=50)),
+        vol.Optional("card_templates"): vol.All([CARD_TEMPLATE_SCHEMA], vol.Length(max=30)),
     },
     extra=vol.ALLOW_EXTRA,
 )

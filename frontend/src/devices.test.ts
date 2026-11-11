@@ -13,7 +13,7 @@ test("a lamp switched by a relay takes colour and brightness from its colour ent
   // the bulb unavailable: the relay's own (plain) glow
   assert.deepEqual(lightGlow(relay as never, { ...bulb, state: "unavailable" } as never)!.color, [1, 0.71, 0.28]);
 });
-import { coverTiltButtons, invertedCovers, isPulseDrive, isRelevant, climateModeGlow, cooktopLevel, onlyColor, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
+import { coverTiltButtons, invertedCovers, isPulseDrive, isRelevant, climateModeGlow, cooktopLevel, onlyColor, fixedGlowColor, colorCapable, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
 import type { Floor, Opening, Room } from "./model.ts";
 import { centroid, newFloor, pointInPolygon } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -797,6 +797,17 @@ test("a lamp with one colour only glows for that colour (customer mail: yellow =
   const g = (color: [number, number, number]) => ({ color, level: 1 });
   assert.ok(onlyColor(g([1, 0.85, 0]), "#ffd400"));
   assert.equal(onlyColor(g([1, 0, 0]), "#ffd400"), null);
+  // a fixed colour (#977): the colour is the chosen one, the level stays; off stays off; a bad value changes nothing
+  const fixed = fixedGlowColor({ color: [1, 0, 0] as [number, number, number], level: 0.6 }, "#00ff80");
+  assert.deepEqual(fixed, { color: [0, 1, 128 / 255], level: 0.6 });
+  assert.equal(fixedGlowColor(null, "#00ff80"), null);
+  // a white-only light (Loxone's moods come as its "effect") cannot run a colour effect (#977)
+  const light = (modes: string[] | undefined) => ({ entity_id: "light.x", state: "on", attributes: modes ? { supported_color_modes: modes } : {}, last_changed: "", last_updated: "" }) as never;
+  assert.equal(colorCapable(light(["onoff"])), false);
+  assert.equal(colorCapable(light(["brightness", "color_temp"])), false);
+  assert.equal(colorCapable(light(["color_temp", "hs"])), true);
+  assert.equal(colorCapable(light(undefined)), true);
+  assert.deepEqual(fixedGlowColor({ color: [1, 0, 0] as [number, number, number], level: 1 }, "red"), { color: [1, 0, 0], level: 1 });
   assert.equal(onlyColor(g([0, 0.3, 1]), "#ffd400"), null);
   assert.equal(onlyColor(g([1, 0.95, 0.9]), "#ffd400"), null);
   assert.ok(onlyColor(g([1, 0, 0]), null));
@@ -938,4 +949,23 @@ test("a fence gate opens with its cover, switch or contact (#818)", async () => 
   assert.equal(gateState(both, { ...gate, contact: "binary_sensor.gate" }).moving, 1);
   // nothing linked: shut
   assert.equal(gateState(hass(), { id: "g", edge: 0, at: 1, width: 1 }).moving, -1);
+});
+
+test("covers open, close and stop the way they can: a slat-only blind by its tilt (#920)", async () => {
+  const { coverCall, coverCalls } = await import("./devices.ts");
+  const st = (f: number) => ({ entity_id: "cover.x", state: "open", attributes: { supported_features: f } }) as never;
+  // a roller shutter (open, close, stop, position): as always
+  assert.deepEqual(coverCall(st(15), "open"), { service: "open_cover", data: {} });
+  // slats only, with open/close tilt and stop tilt
+  assert.deepEqual(coverCall(st(16 | 32 | 64 | 128), "open"), { service: "open_cover_tilt", data: {} });
+  assert.deepEqual(coverCall(st(16 | 32 | 64 | 128), "stop"), { service: "stop_cover_tilt", data: {} });
+  // only a tilt position: open is 100, close is 0
+  assert.deepEqual(coverCall(st(128), "close"), { service: "set_cover_tilt_position", data: { tilt_position: 0 } });
+  // no features reported: as always
+  assert.deepEqual(coverCall(st(0), "close"), { service: "close_cover", data: {} });
+  const hass = { states: { "cover.a": st(15), "cover.b": st(128), "cover.c": st(3) } } as never;
+  assert.deepEqual(coverCalls(hass, ["cover.a", "cover.b", "cover.c"], "open"), [
+    { service: "open_cover", data: { entity_id: ["cover.a", "cover.c"] } },
+    { service: "set_cover_tilt_position", data: { tilt_position: 100, entity_id: ["cover.b"] } },
+  ]);
 });

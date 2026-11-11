@@ -49,6 +49,28 @@ export interface PackPart {
   axis?: "x" | "y" | "z";
   /** Turn of the part around its own centre (degrees around the vertical axis). */
   rot?: number;
+  /** An Advent candle's flame: drawn only from the n-th Sunday of Advent (1–4) until 6 January. */
+  advent?: number;
+}
+
+/**
+ * How many Advent candles burn on a day: one more each Sunday of Advent (the fourth is the Sunday before Christmas),
+ * all four until 6 January, none for the rest of the year.
+ */
+export function adventCandles(day: Date = new Date()): number {
+  const y = day.getFullYear();
+  const m = day.getMonth();
+  if (m === 0 && day.getDate() <= 6) return 4;
+  if (m < 10) return 0;
+  const today = new Date(y, m, day.getDate()).getTime();
+  // the fourth Sunday of Advent: the last Sunday before 25 December (24 December when that is a Sunday)
+  const dec24 = new Date(y, 11, 24);
+  const fourth = new Date(y, 11, 24 - dec24.getDay()).getTime();
+  const week = 7 * 24 * 3600 * 1000;
+  let n = 0;
+  // a week of daylight-saving drift cannot happen between late November and December, so plain weeks are exact
+  for (let k = 1; k <= 4; k++) if (today >= fourth - (4 - k) * week - 3600 * 1000) n = k;
+  return n;
 }
 
 export type PackSymbol =
@@ -252,6 +274,7 @@ const PACK_NAMES_ES: Record<string, string> = {
   deco: "Decoración y plantas",
   dining_hall: "Comedor y recibidor",
   fun_halloween: "Pack divertido: Halloween",
+  fun_winter: "Pack divertido: Invierno y Navidad",
   fun_pets: "Pack divertido: Mascotas",
   bedroom: "Dormitorio",
   cinema: "Cine en casa y Hi-Fi",

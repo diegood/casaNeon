@@ -28,6 +28,20 @@
           "description": "The view speaks its answer with Assist's text-to-speech (off: it only shows it)."
         }
       }
+    },
+    "reload_screens": {
+      "name": "Reload screens",
+      "description": "The open CasaNeon views of these card templates load their page again, e.g. after an update, so wall tablets get the new version. No template named: every open view.",
+      "fields": {
+        "templates": {
+          "name": "Card templates",
+          "description": "The ids of the card templates (as the editor shows them under Settings → Card templates). Empty: every open view."
+        },
+        "plan": {
+          "name": "Floor plan",
+          "description": "Only the views of this floor plan (its id, \"main\" for the first one)."
+        }
+      }
     }
   }
 }

@@ -94,7 +94,7 @@ async def test_save_and_get_building(hass: HomeAssistant, hass_ws_client) -> Non
         event, result = result, event
     assert result["success"]
     assert result["result"]["revision"] == 1
-    assert event["event"] == {"revision": 1}
+    assert event["event"] == {"revision": 1, "plan": "main"}
 
     await client.send_json_auto_id({"type": "neonplan3d/building/get"})
     got = await client.receive_json()
@@ -159,6 +159,7 @@ async def test_opening_fields_get_defaults(hass: HomeAssistant, hass_ws_client) 
         "mark": None,
         "confirm": False,
         "sill_board": "auto",
+        "top_hung": False,
     }
     assert got[1]["hinge"] == "right" and got[1]["cover"] == "cover.x" and got[1]["contact"] == "none"
 

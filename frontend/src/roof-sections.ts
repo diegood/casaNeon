@@ -139,14 +139,21 @@ export function roofUnderAt(b: RoofHolder, x: number, z: number, level?: number)
     if (s.open) continue;
     // with a floor level: roofs lying wholly below that floor are left out (#621)
     if (level !== undefined && !sectionAbove(s, level)) continue;
-    if (!onSection(s, x, z)) continue;
+    // a side whose overhang is set by hand (#863) covers what stands under that overhang too: a balcony's walls under
+    // a wide eave end under the roof instead of rising through it (#921); the automatic sides end at the walls, as
+    // they always did
+    const own = s.points && s.points.length >= 3 ? null : (s.overhang_sides ?? null);
+    const set = (i: number) => (typeof own?.[i] === "number" ? Math.max(0, own[i] as number) : null);
+    const [u, v] = sectionUV(s, x, z);
+    const fr = sectionFrame({ ...s, rotation: 0 });
+    const m = 1e-6;
+    if (u < fr.u0 - (set(2) ?? 0) - m || u > fr.u1 + (set(3) ?? 0) + m || v < -(set(0) ?? 0) - m || v > fr.w + (set(1) ?? 0) + m) continue;
     // a free-shaped flat roof covers its polygon only
     if (s.points && s.points.length >= 3 && !pointInPolygon([x, z], s.points)) continue;
-    const [u, v] = sectionUV(s, x, z);
     // hipped ends and broken slopes: the planes decide, the profile across is the fallback
     const flat = s.shape === "flat" || s.shape === "parapet";
     const so = Math.max(0, s.overhang ?? o);
-    const planes = flat ? null : sectionHeightAt(sectionGeometry(s, { u0: so, u1: so, a: so, b: so }), u, v);
+    const planes = flat ? null : sectionHeightAt(sectionGeometry(s, { a: set(0) ?? so, b: set(1) ?? so, u0: set(2) ?? so, u1: set(3) ?? so }), u, v);
     const y = (planes ?? sectionProfile(s).y(v)) - ROOF_THICK;
     best = best === null ? y : Math.max(best, y);
   }
@@ -1026,11 +1033,26 @@ export function coversIn(s: RoofSection, covers: readonly RoofCover[]): LocalCov
   return covers.map((c) => ({ poly: c.poly.map(([x, z, y]) => [...sectionUV(s, x, z), y] as Q), depth: c.depth }));
 }
 
-/** Whether two sections cut each other where they overlap: closed sloped ones, neither a dormer on the other. */
+/**
+ * Whether two sections cut each other where they overlap: closed sloped ones, neither a dormer on the other – unless
+ * that dormer is turned: its hole in the slope would be cut as boxes across its angle, so a turned cross gable and
+ * its roof meet like two wings instead, each keeping what shows above the other (a gable at 45° on a hip roof).
+ */
 export function sectionsCut(sections: readonly RoofSection[], p: RoofSection, q: RoofSection): boolean {
   const sloped = (s: RoofSection) => !s.open && s.shape !== "flat" && s.shape !== "parapet";
   if (p === q || !sloped(p) || !sloped(q)) return false;
-  return dormerParent(sections, p) !== q && dormerParent(sections, q) !== p;
+  return (dormerParent(sections, p) !== q || turnedDormer(sections, p)) && (dormerParent(sections, q) !== p || turnedDormer(sections, q));
+}
+
+/**
+ * A section sitting on a bigger roof at an angle to it (not square to its ridge): drawn as a wing cut by that roof,
+ * not as a dormer with a hole. A dormer turned along with its turned roof (#634) is still a dormer.
+ */
+export function turnedDormer(sections: readonly RoofSection[], d: RoofSection): boolean {
+  const parent = dormerParent(sections, d);
+  if (!parent) return false;
+  const a = (((d.rotation ?? 0) - (parent.rotation ?? 0)) % 90) + 90;
+  return Math.min(a % 90, 90 - (a % 90)) > 0.5;
 }
 
 /**
