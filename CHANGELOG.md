@@ -3,6 +3,33 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 1.24.0
+
+### Novedades
+
+- **Novedades del original hasta su 3.0.6**, solo lo funcional:
+  - **Varios planos en una instalación:** la casa, el garaje, la caseta del jardín, un piso de vacaciones; cada uno con sus plantas, habitaciones y puntos de restauración. Se cambia arriba en la cabecera; **⚙ Ajustes → 🏘 Planos** crea (vacío, copia o desde un archivo), renombra, ordena y borra (la papelera los guarda 30 días). El plano que ya tenías sigue siendo el primero, sin cambios.
+  - **La parcela:** los otros edificios colocados junto a la casa se ven juntos en 3D; un toque en una habitación entra en su plano. También como tarjeta (`plan: site`). Un aviso de otro plano aparece en el que estás mirando.
+  - **Tarjetas para algunas habitaciones** (`rooms:`, se eligen tocando el plano en el diálogo de la tarjeta): solo esas habitaciones con sus muebles y dispositivos; con una sola, se abre con su panel y «aquí» es esa habitación.
+  - **Plantillas de tarjeta:** **⚙ Ajustes → 🖥 Plantillas de tarjeta** configura una tarjeta una vez, con vista previa en la pantalla a la que va (tableta Fire de 10″ o 7″, vertical, móvil). En la tableta solo eliges la plantilla y cada cambio le llega en un segundo. Lista de **pantallas abiertas** y botón para **recargarlas** (también con la acción `neonplan3d.reload_screens`).
+  - **Aspirar y apagar todo por habitación:** en el formulario de la habitación eliges el script o botón del robot; su panel tiene 🧹 Aspirar y ⏻ Apagar todo. Por voz: «aspira aquí», «aspira la cocina», «apaga todo ahí» («ahí» es la habitación abierta en la vista).
+  - **Pack divertido Invierno y Navidad:** guirnalda de luces en el alero (o todo el tejado), nieve en tejado y césped mientras nieva y fuegos artificiales a medianoche en Nochevieja; las velas de Adviento se encienden por fecha. Los packs divertidos se configuran ahora en **⚙ Ajustes → 🎈 Packs divertidos**.
+  - **«Mostrar solo si …»** en cualquier mueble: aparece en 3D solo mientras una entidad está en un estado (decoración de temporada).
+  - **Duplicar planta**, **ventanas proyectantes**, **puertas elevadoras correderas y ventanas correderas**.
+  - **Cabina de cámara:** la imagen de una cámara aparece 20 segundos cuando detecta algo nuevo.
+  - **Pines solo cuando están activos**, **color fijo** de una lámpara en 3D, **símbolo propio** en lámparas y en la lista de la habitación, **recorrido desde una habitación** (botón 🚶 en su panel).
+  - **Niebla a ras de suelo**, **escalones exteriores por debajo del suelo** (hasta −5 m), **esquinas editables** en áreas exteriores libres, chip **Efectos** en la vista 3D del editor.
+  - Del 2.x: puertas en las vallas, **solo plano** sin muebles, clic derecho para volver atrás, paredes libres inclinadas, tejados de terraza y voladizo por lado, partes de tejado giradas, arco solar alrededor de toda la parcela, sombra de la casa y ventanas que brillan de noche, ángulo de apertura propio de cada puerta, sensores de detección por cámara, aviso de contactos no disponibles, ajustes sobre la vista 3D, «aquí» para tabletas de pared y más opciones en el editor de la tarjeta.
+
+### Cambios
+
+- Siguen sin traerse del original la tienda, las licencias, NeonPlan Print, los diagnósticos, la aprobación de módulos, el servicio de anuncios, otros idiomas y la documentación. El pack «Marcos digitales» tampoco: necesita un módulo firmado.
+- La barra de habitaciones de abajo sigue sin publicar, como en el original (solo con `?fp3d_lab=1`).
+
+### Correcciones
+
+- Del original: la luz que sale por las ventanas sigue el brillo real de la lámpara y ya no atraviesa paredes, varios radiadores en un termostato muestran cada uno su pin, los sensores binarios ya no muestran vatios, persianas que solo se inclinan, tablets de pared más fluidas (menos pasadas de dibujo, sin sincronizar mientras gira la vista), tejados en tarjetas sin la planta de arriba, nieve en césped inclinado, el viaje en el tiempo en áreas exteriores y con la temperatura propia de la habitación, y fechas de basura con guiones.
+
 ## 1.23.0
 
 ### Novedades
