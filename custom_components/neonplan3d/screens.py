@@ -2,7 +2,8 @@
 
 The editor's card templates list them ("the kitchen tablet shows "Küche", version 2.3.0, since 7:02") and can let
 one of them load its page again. Kept in memory only: a view that goes away (closed, the tablet asleep and cut off)
-leaves the list with its connection. The service `neonplan3d.reload_screens` lets automations do the same.
+leaves the list with its connection. The service `neonplan3d.reload_screens` lets automations do the same, and
+`neonplan3d.set_style` shows a style on the open views.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 import voluptuous as vol
 
-from .const import DATA_SCREENS, DOMAIN, SIGNAL_RELOAD
+from .const import DATA_SCREENS, DOMAIN, SIGNAL_RELOAD, SIGNAL_STYLE
 
 SERVICE_RELOAD = "reload_screens"
 RELOAD_SCHEMA = vol.Schema(
@@ -25,6 +26,16 @@ RELOAD_SCHEMA = vol.Schema(
         vol.Optional("templates", default=[]): vol.All(cv.ensure_list, [vol.All(cv.string, vol.Length(max=60))]),
         # only the views of this floor plan (its id); templates belong to their plan
         vol.Optional("plan"): vol.All(cv.string, vol.Length(max=32)),
+    }
+)
+
+SERVICE_STYLE = "set_style"
+STYLE_SCHEMA = vol.Schema(
+    {
+        # a style id or name ("cozy", "Acogedor"); "reset" or empty: the screens go back to their own setting
+        vol.Required("style"): vol.All(cv.string, vol.Length(max=60)),
+        vol.Optional("screens", default=[]): vol.All(cv.ensure_list, [vol.All(cv.string, vol.Length(max=60))]),
+        vol.Optional("minutes"): vol.Any(None, vol.All(vol.Coerce(int), vol.Range(min=1, max=10080))),
     }
 )
 
@@ -74,7 +85,8 @@ def screens_of(hass: HomeAssistant) -> Screens:
 
 @callback
 def async_setup_screens(hass: HomeAssistant) -> None:
-    """Registers the service that lets the open views (some card templates or all) load their page again."""
+    """Registers the services that let the open views (some card templates or all) load their page again or show
+    a style."""
 
     async def reload(call: ServiceCall) -> None:
         # the wall tablets showing these card templates (none named: every open view) load the page again, so a new
@@ -87,8 +99,24 @@ def async_setup_screens(hass: HomeAssistant) -> None:
 
     hass.services.async_register(DOMAIN, SERVICE_RELOAD, reload, schema=RELOAD_SCHEMA)
 
+    async def set_style(call: ServiceCall) -> None:
+        # the open views (the screens named, or every one) show this style, for some minutes or until changed
+        async_dispatcher_send(
+            hass,
+            SIGNAL_STYLE,
+            {
+                "id": uuid.uuid4().hex[:12],
+                "style": call.data["style"].strip(),
+                "screens": call.data["screens"],
+                "minutes": call.data.get("minutes"),
+            },
+        )
+
+    hass.services.async_register(DOMAIN, SERVICE_STYLE, set_style, schema=STYLE_SCHEMA)
+
 
 @callback
 def async_unload_screens(hass: HomeAssistant) -> None:
-    """The service goes with the integration."""
+    """The services go with the integration."""
     hass.services.async_remove(DOMAIN, SERVICE_RELOAD)
+    hass.services.async_remove(DOMAIN, SERVICE_STYLE)

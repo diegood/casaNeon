@@ -6,8 +6,9 @@
 
 import { Color } from "three";
 import type { Floor, GateSpan, OutdoorArea, OutdoorType, Vec2 } from "../model.ts";
-import { areaGround, bounds, centroid, gateSpans, groundDrop, isAxisRect, OUTDOOR_TOP, outdoorStanding, pointInPolygon, poolFloorY, poolRimY, poolSunken, poolWaterY, signedArea } from "../model.ts";
+import { areaGround, bounds, centroid, gateSpans, groundDrop, isAxisRect, OUTDOOR_TOP, outdoorGround, outdoorStanding, pointInPolygon, poolFloorY, poolRimY, poolSunken, poolWaterY, signedArea } from "../model.ts";
 import { ALWAYS, type GeoBuffer, type LineBuffer, pushPrism, shade, triangulate } from "./geo.ts";
+import { palette } from "./palette.ts";
 
 interface Look {
   color: number;
@@ -16,7 +17,7 @@ interface Look {
   edgeAlpha: number;
 }
 
-const LOOKS: Record<OutdoorType, Look> = {
+const LOOKS: Record<OutdoorType, Look> = palette({
   lawn: { color: 0x0d2620, side: 0x0b1e1a, edge: 0x3de0a0, edgeAlpha: 0.16 },
   terrace: { color: 0x1d1c30, side: 0x151527, edge: 0x5b7cff, edgeAlpha: 0.32 },
   path: { color: 0x1a2133, side: 0x141a28, edge: 0x5b7cff, edgeAlpha: 0.22 },
@@ -28,7 +29,7 @@ const LOOKS: Record<OutdoorType, Look> = {
   fence: { color: 0x1d2946, side: 0x1d2946, edge: 0x5b7cff, edgeAlpha: 0.45 },
   pergola: { color: 0x2a2238, side: 0x1f1a2c, edge: 0x5b7cff, edgeAlpha: 0.5 },
   balcony: { color: 0x1d2238, side: 0x161a2c, edge: 0x5b7cff, edgeAlpha: 0.5 },
-};
+}, { lawn: { color: 0x86b26f, side: 0x6f9a5b, edge: 0x3de0a0, edgeAlpha: 0.08 }, terrace: { color: 0xcfc8bc, side: 0xb9b2a6, edge: 0x5b7cff, edgeAlpha: 0.1 }, path: { color: 0xc4bdb1, side: 0xaea79b, edge: 0x5b7cff, edgeAlpha: 0.08 }, driveway: { color: 0xadaaa5, side: 0x99968f, edge: 0x5b7cff, edgeAlpha: 0.08 }, pool: { color: 0x5fb3d9, side: 0xd9e2e8, edge: 0x37e0ff, edgeAlpha: 0.3 }, bed: { color: 0x6c5646, side: 0x5a4739, edge: 0x3de0a0, edgeAlpha: 0.1 }, wild: { color: 0x8ba86f, side: 0x77945c, edge: 0x9ad24f, edgeAlpha: 0.08 }, hedge: { color: 0x4d7d44, side: 0x3f6a38, edge: 0x3de0a0, edgeAlpha: 0.15 }, fence: { color: 0xd8d3cb, side: 0xc8c2b9, edge: 0x5b7cff, edgeAlpha: 0.2 }, pergola: { color: 0xb08a64, side: 0x9c7853, edge: 0x5b7cff, edgeAlpha: 0.2 }, balcony: { color: 0xd8d3cb, side: 0xc4beb5, edge: 0x5b7cff, edgeAlpha: 0.25 } });
 
 /** Whether an edge runs along a room's outline on this floor (a balcony needs no railing at the house wall). */
 function againstWall(floor: Floor, p: Vec2, q: Vec2): boolean {
@@ -396,7 +397,14 @@ export function pushOutdoor(buf: GeoBuffer, lines: LineBuffer, floor: Floor, wat
         // the block reaches down to the lowest point; patches marked "cut" inside it become holes
         const topAt = (x: number, z: number) => groundAt(x, z) + look.top;
         const holes = outdoorHoles(areas, index);
-        pushPrism(buf, poly, lowest, a.slope ? topAt : g + look.top, look.side, look.color, { aoFrom: lowest, holes });
+        // a hedge, fence or pergola on falling ground: its block reaches down to the lowest ground under it (the lawn's
+        // slope, a bed below), two centimetres into it – standing on its own level alone, its underside showed (#1262)
+        // one lifted by hand (a height offset above the ground: a screen on posts, a hedge in a raised trough) keeps
+        // its underside where it was put instead of growing into a solid block down to the ground (#1303)
+        const foot = outdoorStanding(a.type) && !((a.offset ?? 0) > 0)
+          ? Math.min(lowest, ...poly.map(([x, z]) => outdoorGround(floor, x, z) - 0.02))
+          : lowest;
+        pushPrism(buf, poly, foot, a.slope ? topAt : g + look.top, look.side, look.color, { aoFrom: lowest, holes });
         outline((x, z) => topAt(x, z) + 0.004);
         if (a.type === "hedge") outline((x, z) => groundAt(x, z) + 0.004);
         if (a.outline !== false) {

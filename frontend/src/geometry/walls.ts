@@ -70,6 +70,8 @@ export interface WallResult {
   warnings: string[];
   /** Room pairs whose shared wall is left out ("no wall"): they form one space, also for the light. */
   open: [string, string][];
+  /** The room edges of each wall left out by a height of 0 (the editor shows and lifts it from either room, #1151). */
+  noWalls: WallSource[][];
 }
 
 interface Segment {
@@ -245,6 +247,7 @@ export function generateWalls(rooms: readonly Room[], options: WallOptions, free
     return slope ? { height: Math.max(slope.h0, slope.h1), slope } : { height: heightOf(list) };
   };
   const open: [string, string][] = [];
+  const noWalls: WallSource[][] = [];
   let drafts: Draft[] = [];
   for (const g of groups.values()) {
     const first = g[0];
@@ -254,6 +257,7 @@ export function generateWalls(rooms: readonly Room[], options: WallOptions, free
     }
     if (noWall(partner ? [first, partner] : [first])) {
       if (partner) open.push([first.room, partner.room]);
+      noWalls.push(partner ? [src(first), src(partner)] : [src(first)]);
       continue;
     }
     if (partner) {
@@ -351,7 +355,7 @@ export function generateWalls(rooms: readonly Room[], options: WallOptions, free
       ...(w.slope ? { slope: w.slope } : {}),
     };
   });
-  return { walls, warnings: [...new Set(warnings)], open };
+  return { walls, warnings: [...new Set(warnings)], open, noWalls };
 }
 
 function wallId(a: Vec2, b: Vec2): string {
@@ -537,6 +541,18 @@ export function freeWallRoomLeft(wall: Pick<Wall, "a" | "b" | "left" | "right">,
   if (left >= 2 && right === 0) return true;
   if (right >= 2 && left === 0) return false;
   return null;
+}
+
+/**
+ * An opening in a free wall drawn as an outer wall: whether its room side is the other one than the wall's left as
+ * drawn. 3D takes the side with the rooms as "inside" (#542); the plan and the camera spot must agree with it, or a
+ * door in a wall drawn from left to right along the house's front swings and hangs the other way round (#1225).
+ */
+export function freeOpeningTurned(o: Pick<Opening, "wall">, rooms: readonly Room[], free: readonly FreeWall[], interior: number): boolean {
+  const w = o.wall ? free.find((x) => x.id === o.wall) : undefined;
+  if (!w || Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) < 0.05) return false;
+  const half = (w.thickness ?? interior) / 2;
+  return freeWallRoomLeft({ a: w.a, b: w.b, left: half, right: half }, rooms) === false;
 }
 
 /**

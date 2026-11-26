@@ -2,7 +2,7 @@
 
 import { zonesOf, type Building } from "./model.ts";
 import { roomsOnly, shownRoomIds } from "./rooms-filter.ts";
-import { confirmEntities } from "./devices.ts";
+import { confirmEntities, haNavigate } from "./devices.ts";
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { BuildingController } from "./building-controller.ts";
 import { MAIN_PLAN } from "./api.ts";
@@ -13,13 +13,17 @@ import "./components/view3d.ts";
 import { translate, type I18nKey } from "./i18n.ts";
 import { controls, tokens } from "./styles.ts";
 import type { HomeAssistant } from "./types.ts";
-import { cardTemplate, effectiveConfig, type CardConfig, type CardControl } from "./card-config.ts";
+import { cardStartView, cardTemplate, effectiveConfig, screenUpright, type CardConfig, type CardControl } from "./card-config.ts";
 import { nightActive } from "./kiosk.ts";
 import { loadCardEditor } from "./load-card-editor.ts";
 import type { WallMode } from "./viewer/viewer3d.ts";
 import { hasFeature, released, type Feature } from "./features.ts";
 import { TimeTravel } from "./load-timetravel.ts";
 import type { HistorySpec } from "./timetravel/types.ts";
+import "./components/phone-shell.ts";
+import type { Fp3dPhoneShell, PhoneView } from "./components/phone-shell.ts";
+import type { NowMode } from "./components/now-list.ts";
+import { formatPower } from "./components/view3d.ts";
 
 type HeatMode = NonNullable<CardConfig["heatmap"]>;
 
@@ -49,8 +53,11 @@ export class Floorplan3dCard extends LitElement {
   static properties = {
     hass: { attribute: false },
     _config: { state: true },
+    _upright: { state: true },
     _roomId: { state: true },
     _walking: { state: true },
+    _phoneMode: { state: true },
+    _solo: { state: true },
     _floorId: { state: true },
     _walls: { state: true },
     _heat: { state: true },
@@ -75,6 +82,9 @@ export class Floorplan3dCard extends LitElement {
   private declare _roomId: string | null;
   /** One walks through the house: the room panel steps aside. */
   private declare _walking: boolean;
+  /** The phone view (card option `phone`): what it shows, and whether a room jumped into stands alone (per device). */
+  private declare _phoneMode: NowMode;
+  private declare _solo: boolean | null;
   /** The configured start room was applied once the building arrived. */
   private roomApplied = false;
   /** Floor chosen in the card (null: the house; undefined: none chosen, the configured floor applies). */
@@ -114,6 +124,10 @@ export class Floorplan3dCard extends LitElement {
     super();
     this._roomId = null;
     this._walking = false;
+    this._phoneMode = "bar";
+    // null: this device has not chosen – the card's own default counts (`phone_solo`)
+    const solo = localStorage.getItem("neonplan3d.phone_solo");
+    this._solo = solo === null ? null : solo === "1";
     this._floorId = undefined;
     this._walls = savedWalls();
     this._heat = null;
@@ -121,6 +135,7 @@ export class Floorplan3dCard extends LitElement {
     this._fullscreen = false;
     this._pseudoFull = false;
     this._vh = window.innerHeight;
+    this._upright = screenUpright(globalThis.screen);
     this._top = null;
     this._cameraWall = false;
     this._clean = false;
@@ -195,8 +210,7 @@ export class Floorplan3dCard extends LitElement {
 
   /** Opens another dashboard or view the way Home Assistant's own links do (no page reload). */
   private openDashboard(path: string): void {
-    history.pushState(null, "", path);
-    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true, detail: { replace: false } }));
+    haNavigate(path);
   }
 
   private readonly onFullscreen = () => {
@@ -208,7 +222,17 @@ export class Floorplan3dCard extends LitElement {
    * Full screen and "fill the screen" follow the screen that is really visible: 100vh misses on some Android
    * tablets (the HA app in landscape), and the dashboard header may be hidden (kiosk mode) – a black bar stayed (#344).
    */
+  /** The screen is held upright: a card with `start_view_portrait` then starts from that view (#1228). */
+  private declare _upright: boolean;
+
+  /** The start view the card gives the 3D view: its own (the upright one while the screen is held upright), else none. */
+  private startView(c: CardConfig | null | undefined) {
+    return cardStartView(c, this._upright);
+  }
+
   private readonly onViewport = () => {
+    const upright = screenUpright(globalThis.screen);
+    if (upright !== this._upright) this._upright = upright;
     const vh = Math.round(window.visualViewport?.height ?? window.innerHeight);
     if (Math.abs(vh - this._vh) > 1) this._vh = vh;
     if (this._config?.fill && !this._fullscreen) {
@@ -225,6 +249,7 @@ export class Floorplan3dCard extends LitElement {
     document.addEventListener("fullscreenchange", this.onFullscreen);
     window.addEventListener("resize", this.onViewport);
     window.visualViewport?.addEventListener("resize", this.onViewport);
+    globalThis.screen?.orientation?.addEventListener?.("change", this.onViewport);
     requestAnimationFrame(this.onViewport);
     // the dashboard may still be laying out: measure once more a moment later
     setTimeout(this.onViewport, 600);
@@ -245,6 +270,7 @@ export class Floorplan3dCard extends LitElement {
     document.removeEventListener("fullscreenchange", this.onFullscreen);
     window.removeEventListener("resize", this.onViewport);
     window.visualViewport?.removeEventListener("resize", this.onViewport);
+    globalThis.screen?.orientation?.removeEventListener?.("change", this.onViewport);
     this.cellObserver?.disconnect();
     this.cellObserver = null;
     this.tt.stop();
@@ -438,6 +464,14 @@ clearTimeout(this.cleanTimer);
 
   protected updated(): void {
     if (this.isSite && this.data.plans.length > 1) this.watch.watch(this.hass, this.data);
+    // the walk button steps aside for the card's own buttons at the top right, as wide as they really are: a
+    // dashboard button with a long label ("Zum Energiefluss") reached over it (#1146)
+    const view = this.shadowRoot?.querySelector("fp3d-view3d") as HTMLElement | null;
+    if (view) {
+      const left = Math.min(...[...(this.shadowRoot?.querySelectorAll<HTMLElement>(".fp3d-card-full") ?? [])].map((el) => el.offsetLeft), Infinity);
+      const right = Number.isFinite(left) ? Math.max(104, view.clientWidth - left + 8) : 104;
+      if (view.style.getPropertyValue("--fp3d-walk-right") !== `${right}px`) view.style.setProperty("--fp3d-walk-right", `${right}px`);
+    }
   }
 
   protected render() {
@@ -476,16 +510,18 @@ clearTimeout(this.cleanTimer);
           ? "100%"
           : `${height}px`;
     // the bar of switches at the bottom (the back button belongs to it)
-    const bar = !!b && !this._clean && (canGoBack || ((!!c?.controls || !!c?.time_travel) && !(this._roomId && c.room_panel !== false)));
+    const bar = !!b && !this._clean && c?.phone !== true && (canGoBack || ((!!c?.controls || !!c?.time_travel) && !(this._roomId && c.room_panel !== false)));
     const tt = this.tt.active;
     // the room bar (room_bar: true): above the switches, it stays when the switches are hidden; not while
     // travelling in time or with a room panel open
-    const roomBar = !!b && !!c?.room_bar && released("room_bar") && !tt && !(this._roomId && c.room_panel !== false);
+    const roomBar = !!b && !!c?.room_bar && c.phone !== true && released("room_bar") && !tt && !(this._roomId && c.room_panel !== false);
     const eye = c?.controls_hidden !== undefined || (c?.controls_hide_after ?? 0) > 0;
+    // the phone view brings its own bar: the card's switches, room bar and buttons make way
+    const phone = c?.phone === true && !!b && !tt && !this._walking;
     const t = (k: Parameters<typeof translate>[1]) => translate(this.hass, k);
     const accent = /^#[0-9a-f]{6}$/i.test(c?.accent ?? "") ? c!.accent : null;
     return html`<ha-card class="${this._night ? "fp3d-night" : ""} ${this._pseudoFull ? "fp3d-pseudo-full" : ""}" style=${accent ? `--fp3d-accent:${accent}` : ""} @pointerdown=${this.touch} @keydown=${this.onKey} @wheel=${this.touch}>
-      <div class="fp3d-card-body ${tt ? "fp3d-tt" : ""}" style="height:${size}">
+      <div class="fp3d-card-body ${tt ? "fp3d-tt" : ""} ${phone ? "fp3d-phone" : ""}" style="height:${size}">
         ${b && b.floors.some((f) => f.rooms.length)
           ? html`<fp3d-view3d
               .hass=${this.tt.hass(this.hass)}
@@ -493,7 +529,7 @@ clearTimeout(this.cleanTimer);
               .building=${b}
               .planId=${this.isSite ? null : this.data.planId}
               .noSave=${this.isSite}
-              .rooms=${rooms.length ? rooms : null}
+              .rooms=${c?.phone === true && (this._solo ?? c.phone_solo === true) && this._roomId ? [this._roomId] : rooms.length ? rooms : null}
               .packs=${this.data.packs}
               .floorId=${floorId}
               .roomId=${this._roomId}
@@ -501,6 +537,7 @@ clearTimeout(this.cleanTimer);
               .explode=${explode}
               .keepRoof=${c?.roof_fade === false}
               .plain=${c?.plain === true}
+              .surroundings=${c?.surroundings !== false}
               .hideRoof=${c?.roof === false || rooms.length > 0}
               .quality=${this._config?.quality ?? "auto"}
               ?showStats=${this._config?.stats ?? false}
@@ -515,6 +552,12 @@ clearTimeout(this.cleanTimer);
               .buttons=${this._config?.buttons?.map((b, i) => ({ id: `card_${i}`, ...b })) ?? null}
               .heatMode=${heat}
               .theme=${this._config?.theme ?? "neon"}
+              .zoomStyle=${this._config?.zoom_style ?? null}
+              .zoomLate=${this._config?.zoom_late ?? null}
+              .zoomScope=${this._config?.zoom_scope ?? null}
+              .themeEvening=${this._config?.theme_evening ?? null}
+              .themeNight=${this._config?.theme_night ?? null}
+              .styleEntity=${this._config?.style_entity ?? null}
               .clock=${this._config?.clock ?? null}
               .accent=${this._config?.accent ?? null}
               .showEnergy=${this._config?.energy ?? true}
@@ -542,8 +585,9 @@ clearTimeout(this.cleanTimer);
               .cameraWall=${this._cameraWall && !tt}
               @camera-wall-close=${() => (this._cameraWall = false)}
               @camera-wall-open=${() => (this._cameraWall = true)}
-              .clean=${this._clean}
-              .cleanButton=${eye}
+              .clean=${this._clean || phone}
+              .cleanButton=${eye && !phone}
+              @status-change=${() => phone && setTimeout(() => (this.shadowRoot?.querySelector("fp3d-phone-shell") as Fp3dPhoneShell | null)?.requestUpdate(), 0)}
               @clean-toggle=${() => {
                 this._clean = !this._clean;
                 if (!this._clean) this.armClean();
@@ -553,7 +597,7 @@ clearTimeout(this.cleanTimer);
               .weatherEntityId=${c?.weather_entity ?? null}
               .dimmed=${this._night}
               .autoOrbit=${this._orbit}
-              .startView=${c?.start_view ?? null}
+              .startView=${this.startView(c)}
               style=${tt ? `--fp3d-bottom-inset: ${bar ? "calc(52px + var(--fp3d-tt-h))" : "var(--fp3d-tt-h)"}` : bar ? "--fp3d-bottom-inset: 52px" : ""}
               @room-tap=${(e: CustomEvent<{ floorId: string; roomId: string | null }>) => {
                 // in the house view (or on another floor) a tap first opens the whole floor; the floor as it is now,
@@ -598,12 +642,13 @@ clearTimeout(this.cleanTimer);
               }}
             ></fp3d-room-bar>`
           : nothing}
-        ${this._roomId && b && this._config?.room_panel !== false && !this._walking
+        ${this._roomId && b && this._config?.room_panel !== false && !this._walking && !(phone && this._phoneMode === "check")
           ? html`<fp3d-room-panel
               ?walk=${this._config?.walk !== false}
               @walk-here=${() => this.view3d()?.walkHere()}
               @camera-look=${(e: CustomEvent<{ entity: string }>) => this.view3d()?.lookThrough(e.detail.entity)}
               class="fp3d-card-panel"
+              ?collapsible=${phone}
               .hass=${this.tt.hass(this.hass)}
               ?readOnly=${tt}
               .room=${b.floors.flatMap((f) => zonesOf(f)).find((r) => r.id === this._roomId) ?? null}
@@ -614,6 +659,37 @@ clearTimeout(this.cleanTimer);
               @sheet-open=${(e: CustomEvent<{ id: string }>) => this._roomId && this.view3d()?.openRoomSheet(this._roomId, e.detail.id)}
               @close=${() => (this._roomId = null)}
             ></fp3d-room-panel>`
+          : nothing}
+        ${phone && b
+          ? html`<fp3d-phone-shell
+              .hass=${this.hass}
+              .building=${b}
+              .view=${() => this.view3d() as unknown as PhoneView | null}
+              .floorId=${this._floorId ?? null}
+              .roomId=${this._roomId}
+              .solo=${this._solo ?? c?.phone_solo === true}
+              .hide=${c?.phone_hide ?? []}
+              .start=${c?.phone_start}
+              .places=${c?.phone_places}
+              @phone-link=${(e: CustomEvent<string>) => haNavigate(e.detail)}
+              .extras=${c?.dashboard ? [{ id: "dash", icon: "⌂", label: c.dashboard_label || c.dashboard }] : []}
+              .watts=${(w: number) => formatPower(this.hass, w)}
+              @phone-mode=${(e: CustomEvent<NowMode>) => (this._phoneMode = e.detail)}
+              @phone-room=${(e: CustomEvent<{ floorId: string | null; roomId: string | null }>) => {
+                if (!this.allowed(e.detail.roomId)) return;
+                this._floorId = b.floors.length > 1 || e.detail.roomId ? e.detail.floorId : null;
+                this._roomId = e.detail.roomId;
+              }}
+              @phone-solo=${(e: CustomEvent<boolean>) => {
+                this._solo = e.detail;
+                try {
+                  localStorage.setItem("neonplan3d.phone_solo", this._solo ? "1" : "0");
+                } catch {
+                  // not remembered
+                }
+              }}
+              @phone-more=${(e: CustomEvent<string>) => e.detail === "dash" && c?.dashboard && haNavigate(c.dashboard)}
+            ></fp3d-phone-shell>`
           : nothing}
         ${bar && b
           ? html`<div class="fp3d-card-controls">
@@ -649,12 +725,13 @@ clearTimeout(this.cleanTimer);
             </div>`
           : nothing}
         ${this.tt.session ? html`<fp3d-time-bar .session=${this.tt.session}></fp3d-time-bar>` : nothing}
-        ${c?.fullscreen_button && !this._clean && !(this._roomId && c.room_panel !== false)
+        ${/* in full screen the button stays, whatever the card hides by itself: it is the way back (#1261) */ ""}
+        ${c?.fullscreen_button && (!this._clean || this._fullscreen) && (!phone || this._fullscreen) && !(this._roomId && c.room_panel !== false)
           ? html`<button class="fp3d-card-full" title=${t(this._fullscreen ? "fullscreen_exit" : "fullscreen")} aria-label=${t(this._fullscreen ? "fullscreen_exit" : "fullscreen")} @click=${() => this.toggleFullscreen()}>
               ${this._fullscreen ? "✕" : "⛶"}
             </button>`
           : nothing}
-        ${c?.dashboard && !this._clean && !(this._roomId && c.room_panel !== false)
+        ${c?.dashboard && !this._clean && !phone && !(this._roomId && c.room_panel !== false)
           ? html`<button class="fp3d-card-full fp3d-card-dash ${c.fullscreen_button ? "fp3d-card-dash-2" : ""}" title=${c.dashboard_label || c.dashboard} aria-label=${c.dashboard_label || c.dashboard} @click=${() => this.openDashboard(c.dashboard!)}>
               ${c.dashboard_label ? html`<span>${c.dashboard_label}</span>` : "⌂"}
             </button>`
@@ -825,6 +902,16 @@ clearTimeout(this.cleanTimer);
         .fp3d-tt > * {
           --fp3d-tt-h: 100px;
         }
+      }
+      /* the phone view: the view's own things and an open room's panel stand above its bar */
+      .fp3d-phone fp3d-view3d {
+        --fp3d-bottom-inset: calc(72px + env(safe-area-inset-bottom, 0px));
+      }
+      /* above the bar, which is taller on a phone with a home indicator */
+      .fp3d-phone .fp3d-card-panel {
+        bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+        height: auto;
+        max-height: calc(62% - 62px);
       }
     `,
   ];

@@ -40,6 +40,8 @@ export function watchedEntities(hass: HomeAssistant, b: Building, w: WatchLinks)
   const furniture = [...w.furniture.values()].flatMap((l) => [l.entity, l.power]);
   const states = b.floors.flatMap((f) => f.furniture.flatMap((m) => [m.state_entity ?? null, m.state_entity2 ?? null, m.color_entity ?? null]));
   const doors = b.floors.flatMap((f) => f.furniture.flatMap((m) => [m.door_left ?? null, m.door_right ?? null, m.soc ?? null, m.status ?? null, m.charge ?? null, m.export ?? null]));
+  // live parts of pack items (3.4): a door that opens with its own contact must redraw when the contact changes (#1143)
+  const binds = b.floors.flatMap((f) => f.furniture.flatMap((m) => Object.values(m.binds ?? {})));
   const roofWindowIds = (b.settings.roof?.windows ?? []).flatMap((x) => [x.cover, x.contact, x.tilt]).filter((x): x is string => !!x && x !== "none");
   // the solar fields' and strings' sensors feed the roof cables
   const solarIds = [...(b.settings.roof?.solar ?? []).map((f) => f.entity), ...(b.settings.roof?.strings ?? []).map((s) => s.entity)].filter((x): x is string => !!x && x !== "none");
@@ -55,6 +57,6 @@ export function watchedEntities(hass: HomeAssistant, b: Building, w: WatchLinks)
     f.furniture.flatMap((m) => (m.type === "access_point" ? Object.values(apEntities(hass, { entity: w.furniture.get(m.id)?.entity ?? m.entity })) : m.type === "water_heater" ? Object.values(heaterEntities(hass, { entity: w.furniture.get(m.id)?.entity ?? m.entity })) : m.type === "lamp_ceiling_fan" ? [m.fan_entity ?? null] : m.type === "wall_switch" ? [...switchKeys(m), switchRing(m)] : m.type === "wall_socket" ? socketOutlets(m).flatMap((o) => [o.entity, o.power]) : [])),
   );
   const weather = weatherEntity(hass, w.weatherEntityId ?? b.settings.weather_entity);
-  const all = [...switches, ...placed, ...cameraSensors, ...links, ...power, ...furniture, ...states, ...doors, ...robotRooms, ...roofWindowIds, ...solarIds, ...pictureRules, e.grid, e.solar, e.battery, e.battery_soc, e.consumption, e.tariff, ...presence, ...lights, ...heat, ...w.warnings, ...parking, ...motion, ...household, weather, "sun.sun"];
+  const all = [...switches, ...placed, ...cameraSensors, ...links, ...power, ...furniture, ...states, ...doors, ...binds, ...robotRooms, ...roofWindowIds, ...solarIds, ...pictureRules, e.grid, e.solar, e.battery, e.battery_soc, e.consumption, e.tariff, ...presence, ...lights, ...heat, ...w.warnings, ...parking, ...motion, ...household, weather, "sun.sun"];
   return [...new Set(all.filter((id): id is string => !!id))];
 }

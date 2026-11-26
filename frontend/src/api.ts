@@ -18,9 +18,24 @@ export async function fetchBuilding(
   return hass.callWS({ type: "neonplan3d/building/get", ...planOf(plan) });
 }
 
-export async function saveBuilding(hass: HomeAssistant, building: Building, plan?: string): Promise<number> {
-  const res = await hass.callWS<{ revision: number }>({ type: "neonplan3d/building/save", building, ...planOf(plan) });
-  return res.revision;
+/**
+ * Save a plan. With `base` (the revision the edit was made on) Home Assistant refuses the save when the plan was
+ * saved elsewhere meanwhile – the error's code is "stale_plan" (#1059). A backend older than that does not know
+ * the field: the save is sent again without it.
+ */
+export async function saveBuilding(hass: HomeAssistant, building: Building, plan?: string, base?: number): Promise<number> {
+  const send = (withBase: boolean) => hass.callWS<{ revision: number }>({ type: "neonplan3d/building/save", building, ...planOf(plan), ...(withBase && base !== undefined && base >= 0 ? { base_revision: base } : {}) });
+  try {
+    return (await send(true)).revision;
+  } catch (err) {
+    if (base === undefined || !/extra keys not allowed.*base_revision/i.test(String((err as { message?: unknown })?.message ?? err))) throw err;
+    return (await send(false)).revision;
+  }
+}
+
+/** A save was refused because the plan was saved elsewhere meanwhile. */
+export function isStalePlan(err: unknown): boolean {
+  return !!err && typeof err === "object" && (err as { code?: unknown }).code === "stale_plan";
 }
 
 export function subscribeBuilding(hass: HomeAssistant, callback: (revision: number) => void, plan?: string): Promise<() => Promise<void>> {
@@ -148,6 +163,17 @@ export interface ScreenReload {
   plan?: string | null;
 }
 
+/** A style for the open screens (the action `neonplan3d.set_style`). */
+export interface ScreenStyle {
+  id: string;
+  /** A style id or name; "" or "reset": back to the screen's own setting. */
+  style: string;
+  /** Only the views with these screen names (empty: every open view). */
+  screens: string[];
+  /** For this many minutes, then back (null: until changed). */
+  minutes?: number | null;
+}
+
 /** What a view shows, for the card templates' overview of the open screens. */
 export interface ViewInfo {
   kind: "panel" | "card" | "preview";
@@ -173,16 +199,18 @@ export function subscribeAsk(
   callback: (ask: Ask) => void,
   onAnnounce?: (a: ScreenAnnouncement) => void,
   onReload?: (r: ScreenReload) => void,
+  onStyle?: (st: ScreenStyle) => void,
   view?: ViewInfo,
 ): Promise<() => Promise<void>> {
-  return hass.connection.subscribeMessage<Ask | { announce: ScreenAnnouncement } | { reload: ScreenReload }>(
+  return hass.connection.subscribeMessage<Ask | { announce: ScreenAnnouncement } | { reload: ScreenReload } | { style: ScreenStyle }>(
     (ev) => {
       if ("announce" in ev) onAnnounce?.(ev.announce);
       else if ("reload" in ev) onReload?.(ev.reload);
+      else if ("style" in ev) onStyle?.(ev.style);
       // a sentence (anything else, e.g. a message this view does not know yet, is left alone)
       else if (typeof (ev as Ask).text === "string") callback(ev as Ask);
     },
-    { type: "neonplan3d/voice/subscribe", ...(onAnnounce ? { announce: true } : {}), ...(onReload ? { reload: true } : {}), ...(view ? { view } : {}) },
+    { type: "neonplan3d/voice/subscribe", ...(onAnnounce ? { announce: true } : {}), ...(onReload ? { reload: true } : {}), ...(onStyle ? { style: true } : {}), ...(view ? { view } : {}) },
   );
 }
 
@@ -303,13 +331,42 @@ export function fetchBackup(hass: HomeAssistant): Promise<Pick<BackupFile, "form
   return hass.callWS({ type: "neonplan3d/backup/export" });
 }
 
-/** Replace plans and packs from a backup (pictures follow one by one); packs that fail their check are skipped. */
-export function restoreBackup(
+/** Home Assistant takes 4 MiB in one message; a restore larger than this goes in pieces (characters, with room to spare). */
+export const RESTORE_WHOLE_MAX = 2_500_000;
+
+/**
+ * Replace plans and packs from a backup (pictures follow one by one); packs that fail their check are skipped.
+ * A backup with many packs is larger than Home Assistant takes in one message – the connection dropped and the
+ * restore failed (#1213): then the plans go first, without packs, and every pack follows on its own through the
+ * ordinary import, which checks its signature and its installation as the restore does.
+ */
+export async function restoreBackup(
   hass: HomeAssistant,
   backup: Pick<BackupFile, "building" | "packs" | "main" | "plans">,
 ): Promise<{ revision: number; building: Building; packs: number; skipped: { id: string; reason: string }[] }> {
+  type Result = { revision: number; building: Building; packs: number; skipped: { id: string; reason: string }[] };
   const { building, packs = [], main, plans } = backup;
-  return hass.callWS({ type: "neonplan3d/backup/import", building, packs, ...(plans ? { plans, ...(main ? { main } : {}) } : {}) });
+  const rest = plans ? { plans, ...(main ? { main } : {}) } : {};
+  const whole = { type: "neonplan3d/backup/import", building, packs, ...rest };
+  if (!packs.length || JSON.stringify(whole).length <= RESTORE_WHOLE_MAX) return hass.callWS<Result>(whole);
+  const res = await hass.callWS<Result>({ ...whole, packs: [] });
+  const skipped = [...res.skipped];
+  let count = 0;
+  for (const pack of packs) {
+    const { source, signature } = pack as FurniturePack & { source?: unknown; signature?: unknown };
+    if (!source || !signature) {
+      skipped.push({ id: pack.id, reason: "unsigned" });
+      continue;
+    }
+    try {
+      await importPack(hass, JSON.stringify({ payload: source, signature }));
+      count++;
+    } catch (err) {
+      const e = (err ?? {}) as { code?: string | number; error?: { code?: string | number } };
+      skipped.push({ id: pack.id, reason: String(e.code ?? e.error?.code ?? "failed") });
+    }
+  }
+  return { ...res, packs: count, skipped };
 }
 
 export type SentenceMode = "distinct" | "all" | "off";

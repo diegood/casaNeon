@@ -17,6 +17,7 @@
     <script type="module">
       // Mock of the Home Assistant frontend object with invented demo data.
       import { DEMO_AREAS, DEMO_BUILDING, DEMO_FLOORS, DEMO_PACK, DEMO_ENTITIES, DEMO_STATES, DEMO_PICTURES, DEMO_PLANS } from "./demo-data.js";
+      import { DEMO_SHOP_PACKS } from "./demo-packs.js";
       import { demoHistory } from "./demo-history.js";
 
       const params = new URLSearchParams(location.search);
@@ -24,7 +25,31 @@
       try {
         localStorage.setItem("neonplan3d.flows", params.has("flows") ? "1" : "0");
       } catch {}
+      // the demo always opens in Neon, whatever style a visitor picked last time (?style=<id> opens another one)
+      const DEMO_STYLES = ["neon", "blueprint", "day", "focus", "synth", "cozy", "evening", "winter", "model", "pastel", "warm"];
+      try {
+        const wanted = params.get("style");
+        localStorage.setItem("neonplan3d.theme", DEMO_STYLES.includes(wanted) ? wanted : "neon");
+        localStorage.removeItem("neonplan3d.zoom_style");
+      } catch {}
       let building = params.has("empty") ? { version: 1, floors: [], settings: { wall_exterior: 0.24, wall_interior: 0.12, grid: 0.05 } } : DEMO_BUILDING;
+      // add-ons not out yet (Pool Pro) only on a local preview or with ?pool: the public demo shows neither the pool's
+      // technical room (pump, sand filter, valves, heat pump) nor its pipes (#1063)
+      // ?public shows a local preview exactly like the online demo (for pictures of the manual)
+      const unreleasedDemo = !params.has("public") && (params.has("pool") || ["localhost", "127.0.0.1"].includes(location.hostname));
+      if (!unreleasedDemo) {
+        building = structuredClone(building);
+        for (const floor of building.floors) {
+          floor.furniture = floor.furniture.filter((f) => !/^pool_/.test(f.type));
+          for (const area of floor.outdoor ?? []) delete area.pool;
+        }
+      }
+      // the demo's start view is framed for a wide screen: a phone held upright needs it from further away
+      const portrait = innerWidth / innerHeight;
+      if (building.settings.start_view && portrait < 0.85) {
+        building = structuredClone(building);
+        building.settings.start_view.radius *= Math.min(1.9, 0.85 / portrait);
+      }
       let revision = 1;
       // ?plans: further floor plans (the garden house, a holiday flat); the main plan is `building` above
       const EN_PLAN = { Gartenhaus: "Garden house", Ferienwohnung: "Holiday flat" };
@@ -59,7 +84,7 @@
         if (importedPacks === null) {
           importedPacks = [DEMO_PACK];
           // the demo has the Pro pack unless ?nopro asks for the locked look
-          if (!params.has("nopro")) importedPacks.push({ format: "fp3dpack", version: 1, id: "demo.pro", name: "CasaNeon Pro (Demo)", publisher: "Demo", licensee: null, features: ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "pool"], items: [] });
+          if (!params.has("nopro")) importedPacks.push({ format: "fp3dpack", version: 1, id: "demo.pro", name: "CasaNeon Pro (Demo)", publisher: "Demo", licensee: null, features: ["camera_cockpit", "weather", "screens", "energy_pro", "sound", "auto_pro", "time_travel", "household", "fun_pets", "fun_halloween", "fun_winter", "pool"], items: [] });
           try {
             const res = await fetch("../private/packs/starter.json");
             if (res.ok) importedPacks.push({ licensee: null, ...(await res.json()) });
@@ -78,6 +103,8 @@
           } catch {
             // no local packs
           }
+          // the online demo has no private/ packs: five models of the garden and vehicle packs stand in for them
+          for (const pack of DEMO_SHOP_PACKS) if (!importedPacks.some((p) => p.id === pack.id)) importedPacks.push(pack);
         }
         // ?nopro also drops local feature packs, so the locked look can be seen
         return params.has("nopro") ? importedPacks.filter((p) => !p.features?.length) : importedPacks;

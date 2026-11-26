@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Room, Vec2 } from "../model.ts";
 import { polygonArea, signedArea } from "../model.ts";
-import { edgeReach, freeWallRoomLeft, generateWalls, locateOnWalls, locateOpening, openingHost, placeWallPlate } from "./walls.ts";
+import { edgeReach, freeOpeningTurned, freeWallRoomLeft, generateWalls, locateOnWalls, locateOpening, openingHost, placeWallPlate } from "./walls.ts";
 
 const EXT = 0.24;
 const INT = 0.12;
@@ -328,6 +328,23 @@ test("a free wall drawn as an outer wall knows its room side, whichever way it w
   assert.equal(freeWallRoomLeft(wall([10, 0], [12, 0]), rooms), null);
 });
 
+test("a door in a free wall along the house's outside has its room side where the rooms are, as in 3D (#1225)", () => {
+  const rooms = [rect("hall", 0, 0, 4, 3)];
+  const free = [
+    { id: "w_left", a: [0, 0] as Vec2, b: [4, 0] as Vec2 },
+    { id: "w_right", a: [4, 0] as Vec2, b: [0, 0] as Vec2 },
+    { id: "w_inside", a: [2, 0.5] as Vec2, b: [2, 2.5] as Vec2 },
+  ];
+  // drawn so that the rooms lie on its left: the plan's side as drawn is the room side already
+  assert.equal(freeOpeningTurned({ wall: "w_left" }, rooms, free, 0.115), false);
+  // drawn the other way: the room side is the other one than drawn
+  assert.equal(freeOpeningTurned({ wall: "w_right" }, rooms, free, 0.115), true);
+  // rooms on both sides, a room's own edge, an unknown wall: as drawn
+  assert.equal(freeOpeningTurned({ wall: "w_inside" }, rooms, free, 0.115), false);
+  assert.equal(freeOpeningTurned({ wall: null }, rooms, free, 0.115), false);
+  assert.equal(freeOpeningTurned({ wall: "gone" }, rooms, free, 0.115), false);
+});
+
 test("a door on an inner wall piece left by an extra corner on a straight line reaches into the next piece", () => {
   // the hall's edge along x = 4 has an extra corner at z = 1, a hair off the line, that the other room does not have:
   // the wall breaks into two pieces there
@@ -338,4 +355,17 @@ test("a door on an inner wall piece left by an extra corner on a straight line r
   const [before, after] = edgeReach(walls, hall, 4);
   near(before, 2, 1e-3);
   near(after, 0);
+});
+
+test("a wall left out by a height of 0 is reported with the room edges of both sides (#1151)", () => {
+  // a long room with a short one beside part of its edge; the long room leaves the shared part out
+  const long: Room = { ...rect("a", 0, 0, 6, 2), wall_heights: [null, null, null, null] };
+  const short = rect("b", 1, 2, 3, 4);
+  const plain = generateWalls([long, short], opts);
+  assert.deepEqual(plain.noWalls, []);
+  // edge 2 of a runs from (6, 2) to (0, 2) and is split by b: part 1 (from 3 m) is the shared one
+  long.wall_heights![2] = [null, 0, null];
+  const res = generateWalls([long, short], opts);
+  assert.equal(res.noWalls.length, 1);
+  assert.deepEqual(res.noWalls[0].map((s) => `${s.room_id}:${s.edge}`).sort(), ["a:2", "b:0"]);
 });

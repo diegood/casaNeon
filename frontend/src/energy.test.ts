@@ -363,6 +363,28 @@ test("two lights on one device each take their own meter: PowerCalc's by its nam
   assert.equal(powerSensorFor(hass, "light.buero"), "sensor.buero_power_x");
 });
 
+test("PowerCalc meters named after the lights' names go to their own light, a light without one gets none (#743)", () => {
+  const named = (id: string, state: string, name: string) => ({ ...st(id, state), attributes: { ...st(id, state).attributes, friendly_name: name } });
+  const meter = (id: string, name: string) => ({ ...power(id, "5"), attributes: { ...power(id, "5").attributes, friendly_name: name } });
+  const reg = (id: string) => ({ entity_id: id, device_id: "act" });
+  const ids = ["light.dg_bad_decke", "light.ug_flur_decke", "light.eg_flur_decke", "sensor.licht_dg_bad_decke_power", "sensor.pc_ug_flur"];
+  const hass = hassWith(
+    [
+      named("light.dg_bad_decke", "on", "DG Bad Decke"),
+      named("light.ug_flur_decke", "on", "UG Flur Decke"),
+      named("light.eg_flur_decke", "on", "EG Flur Decke"),
+      meter("sensor.licht_dg_bad_decke_power", "Licht DG Bad Decke power"),
+      meter("sensor.pc_ug_flur", "Licht UG Flur Decke power"),
+    ],
+    Object.fromEntries(ids.map((id) => [id, reg(id)])),
+  );
+  // by the entity id inside the meter's id, and by the light's name inside the meter's name
+  assert.equal(powerSensorFor(hass, "light.dg_bad_decke"), "sensor.licht_dg_bad_decke_power");
+  assert.equal(powerSensorFor(hass, "light.ug_flur_decke"), "sensor.pc_ug_flur");
+  // no meter of its own: not the bathroom's
+  assert.equal(powerSensorFor(hass, "light.eg_flur_decke"), null);
+});
+
 test("a cable hub set by hand wins over the meter cabinet, but only when switched on (#841)", () => {
   const b = house();
   const furn = (id: string, type: string, x: number, z: number, extra: Record<string, unknown> = {}) => ({ id, type, x, z, rotation: 0, w: 0.5, d: 0.2, h: 0.65, variant: null, ...extra }) as Building["floors"][0]["furniture"][0];
@@ -406,4 +428,14 @@ test("an inverter's cable ends at the grid point when told so, else at the meter
   b.settings.roof.cables = [{ id: "inv:inv", floor_id: "eg", points: [[7, 2]], height: 0.03 }];
   const hand = end();
   assert.deepEqual([hand[0], hand[2]], [10, 1.5]);
+});
+
+test("PV from the strings when the plant's sensor tells nothing or reads 0 while they make power (#Deye/Solarman)", async () => {
+  const { pvWithStrings } = await import("./energy.ts");
+  assert.equal(pvWithStrings(null, 1200), 1200);
+  assert.equal(pvWithStrings(0, 1200), 1200);
+  // a real reading wins; tiny string values (night, standby) do not override 0
+  assert.equal(pvWithStrings(900, 1200), 900);
+  assert.equal(pvWithStrings(0, 20), 0);
+  assert.equal(pvWithStrings(450, null), 450);
 });

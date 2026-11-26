@@ -2,7 +2,7 @@
 
 import { build, context } from "esbuild";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 
 const out = "../custom_components/neonplan3d/frontend";
 const watch = process.argv.includes("--watch");
@@ -27,7 +27,7 @@ const cardEditorConfig = { ...common, entryPoints: ["src/card-editor.ts"], outfi
 const version = JSON.parse(readFileSync("../custom_components/neonplan3d/manifest.json", "utf8")).version;
 // the editor is only needed by admins who open it, so it is a bundle of its own as well
 // (it draws furniture previews with the 3D bundle, so it knows that bundle's hash too; card templates use the card editor)
-const editorConfig = (viewerHash, locateHash, cardEditorHash) => ({
+const editorConfig = (viewerHash, locateHash, cardEditorHash, osmHash) => ({
   ...common,
   entryPoints: ["src/components/editor.ts"],
   outfile: `${out}/neonplan3d-editor.js`,
@@ -35,6 +35,7 @@ const editorConfig = (viewerHash, locateHash, cardEditorHash) => ({
     __FP3D_VIEWER_HASH__: JSON.stringify(viewerHash),
     __FP3D_LOCATE_HASH__: JSON.stringify(locateHash),
     __FP3D_CARD_EDITOR_HASH__: JSON.stringify(cardEditorHash),
+    __FP3D_OSM_HASH__: JSON.stringify(osmHash),
     // the overview of the open screens compares their versions with this one
     __FP3D_VERSION__: JSON.stringify(version),
   },
@@ -47,6 +48,8 @@ const funConfig = { ...common, entryPoints: ["src/fun/entry.ts"], outfile: `${ou
 const voiceConfig = { ...common, entryPoints: ["src/voice/entry.ts"], outfile: `${out}/neonplan3d-voice.js` };
 // the locating setup assistant only loads when an admin opens it
 const locateConfig = { ...common, entryPoints: ["src/locate/entry.ts"], outfile: `${out}/neonplan3d-locate.js` };
+// fetching the neighbourhood from OpenStreetMap only loads when an admin fetches the map
+const osmConfig = { ...common, entryPoints: ["src/surround-fetch.ts"], outfile: `${out}/neonplan3d-osm.js` };
 // The main bundle loads the 3D bundle with a hash of its content in the URL, so a new 3D bundle is
 // never taken from the browser cache (the integration version only changes after a restart).
 // the frontend knows its own version, to notice a backend that still runs an older one
@@ -129,17 +132,19 @@ function copyFonts() {
 // 3D 830 KB and locate 60 KB on 2026-10-23 for upstream 2.0 (locating, people in 3D, the new library, robot packs)
 // main 630 KB, 3D 850 KB, editor 825 KB on 2026-11-03 for upstream 2.2 (sun arc and shadows, gates in fences, settings over the 3D view, "here" for wall tablets)
 // main 710 KB, 3D 870 KB, editor 900 KB on 2026-11-11 for upstream 3.0.6 (several floor plans and the property, card templates and open screens, cards for some rooms, winter, "only show while …")
-const BUDGET = { "neonplan3d.js": 710 * 1024, "neonplan3d-fun.js": 40 * 1024, "neonplan3d-voice.js": 60 * 1024, "neonplan3d-locate.js": 60 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 870 * 1024, "neonplan3d-editor.js": 900 * 1024, "neonplan3d-card-editor.js": 240 * 1024 };
+// main 750 KB, 3D 950 KB, editor 990 KB on 2026-11-26 for upstream 4.0.2 (phone view, styles, surroundings from the map, sky, live parts and finishes); editor-only texts moved to i18n-editor.ts
+const BUDGET = { "neonplan3d.js": 750 * 1024, "neonplan3d-fun.js": 40 * 1024, "neonplan3d-voice.js": 60 * 1024, "neonplan3d-locate.js": 60 * 1024, "neonplan3d-osm.js": 20 * 1024, "neonplan3d-timetravel.js": 120 * 1024, "neonplan3d-3d.js": 950 * 1024, "neonplan3d-editor.js": 990 * 1024, "neonplan3d-card-editor.js": 240 * 1024 };
 
 copyFonts();
 if (watch) {
   // in watch mode the hash is not tracked; a dev reload fetches the bundle anyway
-  for (const c of [viewerConfig, editorConfig("dev", "dev", "dev"), cardEditorConfig, timeTravelConfig, funConfig, voiceConfig, locateConfig, mainConfig("dev", "dev", "dev", "dev", "dev", "dev", "dev")]) await (await context(c)).watch();
+  for (const c of [viewerConfig, editorConfig("dev", "dev", "dev", "dev"), cardEditorConfig, timeTravelConfig, funConfig, voiceConfig, locateConfig, osmConfig, mainConfig("dev", "dev", "dev", "dev", "dev", "dev", "dev")]) await (await context(c)).watch();
 } else {
   await build(viewerConfig);
   await build(locateConfig);
+  await build(osmConfig);
   await build(cardEditorConfig);
-  const editor = editorConfig(hashOf(viewerConfig.outfile), hashOf(locateConfig.outfile), hashOf(cardEditorConfig.outfile));
+  const editor = editorConfig(hashOf(viewerConfig.outfile), hashOf(locateConfig.outfile), hashOf(cardEditorConfig.outfile), hashOf(osmConfig.outfile));
   await build(editor);
   await build(timeTravelConfig);
   await build(funConfig);

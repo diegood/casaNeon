@@ -25,6 +25,7 @@ from .const import (
     SIGNAL_BUILDING_UPDATED,
     SIGNAL_PLANS_UPDATED,
     SIGNAL_RELOAD,
+    SIGNAL_STYLE,
 )
 from .locate.recorder import ws_locate_rec
 from .locate.ws import COMMANDS as LOCATE_COMMANDS
@@ -138,6 +139,8 @@ async def ws_get_building(hass: HomeAssistant, connection: websocket_api.ActiveC
         vol.Required("type"): "neonplan3d/building/save",
         vol.Required("building"): BUILDING_SCHEMA,
         _PLAN: _PLAN_ID,
+        # the revision the edit was made on: a save over a newer plan (saved elsewhere meanwhile) is refused
+        vol.Optional("base_revision"): vol.Coerce(int),
     }
 )
 @websocket_api.require_admin
@@ -145,8 +148,14 @@ async def ws_get_building(hass: HomeAssistant, connection: websocket_api.ActiveC
 async def ws_save_building(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Replace the building."""
+    """Replace the building, unless it was edited on an older revision than the one stored (#1059)."""
     if (plan := _plan(hass, connection, msg)) is None:
+        return
+    base = msg.get("base_revision")
+    if base is not None and base != plan.revision:
+        # a phone that slept in the background overnight would otherwise write its old plan over the newer one
+        text = f"The plan was saved elsewhere meanwhile (revision {plan.revision})."
+        connection.send_error(msg["id"], "stale_plan", text)
         return
     revision = await plan.async_save_building(msg["building"])
     connection.send_result(msg["id"], {"revision": revision})
@@ -551,9 +560,13 @@ async def ws_backup_import(
         vol.Required("type"): "neonplan3d/voice/subscribe",
         vol.Optional("announce", default=False): bool,
         vol.Optional("reload", default=False): bool,
+        vol.Optional("style", default=False): bool,
         # what the view shows, for the card templates' overview of the open screens
         vol.Optional("view"): {
             vol.Optional("kind", default="panel"): vol.In(KINDS),
+            # the plan this view shows; a view of the main plan leaves it out. Without it here, a view of a second
+            # plan was turned away with "invalid_format" and tried again on every update, flooding the log (#1242)
+            vol.Optional("plan"): vol.Any(None, _PLAN_ID),
             vol.Optional("screen"): vol.Any(None, vol.All(str, vol.Length(max=60))),
             vol.Optional("template"): vol.Any(None, vol.All(str, vol.Length(max=60))),
             vol.Optional("device"): vol.Any(None, vol.All(str, vol.Length(max=80))),
@@ -568,6 +581,11 @@ def ws_voice_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConn
 
     @callback
     def forward(ask: dict[str, Any]) -> None:
+        # where people are, while shown to admins only: never sent to another user's view (#1129)
+        if ask.get("admins_only") and ask.get("show_rooms") and not connection.user.is_admin:
+            if not ask.get("ask_id"):
+                return
+            ask = {**ask, "show_rooms": []}
         connection.send_message(websocket_api.event_message(msg["id"], ask))
 
     @callback
@@ -578,12 +596,18 @@ def ws_voice_subscribe(hass: HomeAssistant, connection: websocket_api.ActiveConn
     def forward_reload(reload: dict[str, Any]) -> None:
         connection.send_message(websocket_api.event_message(msg["id"], {"reload": reload}))
 
+    @callback
+    def forward_style(style: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"style": style}))
+
     unsubs = [async_dispatcher_connect(hass, SIGNAL_ASK, forward)]
     if msg["announce"]:
         unsubs.append(async_dispatcher_connect(hass, SIGNAL_ANNOUNCE, forward_announce))
     if msg["reload"]:
         # asked for by name: an older frontend would take the call for a sentence
         unsubs.append(async_dispatcher_connect(hass, SIGNAL_RELOAD, forward_reload))
+    if msg["style"]:
+        unsubs.append(async_dispatcher_connect(hass, SIGNAL_STYLE, forward_style))
 
     screen_key: str | None = None
     if "view" in msg:

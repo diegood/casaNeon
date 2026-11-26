@@ -13,7 +13,7 @@ test("a lamp switched by a relay takes colour and brightness from its colour ent
   // the bulb unavailable: the relay's own (plain) glow
   assert.deepEqual(lightGlow(relay as never, { ...bulb, state: "unavailable" } as never)!.color, [1, 0.71, 0.28]);
 });
-import { coverTiltButtons, invertedCovers, isPulseDrive, isRelevant, climateModeGlow, cooktopLevel, onlyColor, fixedGlowColor, colorCapable, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
+import { chargerStatus, slatTilt, slatsInverted, coverTiltButtons, invertedCovers, isPulseDrive, isRelevant, climateModeGlow, cooktopLevel, onlyColor, fixedGlowColor, colorCapable, appColor, carLocked, areaEntities, otherAreaEntities, roomClimateSensors, roomClimateValue, unassignedEntities, autoPlace, entityName, fridgeDoors, furnitureEntities, groupByDevice, isActive, kindOf, lightGlow, openingEntities, openingOpen, openingState, powerSensorsOf, primaryEntities, roomPanelEntities, windowPosition, confirmEntities, robotRoom, robotRoomAcross, robotRoomSensor, roomKey, vacuumCleaning } from "./devices.ts";
 import type { Floor, Opening, Room } from "./model.ts";
 import { centroid, newFloor, pointInPolygon } from "./model.ts";
 import type { HomeAssistant } from "./types.ts";
@@ -68,6 +68,17 @@ test("entity names drop the area prefix", () => {
   const hass = hassWith();
   assert.equal(entityName(hass, "light.decke", "Wohnzimmer"), "Decke");
   assert.equal(entityName(hass, "light.stehlampe", "Wohnzimmer"), "Stehlampe");
+});
+
+test("the room panel drops the device name Home Assistant 2026.11 puts in front of a renamed entity (#1181)", () => {
+  const hass = {
+    states: { "light.sw_l1": { entity_id: "light.sw_l1", state: "on", attributes: { friendly_name: "switch_living_a Ceiling light" } } },
+    entities: { "light.sw_l1": { entity_id: "light.sw_l1", name: "Ceiling light", device_id: "d1" } },
+    devices: { d1: { id: "d1", name: "switch_living_a", name_by_user: null } },
+  } as unknown as Parameters<typeof entityName>[0];
+  assert.equal(entityName(hass, "light.sw_l1", undefined, true), "Ceiling light");
+  // elsewhere (editor lists) the full name stays
+  assert.equal(entityName(hass, "light.sw_l1"), "switch_living_a Ceiling light");
 });
 
 test("kinds, active states and light glow", () => {
@@ -167,6 +178,37 @@ test("opening states: open, tilted and blind position", () => {
   assert.deepEqual(stateOf(hass, { cover: null, contact: "binary_sensor.k", tilt: null }), { open: 1, open2: 0, tilt: 0, tilt2: 0, cover: null });
   assert.deepEqual(stateOf(hass, { cover: "cover.p", contact: "binary_sensor.k", tilt: "binary_sensor.t" }), { open: 0, open2: 0, tilt: 1, tilt2: 0, cover: 0.75 });
   assert.deepEqual(stateOf(hass, { cover: "cover.rollo", contact: null, tilt: null }), { open: 0, open2: 0, tilt: 0, tilt2: 0, cover: 0 });
+});
+
+test("a garage door counts as open when its cover is up, not when it is down (#1261)", () => {
+  const hass = hassWith();
+  const add = (id: string, state: string, attributes: Record<string, unknown>) => {
+    hass.entities![id] = { entity_id: id, area_id: "wohnen" };
+    hass.states[id] = { entity_id: id, state, attributes };
+  };
+  add("cover.tor", "closed", { device_class: "garage" });
+  const e = { cover: "cover.tor", contact: null, tilt: null };
+  // a closed garage door: "cover" is fully down, so it is NOT one of the open doors
+  assert.equal(openingState(hass, e, "garage").cover, 1);
+  assert.equal(openingOpen(openingState(hass, e, "garage"), "garage"), false);
+  hass.states["cover.tor"] = { entity_id: "cover.tor", state: "open", attributes: { device_class: "garage" } };
+  assert.equal(openingOpen(openingState(hass, e, "garage"), "garage"), true);
+  hass.states["cover.tor"] = { entity_id: "cover.tor", state: "open", attributes: { device_class: "garage", current_position: 40 } };
+  assert.equal(openingOpen(openingState(hass, e, "garage"), "garage"), true);
+  // a contact instead of a cover: "off" (closed) is not open, "on" is
+  add("binary_sensor.tor", "off", { device_class: "garage_door" });
+  const c = { cover: null, contact: "binary_sensor.tor", tilt: null };
+  assert.equal(openingOpen(openingState(hass, c, "garage"), "garage"), false);
+  hass.states["binary_sensor.tor"] = { entity_id: "binary_sensor.tor", state: "on", attributes: { device_class: "garage_door" } };
+  assert.equal(openingOpen(openingState(hass, c, "garage"), "garage"), true);
+  // without any sensor a garage door counts as closed, as the 3D view draws it
+  assert.equal(openingOpen(openingState(hass, { cover: null, contact: null, tilt: null }, "garage"), "garage"), false);
+  // a window keeps its own reading: open by its contact, a tilted one is not "open"
+  add("binary_sensor.fenster", "on", { device_class: "window" });
+  const w = { cover: null, contact: "binary_sensor.fenster", tilt: null };
+  assert.equal(openingOpen(openingState(hass, w, "window"), "window"), true);
+  hass.states["binary_sensor.fenster"] = { entity_id: "binary_sensor.fenster", state: "off", attributes: { device_class: "window" } };
+  assert.equal(openingOpen(openingState(hass, w, "window"), "window"), false);
 });
 
 test("garage doors use garage covers and contacts; door leaves follow their contact or stand half open", () => {
@@ -968,4 +1010,60 @@ test("covers open, close and stop the way they can: a slat-only blind by its til
     { service: "open_cover", data: { entity_id: ["cover.a", "cover.c"] } },
     { service: "set_cover_tilt_position", data: { tilt_position: 100, entity_id: ["cover.b"] } },
   ]);
+});
+
+test("a venetian blind reports how far its slats stand open; \"Invert slats\" turns it round (#971)", () => {
+  const cover = (attributes: Record<string, unknown>) => ({ entity_id: "cover.raff", state: "open", attributes });
+  const hass = (attributes: Record<string, unknown>) => ({ states: { "cover.raff": cover(attributes) } }) as unknown as HomeAssistant;
+  const link = { cover: "cover.raff", contact: null, tilt: null, contact2: null, tilt2: null };
+  // down to 30 % open, slats level
+  const level = openingState(hass({ current_position: 30, current_tilt_position: 100 }), link, "window");
+  assert.equal(level.cover, 0.7);
+  assert.equal(level.slats, 1);
+  assert.equal(openingState(hass({ current_position: 30, current_tilt_position: 25 }), link, "window").slats, 0.25);
+  // an integration that reports 0 for open slats
+  assert.equal(openingState(hass({ current_position: 30, current_tilt_position: 0 }), { ...link, slatInvert: true }, "window").slats, 1);
+  // a roller shutter has no slats to turn: nothing changes for it
+  assert.equal("slats" in openingState(hass({ current_position: 30 }), link, "window"), false);
+  // a garage door never shows slats
+  assert.equal("slats" in openingState(hass({ current_position: 30, current_tilt_position: 50 }), link, "garage"), false);
+  assert.equal(slatTilt(cover({ current_tilt_position: 130 }) as never), 100);
+  assert.equal(slatTilt(cover({ current_tilt_position: 20 }) as never, true), 80);
+  assert.equal(slatTilt(cover({}) as never), null);
+  const floor = { ...newFloor("f", "EG", 0), openings: [{ id: "w", cover: "cover.raff", slat_invert: true } as unknown as Opening] };
+  assert.equal(slatsInverted({ floors: [floor] } as never, "cover.raff"), true);
+  assert.equal(slatsInverted({ floors: [floor] } as never, "cover.other"), false);
+});
+
+test("a charger's status: whole words, so not_charging or charger_free is no charging and disconnected no car", () => {
+  const c = (raw: string) => chargerStatus(raw);
+  assert.deepEqual(c("charging"), { charging: true, plugged: true });
+  assert.deepEqual(c("Laden"), { charging: true, plugged: true });
+  assert.deepEqual(c("not_charging"), { charging: false, plugged: false });
+  assert.deepEqual(c("ready_to_charge"), { charging: false, plugged: true });
+  assert.deepEqual(c("charger_free"), { charging: false, plugged: false });
+  assert.deepEqual(c("charger_insert"), { charging: false, plugged: true });
+  assert.deepEqual(c("disconnected"), { charging: false, plugged: false });
+  assert.deepEqual(c("unplugged"), { charging: false, plugged: false });
+  assert.deepEqual(c("connected"), { charging: false, plugged: true });
+  assert.deepEqual(c("Available"), { charging: false, plugged: false });
+  assert.deepEqual(c("SuspendedEV"), { charging: false, plugged: true });
+  assert.deepEqual(c("charge complete"), { charging: false, plugged: true });
+});
+
+test("a robot with maps of several floors cleans on the floor of the room it reports (#1132)", () => {
+  const up = { id: "up", rooms: [{ id: "u1", name: "Bad", area_id: null }, { id: "u2", name: "Schlafzimmer", area_id: null }] };
+  const down = { id: "down", rooms: [{ id: "d1", name: "Büro", area_id: null }, { id: "d2", name: "Bad unten", area_id: null }] };
+  const at = (room: string) => ({ states: { "sensor.r": { state: room, attributes: {} }, "vacuum.r": { state: "cleaning", attributes: {} } }, areas: {} }) as unknown as HomeAssistant;
+  const find = (room: string, skip?: Set<string>) => robotRoomAcross(at(room), [up, down], "up", "vacuum.r", "sensor.r", skip);
+  // a room of the other floor
+  assert.deepEqual([find("Büro")?.floor.id, find("Büro")?.room.id], ["down", "d1"]);
+  // the dock's floor first
+  assert.deepEqual([find("Schlafzimmer")?.floor.id, find("Schlafzimmer")?.room.id], ["up", "u2"]);
+  // the room named exactly so on the other floor wins over one merely named alike on the dock's floor
+  assert.deepEqual([find("Bad unten")?.floor.id, find("Bad unten")?.room.id], ["down", "d2"]);
+  assert.deepEqual([find("Bad")?.floor.id, find("Bad")?.room.id], ["up", "u1"]);
+  // a floor with a dock of its own for this vacuum is left to that dock; no such room: none
+  assert.equal(find("Büro", new Set(["down"])), null);
+  assert.equal(find("Garage"), null);
 });
