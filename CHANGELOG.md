@@ -3,6 +3,29 @@
 All notable changes to NeonPlan 3D. Releases: [diegood/neonplan3d](https://github.com/diegood/neonplan3d/releases);
 earlier versions come from [Mastershort/neonplan3d](https://github.com/Mastershort/neonplan3d/releases).
 
+## 4.0.0
+
+### Novedades
+
+- **Novedades del original hasta su 4.0.2**, solo lo funcional:
+  - **Vista de móvil:** la casa sin cabecera ni botones sueltos y una barra abajo para el pulgar: **Ahora** («¿Qué pasa?»: avisos, ventanas y puertas abiertas, quién está en casa, luces encendidas, coches y energía, lo urgente primero), las **habitaciones** por planta como mosaicos, las **persianas** de la casa y **Más**. El panel de la habitación se abre plegado. **Revisión de la casa** antes de salir o de acostarse: recorre cada ventana abierta, puerta sin cerrar y habitación con luz.
+  - En la tarjeta: `phone: true`; el formulario pregunta para qué es (tableta / pantalla grande o móvil) y muestra solo lo que encaja: `phone_hide`, `phone_start: now`, `phone_solo` y hasta dos **lugares propios** (`phone_places`: todas las luces o termostatos por planta, una escena o script, una página de un panel). Enlaces directos `/neonplan3d?view=now`, `?room=…` y `?show=<entidad>`.
+  - **Estilos:** además del neón, **Blueprint, Día, Noche, Synthwave, Acogedor, Acogedor noche, Tarde de invierno, Maqueta, Pastel y Madera y papel**, con materiales reales, colores de pared y sombras de contacto; **estilos propios**; un estilo **al acercarse** (neón de lejos, acogedor de cerca); **plan del día** (un estilo de día, de tarde y de noche, por el sol o por horas) o desde un ayudante (`style_entity`). Acción `neonplan3d.set_style` para las pantallas abiertas y por voz: «estilo acogedor», «pon el estilo neón», «estilo normal».
+  - **El entorno del mapa** (⚙ Ajustes → Entorno): las casas vecinas de OpenStreetMap a su altura (opcionalmente con tejado a dos aguas), calles, caminos, vías, agua, zonas verdes y árboles; casas ocultables a mano; empezar un plano vacío desde el mapa y alinear la imagen del plano con él. Opción de tarjeta `surroundings: false`.
+  - **Cielo real** detrás de la casa según el sol: arreboles, estrellas, la luna en su fase y nubes con el viento. Opcional: **llegada desde el espacio** al abrir.
+  - **Muebles:** **acabados** propios para madera, tela, frentes y cuerpo en los estilos acogedores; **piezas vivas** de los packs (puertas y cajones que se abren, niveles que suben, luces de estado) vinculadas a entidades; aspas que giran en lámparas y ventiladores de packs; **letrero de neón** con texto propio; puerta de garaje **basculante**.
+  - **Persianas venecianas** con lamas que giran (y «invertir lamas»), **persiana por dentro** como estor enrollable, nueva esquina con **+** en el borde de una zona exterior, color propio para una **pared suelta**, nombre de habitación movible, pendiente del faldón superior en tejados a la mansarda.
+  - **⚙ Ajustes en un solo diálogo:** los temas en cinco grupos a la izquierda y el elegido a la derecha. **Plantillas de tarjeta** como página de gestión con pestañas y vista previa que gira y abre habitaciones.
+  - Vista de inicio propia para la pantalla en vertical (`start_view_portrait`).
+  - **Seguridad:** con «personas solo para administradores», los demás usuarios no reciben dónde está nadie; un teléfono solo suena para su propia persona o un administrador (como máximo una vez cada 30 s); el viaje en el tiempo solo devuelve lo que el usuario puede leer.
+  - Y las correcciones del original: un móvil dormido ya no guarda un plano viejo encima de uno más nuevo, copias completas grandes se restauran por partes, buhardillas, tejados bajos junto a una planta más alta, conos de cámara sobre escalones, robots en casas de varias plantas, cristales y colores en los estilos claros, gestos con dedos o ratón sobre etiquetas y pines, y más.
+
+### Cambios
+
+- **Numeración:** CasaNeon sigue desde ahora el número mayor del original: esta versión trae su 4.0.2 y pasa a ser la 4.0.0.
+- Los textos que solo usa el editor van ahora en el bundle del editor: las tabletas de pared cargan menos.
+- Siguen sin traerse del original la tienda (tampoco las tarjetas bloqueadas de la biblioteca ni las sugerencias de extensiones), las licencias, los diagnósticos, los módulos, el servicio de anuncios, otros idiomas y la documentación. Nuestros interruptores, enchufes, ventilador de techo, punto de acceso y termo se quedan.
+
 ## 1.24.0
 
 ### Novedades
